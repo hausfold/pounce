@@ -179,11 +179,6 @@ the next open.
 > through the palette and how rice/machine-specific commands are layered on
 > declaratively.
 
-<!-- S14 — the hello.sh script (left) live in the palette (assets/command-is-a-file.webp) -->
-<div align="center">
-<img src="./assets/command-is-a-file.webp" alt="the same five-line script, live in the palette" width="820">
-</div>
-
 Header keys (all optional — the filename is the fallback name/id):
 
 | key | meaning |
