@@ -6,6 +6,8 @@
     <string>pounce</string>
     <key>CFBundleIdentifier</key>
     <string>com.local.pounce</string>
+    <key>CFBundleDisplayName</key>
+    <string>Pounce</string>
     <key>CFBundleName</key>
     <string>Pounce</string>
     <key>CFBundlePackageType</key>

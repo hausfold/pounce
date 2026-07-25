@@ -70,6 +70,13 @@ jobs:
             -A -t cert -f pkcs12 -k "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" "$KEYCHAIN" >/dev/null
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          [ -n "$IDENTITY" ]
+          SIGNER_NAME="${IDENTITY#Developer ID Application: }"
+          SIGNER_NAME="${SIGNER_NAME% (*}"
+          echo "::add-mask::$IDENTITY"
+          echo "::add-mask::$SIGNER_NAME"
           echo "SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
           rm -f "$RUNNER_TEMP/cert.p12"
 
@@ -77,7 +84,6 @@ jobs:
         run: |
           IDENTITY="$(security find-identity -v -p codesigning "$SIGN_KEYCHAIN" \
             | awk -F'"' '/Developer ID Application/{print $2; exit}')"
-          echo "signing with: $IDENTITY"
           # Camera peek needs the hardened-runtime camera exception (Pounce.entitlements).
           codesign --force --options runtime --timestamp \
             --entitlements pkgs/pounce/Pounce.entitlements \
@@ -110,7 +116,7 @@ jobs:
       - name: Verify signature + notarization
         run: |
           codesign --verify --deep --strict --verbose=2 pkgs/pounce/Pounce.app
-          spctl -a -vvv -t exec pkgs/pounce/Pounce.app
+          spctl --assess --type execute pkgs/pounce/Pounce.app
 
       - name: Assemble prebuilt macOS tarball
         run: |

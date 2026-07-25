@@ -40,6 +40,7 @@ mkdir -p Pounce.app/Contents/MacOS Pounce.app/Contents/Resources
   -framework AVFoundation \
   -framework Carbon \
   -framework CoreBluetooth \
+  -framework CoreServices \
   -O
 
 cp Info.plist Pounce.app/Contents/
