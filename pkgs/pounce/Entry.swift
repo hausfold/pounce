@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import ApplicationServices
+import CoreServices
 
 // MARK: - Entry Point
 
@@ -97,6 +98,15 @@ enum Main {
             // BluetoothGrant.swift for why blueutil can't do this itself).
             BluetoothGrant.request()
         } else if args.contains("--daemon") {
+            // Homebrew and the rice both run the executable inside Pounce.app
+            // directly rather than opening the bundle through Launch Services.
+            // Register it explicitly so Background Items can resolve the
+            // launch-agent AssociatedBundleIdentifiers entry to "Pounce"
+            // instead of falling back to the Developer ID certificate owner.
+            let status = LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
+            if status != noErr {
+                NSLog("pounce: Launch Services registration failed (status \(status))")
+            }
             DaemonMode.run()
         } else {
             ClientMode.run()
