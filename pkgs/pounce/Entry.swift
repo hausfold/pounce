@@ -393,7 +393,19 @@ enum DaemonMode {
                 ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { accept(fd, $0, &clientLen) }
             }
             guard clientFD >= 0 else { continue }
-            handleClient(clientFD: clientFD, state: state, ui: ui)
+            // One detached thread per connection so accept() is NEVER blocked. A
+            // palette (CONFIG) request blocks its handler on semaphore.wait() for
+            // the whole time the window is up; a palette that never dismisses —
+            // e.g. under a tiling WM (AeroSpace) it may never become key, so
+            // Esc/click-away never fire — would otherwise wedge this single accept
+            // loop forever. Once wedged, the listen backlog fills and every later
+            // connection (focus/status pings, `doctor`, and crucially new picker
+            // opens) gets ECONNREFUSED — so `pounce --emoji`/`--clipboard` fall back
+            // to ClientMode.runDirect in an UNTRUSTED client process that can copy
+            // to the pasteboard but can't post the ⌘V (no Accessibility), i.e.
+            // "it copies but won't paste". Handling each client off the accept loop
+            // keeps the daemon reachable so pickers always route through it.
+            Thread.detachNewThread { handleClient(clientFD: clientFD, state: state, ui: ui) }
         }
     }
 
@@ -500,6 +512,13 @@ enum DaemonMode {
         let metrics = settings.metrics
 
         DispatchQueue.main.async {
+            // Only one palette window exists, so a new request supersedes any
+            // already on screen. Release the previous request's waiter first (fire
+            // its resultSink with an empty result) so its now-detached handler
+            // thread unblocks and closes its socket, instead of leaking — blocked
+            // in semaphore.wait() with its clientFD open — behind the new window.
+            ui.resultSink?("")
+            ui.resultSink = nil
             Theme.current = settings.palette
             state.reset()
             state.metrics = metrics
