@@ -6,6 +6,36 @@ import AppKit
 class PounceWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    // Pounce is a menu-less accessory app (.accessory policy, no main menu), and
+    // in AppKit the standard editing chords — ⌘X/⌘C/⌘V/⌘A/⌘Z — are dispatched by
+    // the Edit menu's key equivalents, not by the field editor itself. With no
+    // Edit menu those chords never reach the search field's field editor, so
+    // pasting (and copy/cut/select-all/undo) silently do nothing — the "can't
+    // paste a file URI into the input" bug. Plain typing and the arrow/return
+    // keys work because they travel the normal responder chain. Re-create just the
+    // dispatch the missing menu would do: map the chord to its editing selector
+    // and send it to the first responder (to: nil walks the responder chain, so
+    // the field editor picks it up).
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let command: NSEvent.ModifierFlags = .command
+        if mods == command || mods == [command, .shift] {
+            let selector: Selector?
+            switch event.charactersIgnoringModifiers {
+            case "x": selector = #selector(NSText.cut(_:))
+            case "c": selector = #selector(NSText.copy(_:))
+            case "v": selector = #selector(NSText.paste(_:))
+            case "a": selector = #selector(NSResponder.selectAll(_:))
+            // ⌘Z undo, ⇧⌘Z redo — selectors live on the field editor's undo
+            // support, not a shared protocol, so resolve them by name.
+            case "z": selector = NSSelectorFromString(mods.contains(.shift) ? "redo:" : "undo:")
+            default:  selector = nil
+            }
+            if let selector, NSApp.sendAction(selector, to: nil, from: self) { return true }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 // MARK: - PounceUI (window controller shared by daemon + direct mode)
