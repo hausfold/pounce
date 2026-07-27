@@ -150,6 +150,30 @@ final class ClipboardStore {
         (try? String(contentsOf: blobURL(entry, ext: "txt"), encoding: .utf8)) ?? entry.preview
     }
 
+    // A bounded slice of a text entry for the picker's preview pane. SwiftUI's
+    // Text lays out its *entire* string synchronously on the main thread — no
+    // lazy/virtualized rendering — so previewing a multi-thousand-line clip
+    // froze the UI for seconds every time it became selected (on open when it's
+    // the top entry, and again when arrowed onto). Capping what the preview
+    // renders keeps selection instant; the full content is untouched and still
+    // restored verbatim on commit (restore() reads the blob directly).
+    static let previewCharCap = 20_000
+    static let previewLineCap = 500
+
+    func previewText(for entry: ClipEntry) -> String {
+        let full = text(for: entry)
+        let charCapped = full.count > Self.previewCharCap
+        var body = charCapped ? String(full.prefix(Self.previewCharCap)) : full
+        var lines = body.split(separator: "\n", omittingEmptySubsequences: false)
+        let lineCapped = lines.count > Self.previewLineCap
+        if lineCapped {
+            lines = Array(lines.prefix(Self.previewLineCap))
+            body = lines.joined(separator: "\n")
+        }
+        guard charCapped || lineCapped else { return full }
+        return body + "\n\n… preview truncated — the full content is what gets pasted"
+    }
+
     func image(for entry: ClipEntry) -> NSImage? {
         NSImage(contentsOf: blobURL(entry, ext: "png"))
     }

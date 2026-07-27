@@ -151,7 +151,7 @@ struct ClipPreview: View {
                     }
                 } else {
                     ScrollView {
-                        Text(ClipboardStore.shared.text(for: entry))
+                        Text(ClipboardStore.shared.previewText(for: entry))
                             .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(Theme.text)
                             .textSelection(.enabled)
