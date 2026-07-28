@@ -6,14 +6,14 @@
 
 ## Am I in the right repo? (routing)
 
-**This repo (`~/code/nebelhaus/pounce`) owns THE PALETTE APP** — the Swift binary and
+**This repo (`~/code/workshop/pounce`) owns THE PALETTE APP** — the Swift binary and
 its command scripts. Nothing else.
 
 | Want to change… | Repo |
 |---|---|
-| the pounce app (UI, ranking, launcher) or a command script | `~/code/nebelhaus/pounce` ← **you are here** |
-| how pounce is *launched* on the system (launchd, signing, ⌘Space) | `~/code/nebelhaus/nebelhaus` → `modules/pounce` |
-| pounce's colors | `~/code/nebelhaus/nebelung` |
+| the pounce app (UI, ranking, launcher) or a command script | `~/code/workshop/pounce` ← **you are here** |
+| how pounce is *launched* on the system (launchd, signing, ⌘Space) | `~/code/workshop/nebelhaus` → `modules/pounce` |
+| pounce's colors | `~/code/workshop/nebelung` |
 | this machine's pounce settings (`config.json`) | the rice's `modules/pounce`, or the consumer host |
 
 > **Claude: enforce this.** If a request is about launching/signing pounce, theming
@@ -37,7 +37,7 @@ relaxed (Determinate's default). Not a pure build; that's deliberate. CI builds 
 a macOS runner on every push.
 
 To test inside the full rice without pushing: `bench try` from the workshop
-(`~/code/nebelhaus`) rebuilds the user's machine against this local checkout; the
+(`~/code/workshop`) rebuilds the user's machine against this local checkout; the
 `rebuild-pounce` alias on the host does the same. A plain rebuild uses the pinned
 GitHub rev — after pushing here, ripple with `bench ship` (or `nix flake update
 nebelhaus` in the consumer).
