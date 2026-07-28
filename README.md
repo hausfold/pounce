@@ -26,6 +26,8 @@ commands, one list, gone again before you've thought about it.
 It's the launcher for people who'd rather write a five-line shell script than
 learn a plugin SDK.
 
+📖 **[nebelhaus.com/pounce](https://nebelhaus.com/pounce)**
+
 ## why pounce
 
 - **every command is a file** — one self-describing shell script, dropped in a folder. no plugin API, no extension store, no account.
@@ -87,13 +89,11 @@ next open. No registry, no rebuild, no restart.
 
 ## more
 
-`pounce --help` prints the full flag list. Deeper reference —
-config, command discovery, plugins, hotkey troubleshooting, building from
-source — lives in [`docs/reference.md`](./docs/reference.md).
+- [nebelhaus.com/pounce](https://nebelhaus.com/pounce) — the product page
+- [`docs/reference.md`](./docs/reference.md) — config, command discovery, plugins, hotkey troubleshooting, building from source
+- [The pounce guide](https://nebelhaus.com/guides/pounce/) · [Writing pounce commands](https://nebelhaus.com/guides/pounce-commands/) — using pounce inside the rice
 
-Using pounce inside the rice? See the
-[pounce guide](https://nebelhaus.com/guides/pounce/) and
-[writing pounce commands](https://nebelhaus.com/guides/pounce-commands/).
+`pounce --help` prints the full flag list.
 
 ## the family
 
