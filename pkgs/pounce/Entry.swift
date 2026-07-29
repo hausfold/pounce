@@ -11,8 +11,10 @@ enum Main {
     pounce — summon, aim, pounce. A scriptable command palette for macOS.
 
     usage:
-      pounce [-p <prompt>] [-i <sf-symbol>] [--max-empty <n>]
+      pounce [-p <prompt>] [-i <sf-symbol>] [--max-empty <n>] [--chain]
         generic picker: reads lines from stdin, prints the chosen one
+        --chain: Enter on typed text feeds another pounce step — hold the
+        window up with the loading skeleton instead of fading out
 
     modes:
       --launcher             apps + commands palette (what the hotkey opens)
@@ -137,6 +139,11 @@ struct Invocation {
     var cheatsheet = false
     var cheatsheetPath = "~/.config/pounce/cheatsheet.json"
     var maxEmpty: Int?
+    // The caller's next act, after Enter on typed text, is another `pounce`
+    // invocation — so the window should hold the loading skeleton rather than
+    // fade out and re-open. Only the free-text commit is affected: picking a
+    // row still lingers, because a row's follow-up may be a terminal action.
+    var chain = false
 }
 
 // MARK: - Daemon Mode
@@ -489,6 +496,7 @@ enum DaemonMode {
             if p.count > 3 && p[3] == "cheatsheet" { inv.cheatsheet = true }
             if p.count > 4, let m = Int(p[4]) { inv.maxEmpty = m }
             if p.count > 5 && !p[5].isEmpty { inv.cheatsheetPath = p[5] }
+            if p.count > 6 && p[6] == "1" { inv.chain = true }
             itemLines = Array(lines.dropFirst())
         }
 
@@ -536,7 +544,7 @@ enum DaemonMode {
                 state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
             } else {
                 state.load(lines: itemLines, placeholder: inv.placeholder, icon: inv.icon,
-                           launcher: inv.launcher, maxEmpty: inv.maxEmpty)
+                           launcher: inv.launcher, maxEmpty: inv.maxEmpty, chain: inv.chain)
             }
             ui.resultSink = { r in result = r; semaphore.signal() }
             ui.present()
@@ -575,6 +583,7 @@ enum ClientMode {
                 // swallow a following flag as the path.
                 if let next = args.first, !next.hasPrefix("--") { inv.cheatsheetPath = args.removeFirst() }
             case "--max-empty":         if !args.isEmpty { inv.maxEmpty = Int(args.removeFirst()) }
+            case "--chain":             inv.chain = true
             default: break
             }
         }
@@ -612,7 +621,7 @@ enum ClientMode {
             : (inv.fileSearch ? "filesearch"
             : (inv.cheatsheet ? "cheatsheet" : ""))))))
         let maxEmpty = inv.maxEmpty.map(String.init) ?? ""
-        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\n"
+        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(inv.chain ? "1" : "")\n"
         for line in stdinLines { payload += line + "\n" }
 
         if let data = payload.data(using: .utf8) {
@@ -661,7 +670,7 @@ enum ClientMode {
             state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
         } else {
             state.load(lines: lines, placeholder: inv.placeholder, icon: inv.icon,
-                       launcher: inv.launcher, maxEmpty: inv.maxEmpty)
+                       launcher: inv.launcher, maxEmpty: inv.maxEmpty, chain: inv.chain)
         }
 
         ui.resultSink = { result in

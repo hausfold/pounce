@@ -55,6 +55,10 @@ final class DaemonState: ObservableObject {
 
     var isLauncher = false
     var maxEmpty = Int.max
+    // --chain: the caller answers a free-text Enter by running another `pounce`,
+    // so that commit holds the window in the loading state instead of fading
+    // out and re-opening. Row picks are unaffected (see buildCommit).
+    var chain = false
 
     // The clipboard and emoji views are fixed-size windows; everything else
     // follows the launcher's windowMode width.
@@ -111,6 +115,7 @@ final class DaemonState: ObservableObject {
         globalIcon = nil
         isLauncher = false
         maxEmpty = Int.max
+        chain = false
         requestID = UUID()
         displayMode = .list
         clipEntries = []
@@ -279,9 +284,11 @@ final class DaemonState: ObservableObject {
         onCommit?(Commit(clientString: e.c, disposition: .hideNow, appLaunch: nil, pasteAfter: paste))
     }
 
-    func load(lines: [String], placeholder: String?, icon: String?, launcher: Bool, maxEmpty: Int?) {
+    func load(lines: [String], placeholder: String?, icon: String?, launcher: Bool, maxEmpty: Int?,
+              chain: Bool = false) {
         globalIcon = icon
         isLauncher = launcher
+        self.chain = chain
         self.maxEmpty = maxEmpty ?? (launcher ? 7 : Int.max)
 
         var built: [PounceItem] = []
@@ -299,13 +306,18 @@ final class DaemonState: ObservableObject {
         items = built
         frecencyScores = Dictionary(uniqueKeysWithValues: built.map { ($0.id, frecency.score(for: $0.frecencyKey)) })
 
+        // Tie-break: the launcher's own items have no meaningful input order
+        // (filesystem-order roulette among the many zero-score apps), so sort
+        // them by title. A piped list is the opposite — the script already
+        // ranked it (a search engine's relevance order, a curated menu), and
+        // alphabetizing that throws the ranking away. Keep the caller's order.
+        let rank = Dictionary(uniqueKeysWithValues: built.enumerated().map { ($0.element.id, $0.offset) })
         itemsSorted = built.sorted { a, b in
             let sa = (frecencyScores[a.id] ?? 0) + a.baseBoost
             let sb = (frecencyScores[b.id] ?? 0) + b.baseBoost
             if sa != sb { return sa > sb }
-            // Deterministic tie-break so the empty list isn't filesystem-order
-            // roulette among the many zero-score apps (case-insensitive by title).
-            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            if launcher { return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending }
+            return (rank[a.id] ?? 0) < (rank[b.id] ?? 0)
         }
     }
 
@@ -359,8 +371,17 @@ final class DaemonState: ObservableObject {
                          appLaunch: nil, pasteAfter: paste))
     }
 
+    // Enter with nothing matching: hand the raw text back. Under --chain the
+    // caller turns that text into another pounce step (a search), which can take
+    // a network round-trip — hold the window with the loading skeleton, seeded
+    // from this step's own prompt, so there's no fade-out/fade-in gap.
     func commitText(_ text: String) {
-        onCommit?(Commit(clientString: "enter\t\(text)", disposition: .linger, appLaunch: nil))
+        if chain {
+            loadingTitle = placeholderText
+            loadingIcon = globalIcon ?? "magnifyingglass"
+        }
+        onCommit?(Commit(clientString: "enter\t\(text)",
+                         disposition: chain ? .loading : .linger, appLaunch: nil))
     }
 
     func cancel() {

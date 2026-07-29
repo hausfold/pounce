@@ -11,6 +11,7 @@ authoritative flag list; this is the prose version.
 | `-i <sf-symbol>` | prompt icon (an SF Symbol name) |
 | `--launcher` | also enumerate & rank installed apps, and launch them natively |
 | `--max-empty <n>` | how many rows to show before the user types |
+| `--chain` | Enter on typed text (nothing matched) feeds another `pounce` step — hold the window up with the loading skeleton instead of fading out. See [Submenus](#submenus-two-step-commands) |
 | `--clipboard` / `--emoji` / `--screenshots` / `--camera` | the built-in native modes |
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
 | `--transform '<filter>'` | act on the current selection: copy it (⌘C), pipe the text through the shell `<filter>`, paste back (⌘V) — e.g. `--transform 'tr "[:lower:]" "[:upper:]"'`. Forwarded to the daemon, which holds the grant. |
@@ -108,6 +109,29 @@ between steps, so it feels like one continuous flow:
 service=$(list_services | pounce -p "Service:")
 [ -n "$service" ] && toggle_service "$service"
 ```
+
+**Piped lists keep your order.** The launcher sorts its own apps and commands by
+title, because their input order is meaningless. A list you pipe in is the
+opposite — you already ranked it — so pounce shows it in the order you gave
+(frecency still floats rows the user has picked before). Want it alphabetical?
+`sort` it yourself.
+
+**A prompt whose Enter starts a search: `--chain`.** When nothing in the list
+matches what the user typed, Enter hands the raw text back as `enter\t<text>`.
+A script that answers that by *searching* — hitting the network, shelling out —
+leaves a gap: the window fades out while the search runs, then a new one fades
+in. `--chain` says "my next act is another `pounce`", so that commit holds the
+window with the loading skeleton and step 2 swaps straight in:
+
+```sh
+# ask for a query, search, show the hits — no fade between the three
+query=$(printf '' | pounce --chain -p "App Store — type a search, then Enter" | cut -f2)
+search_the_store "$query" | pounce -p "App Store — results"
+```
+
+Only the free-text commit changes; picking a row still lingers, since a row's
+follow-up is just as often a terminal action. If step 2 never arrives the window
+fades out on its own after a few seconds, so a `--chain` prompt can't wedge it.
 
 The batteries-included set (clipboard, emoji, screenshots, brew-services,
 lock, force-quit, …) all live in `commands/` as worked examples — copy one and
