@@ -171,8 +171,24 @@ struct Settings {
     var quickAnswers = QuickAnswerSettings()
     var fileSearch = FileSearchSettings()
     // Color palette: a built-in name, or a ~/.config/pounce/themes/<name>.json
-    // (see Palette.named). Defaults to nebelung.
-    var theme: String = "nebelung"
+    // (see Palette.named).
+    //
+    // `theme` is the fallback for BOTH appearances; `themeLight`/`themeDark`
+    // override it when macOS is in that appearance. Three consequences, all
+    // intended:
+    //
+    //   nothing set          nebelung / nebelung-latte — the default pair, so a
+    //                        zero-config pounce follows macOS light/dark.
+    //   only `theme`         that palette, always. Setting one theme PINS it —
+    //                        "theme": "gruvbox-dark" must not go latte at noon.
+    //   a pair               "theme": "gruvbox" + "themeDark": "gruvbox-dark",
+    //                        or "theme": "nebelung" + "themeLight": "…-latte".
+    //
+    // nil rather than a default string is what makes "only theme pins" work:
+    // the resolver can't otherwise tell a chosen "nebelung" from an unset one.
+    var theme: String?
+    var themeLight: String?
+    var themeDark: String?
 
     var metrics: LayoutMetrics {
         switch windowMode {
@@ -181,7 +197,15 @@ struct Settings {
         }
     }
 
-    var palette: Palette { Palette.named(theme) }
+    // Resolved per open (like the rest of Settings), so toggling macOS
+    // appearance shows on the next summon without restarting the daemon.
+    var themeName: String {
+        Theme.systemIsLight
+            ? (themeLight ?? theme ?? Palette.defaultLightName)
+            : (themeDark ?? theme ?? Palette.defaultDarkName)
+    }
+
+    var palette: Palette { Palette.named(themeName) }
 
     static var configPath: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -199,6 +223,8 @@ struct Settings {
             s.windowMode = mode
         }
         if let t = obj["theme"] as? String { s.theme = t }
+        if let t = obj["themeLight"] as? String { s.themeLight = t }
+        if let t = obj["themeDark"] as? String { s.themeDark = t }
         if let cb = obj["clipboard"] as? [String: Any] {
             if let e = cb["enabled"] as? Bool { s.clipboard.enabled = e }
             if let m = cb["maxEntries"] as? Int { s.clipboard.maxEntries = m }

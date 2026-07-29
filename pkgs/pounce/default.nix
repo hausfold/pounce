@@ -2,35 +2,46 @@
   lib,
   stdenvNoCC,
   darwin,
-  # The nebelung palette as a name -> "#hex" attrset (from the nebelung flake).
+  # The nebelung palettes as name -> (name -> "#hex") (from the nebelung flake).
   # This is the single source of truth for the default theme; the Swift below is
   # generated from it at build time so a palette change in nebelung flows here on
   # the next `nix flake update nebelung && nix build` — no hand-copied hex.
+  # Two variants are compiled in, not one: pounce's zero-config default is the
+  # dark/light PAIR it needs to follow macOS appearance with no files on disk.
   nebelungPalette,
+  nebelungLattePalette,
 }:
 
 let
   # nebelung's field names don't line up 1:1 with pounce's Palette roles: pounce's
   # `subtext`/`subtext0` map to nebelung's `subtext0`/`overlay0`. Everything else
   # is the same name. Values arrive as "#rrggbb"; Color(hex:) wants no '#'.
-  hex = name: lib.removePrefix "#" nebelungPalette.${name};
+  swiftPalette =
+    swiftName: palette:
+    let
+      hex = name: lib.removePrefix "#" palette.${name};
+    in
+    ''
+      static let ${swiftName} = Palette(
+              base:     Color(hex: "${hex "base"}"),
+              surface0: Color(hex: "${hex "surface0"}"),
+              surface1: Color(hex: "${hex "surface1"}"),
+              surface2: Color(hex: "${hex "surface2"}"),
+              text:     Color(hex: "${hex "text"}"),
+              subtext:  Color(hex: "${hex "subtext0"}"),
+              subtext0: Color(hex: "${hex "overlay0"}"),
+              mauve:    Color(hex: "${hex "mauve"}"),
+              blue:     Color(hex: "${hex "blue"}"))'';
   nebelungSwift = ''
-    // AUTO-GENERATED at build time from the nebelung flake's `palette` output.
-    // Do not edit by hand — change palette/nebelung.hex.json in nebelung instead,
-    // then `nix flake update nebelung` here. See pkgs/pounce/default.nix.
+    // AUTO-GENERATED at build time from the nebelung flake's `palettes` output.
+    // Do not edit by hand — change palette/nebelung*.hex.json in nebelung
+    // instead, then `nix flake update nebelung` here. See pkgs/pounce/default.nix.
     import SwiftUI
 
     extension Palette {
-        static let nebelung = Palette(
-            base:     Color(hex: "${hex "base"}"),
-            surface0: Color(hex: "${hex "surface0"}"),
-            surface1: Color(hex: "${hex "surface1"}"),
-            surface2: Color(hex: "${hex "surface2"}"),
-            text:     Color(hex: "${hex "text"}"),
-            subtext:  Color(hex: "${hex "subtext0"}"),
-            subtext0: Color(hex: "${hex "overlay0"}"),
-            mauve:    Color(hex: "${hex "mauve"}"),
-            blue:     Color(hex: "${hex "blue"}"))
+        ${swiftPalette "nebelung" nebelungPalette}
+
+        ${swiftPalette "nebelungLatte" nebelungLattePalette}
     }
   '';
   nebelungSwiftFile = builtins.toFile "Palette+nebelung.generated.swift" nebelungSwift;

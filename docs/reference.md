@@ -186,7 +186,11 @@ optional and falls back to a default.
 
 ```jsonc
 {
-  "theme": "nebelung",      // "nebelung" (default), "mocha", or a themes/ file
+  // Omit all three and pounce follows macOS: nebelung dark / nebelung-latte
+  // light. Set "theme" alone to PIN one palette. See "Theme" below.
+  "theme": "nebelung",      // "nebelung", "mocha", or a themes/ file
+  "themeLight": "nebelung-latte",  // used when macOS is in Light Mode
+  "themeDark": "nebelung",         // used when macOS is in Dark Mode
   "windowMode": "default",  // "default" or "compact"
   "hotkey": {
     "enabled": true,        // daemon grabs a global hotkey in-process
@@ -214,9 +218,34 @@ optional and falls back to a default.
 }
 ```
 
-The default **nebelung** palette is compiled into the binary straight from the
-[nebelung](https://github.com/nebelhaus/nebelung) flake, so it never drifts from
+The **nebelung** palette and its light counterpart **nebelung-latte** are both
+compiled into the binary straight from the
+[nebelung](https://github.com/nebelhaus/nebelung) flake, so they never drift from
 the rest of the theme. Set `"theme": "mocha"` for stock Catppuccin.
+
+### Following macOS light/dark
+
+`theme` is the fallback for both appearances; `themeLight` and `themeDark`
+override it when macOS is in that appearance. The appearance is read on the same
+per-open path as config.json, so flipping System Settings shows on your next
+summon — no restart.
+
+| you set | Dark Mode | Light Mode |
+|---|---|---|
+| nothing | `nebelung` | `nebelung-latte` |
+| `theme` only | `theme` | `theme` — one theme **pins** it |
+| `theme` + `themeLight` | `theme` | `themeLight` |
+| `theme` + `themeDark` | `themeDark` | `theme` |
+
+So a zero-config pounce follows the system, and any pair works — not just the
+built-ins:
+
+```jsonc
+{ "theme": "gruvbox-light", "themeDark": "gruvbox-dark" }
+```
+
+Setting one theme and nothing else keeps that theme around the clock, which is
+why `"theme": "gruvbox-dark"` never turns pale at noon.
 
 Any other `"theme"` value resolves to `~/.config/pounce/themes/<name>.json` — a
 flat catppuccin-style `name → "#hex"` map (nebelung's `palette/*.hex.json` files
@@ -233,9 +262,14 @@ curl -fsSLo ~/.config/pounce/themes/nebelung-latte.json \
 
 Pounce uses these keys: `base`, `surface0`–`surface2`, `text`, `subtext0`,
 `overlay0`, `mauve`, `blue`. A file missing any of them (or an unknown name)
-falls back to the built-in default. On the nebelhaus rice you never do this by
-hand — `nebelhaus.theme.{flavor,contrast}` installs the matching variant and
-points `"theme"` at it.
+falls back to the built-in default. A file also *shadows* a built-in of the same
+name, so `themes/nebelung.json` wins over the compiled-in one. On the nebelhaus
+rice you never do this by hand — `nebelhaus.theme.{flavor,contrast}` installs the
+matching variant and points `"theme"` at it.
+
+The window chrome (blur material, appearance, border, fill opacity) follows the
+**palette's** own lightness, not the system's — a light palette in Dark Mode
+still renders as a light panel.
 
 ## The hotkey (near-instant open)
 

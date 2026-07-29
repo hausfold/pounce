@@ -4,9 +4,11 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     # nebelung is the single source of truth for the default palette; its
-    # `palette` output is a plain name -> "#hex" attrset baked into the binary
-    # at build time (see pkgs/pounce). Only the palette output is used — the
-    # theme-builder packages are never realised — so this stays a pure eval.
+    # `palette`/`palettes` outputs are plain name -> "#hex" attrsets baked into
+    # the binary at build time (see pkgs/pounce) — the dark default and its
+    # latte counterpart, which together are what lets a zero-config pounce
+    # follow macOS light/dark. Only palette data is used — the theme-builder
+    # packages are never realised — so this stays a pure eval.
     nebelung.url = "github:nebelhaus/nebelung";
     nebelung.inputs.nixpkgs.follows = "nixpkgs";
   };
@@ -25,7 +27,10 @@
       # Consume pounce from anywhere: `overlays.default` puts `pounce` and
       # `pounce-commands` into pkgs.
       overlays.default = final: prev: {
-        pounce = final.callPackage ./pkgs/pounce { nebelungPalette = nebelung.palette; };
+        pounce = final.callPackage ./pkgs/pounce {
+          nebelungPalette = nebelung.palette;
+          nebelungLattePalette = nebelung.palettes.nebelung-latte;
+        };
         pounce-commands = final.callPackage ./pkgs/pounce-commands { };
       };
 

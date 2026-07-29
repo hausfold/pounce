@@ -12,9 +12,14 @@ struct Palette {
     let mauve, blue: Color   // accent (selection/highlight) + secondary accent
 
     // nebelung — the custom desaturated Catppuccin used across the nebelhaus rice,
-    // and the default theme. Its `static let nebelung` is GENERATED at build time
-    // from the nebelung flake's palette (see pkgs/pounce/default.nix), so it lives
-    // in Palette+nebelung.generated.swift rather than here.
+    // and the default theme. `static let nebelung` and its light counterpart
+    // `nebelungLatte` are GENERATED at build time from the nebelung flake's
+    // `palettes` output (see pkgs/pounce/default.nix), so they live in
+    // Palette+nebelung.generated.swift rather than here. Both are compiled in
+    // because the default pair has to work with no files on disk at all — a
+    // Homebrew install with an empty ~/.config still follows macOS light/dark.
+    static let defaultDarkName = "nebelung"
+    static let defaultLightName = "nebelung-latte"
 
     // mocha — stock Catppuccin Mocha (pounce's original look).
     static let mocha = Palette(
@@ -38,11 +43,16 @@ struct Palette {
         return 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent > 0.5
     }
 
+    // A user file SHADOWS a built-in of the same name: `~/.config/pounce/themes/
+    // nebelung-latte.json` (what the rice installs) wins over the compiled-in
+    // one, so a nebelung update reaches a not-yet-rebuilt pounce. Built-ins are
+    // the floor, not the ceiling.
     static func named(_ name: String) -> Palette {
+        if let file = loaded(name) { return file }
         switch name.lowercased() {
-        case "mocha":    return .mocha
-        case "nebelung": return .nebelung
-        default:         return loaded(name) ?? .nebelung
+        case "mocha":                return .mocha
+        case defaultLightName:       return .nebelungLatte
+        default:                     return .nebelung
         }
     }
 
@@ -99,6 +109,19 @@ enum Theme {
     static var blue: Color { current.blue }
 
     static var isLight: Bool { current.isLight }
+
+    // Is macOS itself in Light Mode? Decides which of `theme`/`themeLight`/
+    // `themeDark` applies (Settings.themeName), read on the same per-open path
+    // as config.json — so flipping System Settings shows on the next summon,
+    // no daemon restart. NSApp's effectiveAppearance is the authority when
+    // there's a running app; the AppleInterfaceStyle default (absent = light)
+    // covers the CLI paths that build a palette before NSApplication exists.
+    static var systemIsLight: Bool {
+        if let app = NSApp {
+            return app.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) != .darkAqua
+        }
+        return UserDefaults.standard.string(forKey: "AppleInterfaceStyle") != "Dark"
+    }
 
     // The translucent window fill, painted over the vibrancy material. `alpha`
     // is the dark-palette value; a light palette needs a heavier tint because a
