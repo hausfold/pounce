@@ -104,12 +104,12 @@ Set `# pounce: submenu = true` and have your script feed a new list back into
 between steps, so it feels like one continuous flow:
 
 ```sh
-# commands/wifi.sh — pick a network, then join it
-network=$(list_networks | pounce -p "WiFi network:")
-[ -n "$network" ] && join_network "$network"
+# commands/brew-services.sh — pick a service, then toggle it
+service=$(list_services | pounce -p "Service:")
+[ -n "$service" ] && toggle_service "$service"
 ```
 
-The batteries-included set (wifi, clipboard, emoji, screenshots, brew-services,
+The batteries-included set (clipboard, emoji, screenshots, brew-services,
 lock, force-quit, …) all live in `commands/` as worked examples — copy one and
 go. (The `ports` command is the exception: it ships from `pkgs/pounce/ports`,
 installed as `$out/bin/ports`.)
