@@ -170,7 +170,8 @@ struct Settings {
     var windows = WindowSwitcherSettings()
     var quickAnswers = QuickAnswerSettings()
     var fileSearch = FileSearchSettings()
-    // Named color palette (see Palette.named). Defaults to nebelung.
+    // Color palette: a built-in name, or a ~/.config/pounce/themes/<name>.json
+    // (see Palette.named). Defaults to nebelung.
     var theme: String = "nebelung"
 
     var metrics: LayoutMetrics {

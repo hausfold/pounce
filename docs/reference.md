@@ -150,7 +150,7 @@ optional and falls back to a default.
 
 ```jsonc
 {
-  "theme": "nebelung",      // color palette: "nebelung" (default) or "mocha"
+  "theme": "nebelung",      // "nebelung" (default), "mocha", or a themes/ file
   "windowMode": "default",  // "default" or "compact"
   "hotkey": {
     "enabled": true,        // daemon grabs a global hotkey in-process
@@ -178,9 +178,28 @@ optional and falls back to a default.
 }
 ```
 
-The default **nebelung** palette is baked into the binary at build time straight
-from the [nebelung](https://github.com/nebelhaus/nebelung) flake, so it never
-drifts from the rest of the theme. Set `"theme": "mocha"` for stock Catppuccin.
+The default **nebelung** palette is compiled into the binary straight from the
+[nebelung](https://github.com/nebelhaus/nebelung) flake, so it never drifts from
+the rest of the theme. Set `"theme": "mocha"` for stock Catppuccin.
+
+Any other `"theme"` value resolves to `~/.config/pounce/themes/<name>.json` — a
+flat catppuccin-style `name → "#hex"` map (nebelung's `palette/*.hex.json` files
+verbatim), read alongside config.json on each open. So switching to a nebelung
+variant, or any palette of your own, needs no rebuild — Nix installs and
+Homebrew installs alike:
+
+```sh
+mkdir -p ~/.config/pounce/themes
+curl -fsSLo ~/.config/pounce/themes/nebelung-latte.json \
+  https://raw.githubusercontent.com/nebelhaus/nebelung/main/palette/nebelung-latte.hex.json
+# then in config.json:  "theme": "nebelung-latte"
+```
+
+Pounce uses these keys: `base`, `surface0`–`surface2`, `text`, `subtext0`,
+`overlay0`, `mauve`, `blue`. A file missing any of them (or an unknown name)
+falls back to the built-in default. On the nebelhaus rice you never do this by
+hand — `nebelhaus.theme.{flavor,contrast}` installs the matching variant and
+points `"theme"` at it.
 
 ## The hotkey (near-instant open)
 
