@@ -26,6 +26,7 @@ enum DoctorMode {
         let hotkeyCombo: String
         let hotkeyRegistered: Bool
         let hotkeyReceived: Bool
+        let bindings: [String]
     }
 
     static func run() {
@@ -77,6 +78,24 @@ enum DoctorMode {
                 bad("hotkey \(combo) has NEVER fired since the daemon started")
                 problems.append("\(combo) is registered but has never reached pounce — "
                                 + "something is intercepting it (see below).")
+            }
+        }
+
+        // Per-item bindings from config.json's `items` map. The daemon reports
+        // what it actually armed at startup, which is the only way to see that a
+        // binding lost its combo to another app — from the user's side a dead
+        // binding and a mistyped target look identical (nothing happens).
+        if let status, !status.bindings.isEmpty {
+            for line in status.bindings {
+                if line.contains("FAILED") || line.contains("unknown key")
+                    || line.contains("no such command") {
+                    bad("binding \(line)")
+                    problems.append("A binding in config.json's `items` map isn't armed: \(line)")
+                } else if line.contains("also bound to") {
+                    warn("binding \(line)")
+                } else {
+                    ok("binding \(line)")
+                }
             }
         }
 
@@ -174,7 +193,8 @@ enum DoctorMode {
             hotkeyEnabled: obj["hotkeyEnabled"] as? Bool ?? false,
             hotkeyCombo: obj["hotkeyCombo"] as? String ?? "",
             hotkeyRegistered: obj["hotkeyRegistered"] as? Bool ?? false,
-            hotkeyReceived: obj["hotkeyReceived"] as? Bool ?? false)
+            hotkeyReceived: obj["hotkeyReceived"] as? Bool ?? false,
+            bindings: obj["bindings"] as? [String] ?? [])
     }
 
     // MARK: Environment probes

@@ -181,8 +181,9 @@ on Nix? Every plugin is still just one script: copy it into
 ## Configuration
 
 Optional settings live in `~/.config/pounce/config.json`. The file is re-read on
-every open, so edits apply on the next launch — no restart needed. Every key is
-optional and falls back to a default.
+every open, so edits apply on the next launch — no restart needed. (The two
+exceptions are the things the daemon has to *grab* at startup: `windows` and the
+`items` hotkeys.) Every key is optional and falls back to a default.
 
 ```jsonc
 {
@@ -210,7 +211,8 @@ optional and falls back to a default.
   "apps": {
     "demoteBundleIds": [],  // apps ranked lower in the launcher (bundle IDs)
     "hideBundleIds": []     // apps hidden from the launcher entirely (bundle IDs)
-  }
+  },
+  "items": {}               // per-item enable / alias / hotkey — see below
 }
 ```
 
@@ -236,6 +238,59 @@ Pounce uses these keys: `base`, `surface0`–`surface2`, `text`, `subtext0`,
 falls back to the built-in default. On the nebelhaus rice you never do this by
 hand — `nebelhaus.theme.{flavor,contrast}` installs the matching variant and
 points `"theme"` at it.
+
+### Per-item settings (`items`)
+
+One map covers the three things you'd otherwise want three keys for — hide it,
+give it a shorthand, give it a key. Each entry is keyed by an **item key**:
+
+| Item key | What it addresses |
+|---|---|
+| `cmd:<id>` | a command script, by filename without `.sh` |
+| `app:/Applications/Foo.app` | an application, by path |
+| `mode:<name>` | a built-in window: `launcher`, `clipboard`, `emoji`, `screenshots`, `camera`, `filesearch` |
+
+```jsonc
+{
+  "items": {
+    "cmd:emoji":                     { "alias": "emo", "hotkey": "opt+e" },
+    "cmd:brew-services":             { "enabled": false },
+    "app:/Applications/Ghostty.app": { "alias": "term", "hotkey": "opt+t" },
+    "mode:clipboard":                { "hotkey": "cmd+shift+v" }
+  }
+}
+```
+
+- **`enabled: false`** drops the row from the launcher. It does *not* disarm that
+  item's hotkey — binding a key to something you keep out of the list is a
+  legitimate setup. (`apps.hideBundleIds` still works and hides by bundle ID
+  instead of path; use whichever you have to hand.)
+- **`alias`** is a search shorthand. It matches at a bonus over the item's real
+  name, so typing your alias lands on your item rather than on whatever app
+  happens to fuzzy-match the same letters.
+- **`hotkey`** is a global key that runs the item directly, skipping the palette.
+  Written as `"cmd+shift+v"` — the last segment is the key, the rest are
+  modifiers (`cmd` / `shift` / `opt` / `ctrl`). The object form
+  `{"key": "v", "modifiers": ["cmd","shift"]}` used by the `hotkey` and `windows`
+  blocks is accepted here too.
+
+`enabled` and `alias` only mean something for things the palette lists, so a
+`mode:` entry carries just a hotkey.
+
+Unlike the rest of config.json, **hotkeys are read once at daemon start** — the
+same contract as `windows`. After adding one, restart the daemon:
+
+```sh
+brew services restart pounce                            # Homebrew
+launchctl kickstart -k gui/$(id -u)/org.nixos.pounce    # nebelhaus / Nix
+```
+
+Then check it armed. A binding whose combo another app already owns fails
+silently from your side, so `doctor` reports what the daemon actually got:
+
+```sh
+pounce doctor        # ✔ binding opt+e → cmd:emoji
+```
 
 ## The hotkey (near-instant open)
 

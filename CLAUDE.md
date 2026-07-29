@@ -76,6 +76,14 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   reference: ECB rates, 12h max-age re-checked every 6h, disk fallback, gated by
   `quickAnswers.currency` in config.json as pounce's only network call).
   Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer_tests.swift`.
+- **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
+  enable / alias / hotkey for anything the palette can address, keyed by the item's
+  **frecency key** — `cmd:<id>`, `app:<path>`, plus `mode:<name>` for the built-in
+  windows. One map, not three parallel keys, because one entry is one row of a
+  settings list. Foundation-only so `tests/run.sh` compiles it. Enable/alias apply in
+  `DaemonState.load`; hotkeys are registered once at daemon start (`DaemonMode.run`)
+  and reported to `pounce doctor` via `DaemonMode.bindingReport` — a binding that
+  loses its combo, or names a command that doesn't exist, is invisible otherwise.
 - **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost on
   rebuild. The *rice* (`nebelhaus/modules/pounce`) re-signs a stable copy to keep the
   grant — that logic lives there, not here. Here, just: `pounce --request-accessibility`

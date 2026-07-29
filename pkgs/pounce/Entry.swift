@@ -167,6 +167,11 @@ enum DaemonMode {
     static var hotkeyCombo = ""
     static var hotkeyRegistered = false
     static var hotkeyReceived = false
+    // Per-item bindings from config.json's `items` map, as human-readable lines
+    // ("⌥E → cmd:emoji" / "… — FAILED (taken?)"). Reported over the socket to
+    // `pounce doctor`: a binding that lost its combo to another app fails
+    // silently from the user's side, so the daemon has to be able to say so.
+    static var bindingReport: [String] = []
     // One-time guard for the "external client while the hotkey never fired" hint.
     static var shadowHintLogged = false
 
@@ -308,14 +313,69 @@ enum DaemonMode {
             }
         }
 
+        // Open a built-in window (clipboard, emoji, …) directly, the way a
+        // per-item "mode:" binding asks for. Mirrors what handleClient does for
+        // the same request arriving over the socket — release any waiting
+        // client, re-read settings, load the mode, present — minus the round
+        // trip. Pressing the same binding again while that mode is up dismisses
+        // it, matching the palette hotkey's toggle.
+        let presentMode: (DisplayMode, (DaemonState) -> Void) -> Void = { mode, load in
+            if state.isVisible && state.displayMode == mode { state.cancel(); return }
+            ui.resultSink?("")
+            ui.resultSink = nil
+            let settings = Settings.load()
+            Theme.current = settings.palette
+            state.reset()
+            state.metrics = settings.metrics
+            load(state)
+            ui.present()
+        }
+
+        // Run whatever a binding's target names. The target grammar is the same
+        // one that keys config.json's `items` map (see ItemSetting), so a
+        // settings UI writes one string and it works as both a row key and a
+        // hotkey target. Unknown targets are logged, not silently dropped —
+        // a typo'd command id would otherwise present as a dead key.
+        let runTarget: (String) -> Void = { target in
+            if target == "mode:launcher" {
+                presentLauncher()
+            } else if target.hasPrefix("mode:") {
+                switch String(target.dropFirst(5)) {
+                case "clipboard":   presentMode(.clipboard) { $0.loadClipboard(placeholder: nil) }
+                case "emoji":       presentMode(.emoji) { $0.loadEmoji(placeholder: nil) }
+                case "screenshots": presentMode(.screenshots) { $0.loadScreenshots(placeholder: nil) }
+                case "camera":      presentMode(.camera) { $0.loadCamera(placeholder: nil) }
+                case "filesearch":  presentMode(.fileSearch) { $0.loadFileSearch(placeholder: nil) }
+                default:
+                    NSLog("pounce daemon: binding target '\(target)' names no built-in mode (expected mode:launcher|clipboard|emoji|screenshots|camera|filesearch)")
+                }
+            } else if target.hasPrefix("cmd:") {
+                let id = String(target.dropFirst(4))
+                registry.refresh()
+                if let path = registry.scriptPath(for: id) {
+                    CommandSpawner.run(scriptPath: path)
+                } else {
+                    NSLog("pounce daemon: binding target '\(target)' names no known command; check the script exists in a command dir")
+                }
+            } else if target.hasPrefix("app:") {
+                let cfg = NSWorkspace.OpenConfiguration()
+                cfg.activates = true
+                NSWorkspace.shared.openApplication(
+                    at: URL(fileURLWithPath: String(target.dropFirst(4))), configuration: cfg)
+            } else {
+                NSLog("pounce daemon: binding target '\(target)' is not a cmd:/app:/mode: key; ignored")
+            }
+        }
+
         hotkeyEnabled = settings.hotkey.enabled
         hotkeyCombo = "\(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key)"
+        // One manager holds the palette key and every per-item binding.
+        let manager = HotKeyManager()
+        hotKey = manager
         if settings.hotkey.enabled {
             if let keyCode = HotKeyParser.keyCode(for: settings.hotkey.key) {
                 let modifiers = HotKeyParser.modifierMask(for: settings.hotkey.modifiers)
-                let manager = HotKeyManager(onFire: presentLauncher)
-                if manager.register(keyCode: keyCode, modifiers: modifiers) {
-                    hotKey = manager
+                if manager.register(keyCode: keyCode, modifiers: modifiers, onFire: presentLauncher) {
                     hotkeyRegistered = true
                     let combo = hotkeyCombo
                     NSLog("pounce daemon: hotkey \(combo) registered")
@@ -333,6 +393,52 @@ enum DaemonMode {
                 }
             } else {
                 NSLog("pounce daemon: unknown hotkey key '\(settings.hotkey.key)'; falling back to socket launch")
+            }
+        }
+
+        // Per-item hotkeys from config.json's `items` map: ⌥E straight to the
+        // emoji picker, ⌘⇧V to clipboard history, a key per command or app.
+        // Read once here, so adding or changing one needs a daemon restart
+        // (`launchctl kickstart -k`) — same contract as `windows`, unlike the
+        // palette settings which are re-read per open. Each binding is
+        // independent: a combo another app already owns fails alone and is
+        // named in the log, leaving the rest armed.
+        // The warm-up refresh above is async, so the registry is still empty
+        // here — resolve it now if any binding needs to be checked against it.
+        // Repeating the scan is a few stats; the async warm-up then no-ops.
+        if settings.items.bindings.contains(where: { $0.target.hasPrefix("cmd:") }) {
+            registry.refresh()
+        }
+        for (target, spec) in settings.items.bindings {
+            guard let keyCode = HotKeyParser.keyCode(for: spec.key) else {
+                NSLog("pounce daemon: binding \(spec.display) → \(target) uses unknown key '\(spec.key)'; skipped")
+                bindingReport.append("\(spec.display) → \(target) — unknown key '\(spec.key)'")
+                continue
+            }
+            let modifiers = HotKeyParser.modifierMask(for: spec.modifiers)
+            if manager.register(keyCode: keyCode, modifiers: modifiers,
+                                onFire: { runTarget(target) }) {
+                NSLog("pounce daemon: binding \(spec.display) → \(target) registered")
+                // Targets resolve at fire time (a command script can appear
+                // after the daemon starts), so a mistyped id would otherwise
+                // register happily and only fail on the keypress — the exact
+                // "I pressed it and nothing happened" report doctor exists to
+                // pre-empt. Name it now instead, without refusing the binding.
+                let unknownCommand = target.hasPrefix("cmd:")
+                    && registry.scriptPath(for: String(target.dropFirst(4))) == nil
+                if let conflict = HotKeyConflict.systemConflict(keyName: spec.key,
+                                                                modifierNames: spec.modifiers) {
+                    NSLog("pounce daemon: WARNING — \(spec.display) is also bound to \(conflict); macOS routes the key there, so this binding likely never fires.")
+                    bindingReport.append("\(spec.display) → \(target) — also bound to \(conflict)")
+                } else if unknownCommand {
+                    NSLog("pounce daemon: WARNING — binding \(spec.display) → \(target) names no command found in any command dir; the key will do nothing until that script exists.")
+                    bindingReport.append("\(spec.display) → \(target) — no such command")
+                } else {
+                    bindingReport.append("\(spec.display) → \(target)")
+                }
+            } else {
+                NSLog("pounce daemon: could not register binding \(spec.display) → \(target) (already taken by another app?)")
+                bindingReport.append("\(spec.display) → \(target) — FAILED, combo already taken")
             }
         }
 
@@ -439,6 +545,7 @@ enum DaemonMode {
                 "hotkeyCombo": DaemonMode.hotkeyCombo,
                 "hotkeyRegistered": DaemonMode.hotkeyRegistered,
                 "hotkeyReceived": DaemonMode.hotkeyReceived,
+                "bindings": DaemonMode.bindingReport,
             ]
             let json = (try? JSONSerialization.data(withJSONObject: status)) ?? Data("{}".utf8)
             var reply = json; reply.append(0x0A)

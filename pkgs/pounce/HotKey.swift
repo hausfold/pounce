@@ -3,43 +3,59 @@ import Carbon
 
 // MARK: - Global hotkey (in-process)
 
-// A single global hotkey registered by the daemon via Carbon's
-// RegisterEventHotKey. The whole point is latency: Carbon delivers the keypress
-// straight into this already-running, already-warm process, so ⌘Space →
-// present() happens with zero shell/exec/socket hops in between. (Contrast the
-// pounce-palette path, which forks bash, rebuilds the registry, and spawns a
-// fresh AppKit client on every press.)
+// The daemon's global hotkeys, registered via Carbon's RegisterEventHotKey. The
+// whole point is latency: Carbon delivers the keypress straight into this
+// already-running, already-warm process, so ⌘Space → present() happens with zero
+// shell/exec/socket hops in between. (Contrast the pounce-palette path, which
+// forks bash, rebuilds the registry, and spawns a fresh AppKit client on every
+// press.)
+//
+// One manager holds MANY bindings: the palette hotkey plus every per-item
+// binding from config.json's `items` map (⌥E → the emoji picker, ⌘⇧V →
+// clipboard history — see ItemSetting). They share a single application-target
+// event handler and are told apart by the hotkey id Carbon echoes back, so the
+// Nth binding costs one registration and no extra dispatch.
 //
 // Registration can fail if the combo is already owned by another app — the
-// caller logs and leaves the socket launch path as the fallback.
+// caller logs and, for the palette key, leaves the socket launch path as the
+// fallback.
 final class HotKeyManager {
-    private var hotKeyRef: EventHotKeyRef?
+    private var registrations: [UInt32: (ref: EventHotKeyRef, onFire: () -> Void)] = [:]
     private var eventHandler: EventHandlerRef?
-    private let onFire: () -> Void
+    private var nextID: UInt32 = 1
 
-    // Four-char signature that tags our hotkey to Carbon ('POUN'), so the shared
-    // application event handler can tell our event apart from anyone else's.
+    // Four-char signature that tags our hotkeys to Carbon ('POUN'), so the shared
+    // application event handler can tell our events apart from anyone else's.
     private static let signature: OSType = 0x504F_554E   // 'POUN'
-    private let hotKeyID = EventHotKeyID(signature: HotKeyManager.signature, id: 1)
-
-    init(onFire: @escaping () -> Void) {
-        self.onFire = onFire
-    }
 
     // Register `keyCode` (a Carbon virtual keycode, e.g. kVK_Space) plus
-    // `modifiers` (a Carbon modifier mask, e.g. cmdKey). Returns false if Carbon
-    // refused either the handler install or the registration.
+    // `modifiers` (a Carbon modifier mask, e.g. cmdKey), firing `onFire` on the
+    // main thread. Returns false if Carbon refused either the handler install or
+    // the registration; a refused binding leaves the others untouched.
     @discardableResult
-    func register(keyCode: UInt32, modifiers: UInt32) -> Bool {
-        unregister()
+    func register(keyCode: UInt32, modifiers: UInt32, onFire: @escaping () -> Void) -> Bool {
+        guard installHandler() else { return false }
 
+        let id = nextID
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(keyCode, modifiers,
+                                         EventHotKeyID(signature: Self.signature, id: id),
+                                         GetApplicationEventTarget(), 0, &ref)
+        guard status == noErr, let ref else { return false }
+        nextID += 1
+        registrations[id] = (ref, onFire)
+        return true
+    }
+
+    // The single hot-key-pressed handler, installed lazily on first register and
+    // kept for the manager's lifetime. It routes back to this instance through
+    // the userData pointer; Carbon delivers hotkey events on the main run loop,
+    // so every onFire runs on the main thread.
+    private func installHandler() -> Bool {
+        if eventHandler != nil { return true }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
                                  eventKind: UInt32(kEventHotKeyPressed))
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
-
-        // One application-target handler for hot-key-pressed; it routes back to
-        // this instance through the userData pointer. Carbon delivers hotkey
-        // events on the main run loop, so onFire runs on the main thread.
         let installed = InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
             guard let userData, let event else { return OSStatus(eventNotHandledErr) }
             var fired = EventHotKeyID()
@@ -50,22 +66,22 @@ final class HotKeyManager {
                 return OSStatus(eventNotHandledErr)
             }
             let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
-            manager.onFire()
+            guard let registration = manager.registrations[fired.id] else {
+                return OSStatus(eventNotHandledErr)
+            }
+            registration.onFire()
             return noErr
         }, 1, &spec, selfPtr, &eventHandler)
-        guard installed == noErr else { return false }
-
-        let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID,
-                                         GetApplicationEventTarget(), 0, &hotKeyRef)
-        return status == noErr && hotKeyRef != nil
+        return installed == noErr
     }
 
-    func unregister() {
-        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef); self.hotKeyRef = nil }
+    func unregisterAll() {
+        for (_, registration) in registrations { UnregisterEventHotKey(registration.ref) }
+        registrations = [:]
         if let eventHandler { RemoveEventHandler(eventHandler); self.eventHandler = nil }
     }
 
-    deinit { unregister() }
+    deinit { unregisterAll() }
 }
 
 // MARK: - Parsing config strings → Carbon codes
