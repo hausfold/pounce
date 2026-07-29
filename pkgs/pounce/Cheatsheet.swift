@@ -201,7 +201,7 @@ struct CheatsheetView: View {
         .fixedSize(horizontal: false, vertical: true)
         // More opaque than the launcher's 0.55: this is a dense wall of 14pt
         // text, and whatever's behind the blur bleeds through smaller type.
-        .background(Theme.base.opacity(0.75))
+        .background(Theme.wash(0.75))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .contentShape(Rectangle())
         .onTapGesture { if !searching { state.cancel() } }

@@ -57,7 +57,7 @@ struct FileSearchView: View {
         }
         .frame(width: FileSearchLayout.width)
         .fixedSize(horizontal: false, vertical: true)
-        .background(Theme.base.opacity(0.55))
+        .background(Theme.wash())
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onChange(of: query) {
             selectedIndex = 0

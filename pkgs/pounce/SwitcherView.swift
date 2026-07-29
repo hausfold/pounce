@@ -53,14 +53,13 @@ final class SwitcherPanel {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
 
         let blur = NSVisualEffectView()
-        blur.material = .hudWindow
         blur.blendingMode = .behindWindow
         blur.state = .active
         blur.wantsLayer = true
         blur.layer?.cornerRadius = 16
         blur.layer?.masksToBounds = true
         blur.layer?.borderWidth = 1
-        blur.layer?.borderColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        PounceUI.applyChrome(blur)   // material/appearance/border follow the palette
         blur.maskImage = PounceUI.roundedMask(radius: 16)
         hosting.autoresizingMask = [.width, .height]
         blur.addSubview(hosting)
@@ -73,6 +72,9 @@ final class SwitcherPanel {
     }
 
     func show() {
+        // Same as the palette window: the panel is built once, the palette is
+        // re-read per show, so the chrome has to follow it here too.
+        if let blur = panel.contentView as? NSVisualEffectView { PounceUI.applyChrome(blur) }
         refit()
         panel.orderFrontRegardless()
     }
@@ -176,7 +178,7 @@ struct SwitcherView: View {
         }
         .frame(width: SwitcherLayout.width)
         .fixedSize(horizontal: false, vertical: true)
-        .background(Theme.base.opacity(0.55))
+        .background(Theme.wash())
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onChange(of: state.visible.count) { state.onResize?() }
         .onChange(of: state.query.isEmpty) { state.onResize?() }

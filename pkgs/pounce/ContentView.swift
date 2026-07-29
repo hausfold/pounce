@@ -241,7 +241,7 @@ struct ContentView: View {
         }
         .frame(width: state.metrics.width)
         .fixedSize(horizontal: false, vertical: true)
-        .background(Theme.base.opacity(0.55))
+        .background(Theme.wash())
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onChange(of: state.query) { selectedIndex = 0; revealed = false }
         .onChange(of: visible.count) { requestResize() }
@@ -305,7 +305,7 @@ struct SkeletonView: View {
         }
         .frame(width: state.targetWidth)
         .frame(maxHeight: .infinity)
-        .background(Theme.base.opacity(0.55))
+        .background(Theme.wash())
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }

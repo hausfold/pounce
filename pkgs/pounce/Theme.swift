@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Theme
 
@@ -26,6 +27,16 @@ struct Palette {
         subtext0: Color(hex: "6c7086"),
         mauve:    Color(hex: "cba6f7"),
         blue:     Color(hex: "89b4fa"))
+
+    // Is this a LIGHT palette? Relative luminance of `base`, the window fill.
+    // The chrome that sits under SwiftUI — the vibrancy material, the hairline
+    // border, how opaque the fill has to be — can't be read off a Color, so
+    // every polarity-dependent decision routes through this one predicate
+    // (see `Theme.wash` and `PounceUI.applyChrome`).
+    var isLight: Bool {
+        guard let c = NSColor(base).usingColorSpace(.sRGB) else { return false }
+        return 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent > 0.5
+    }
 
     static func named(_ name: String) -> Palette {
         switch name.lowercased() {
@@ -86,6 +97,18 @@ enum Theme {
     static var subtext0: Color { current.subtext0 }
     static var mauve: Color { current.mauve }
     static var blue: Color { current.blue }
+
+    static var isLight: Bool { current.isLight }
+
+    // The translucent window fill, painted over the vibrancy material. `alpha`
+    // is the dark-palette value; a light palette needs a heavier tint because a
+    // pale wash is exactly what the blur behind it dilutes — 0.55 of #f1f1f1
+    // over a blurred dark desktop reads muddy grey, not light. Pull the light
+    // case 60% of the way to opaque so the palette's own base wins while some
+    // of the backdrop still shows through.
+    static func wash(_ alpha: Double = 0.55) -> Color {
+        current.base.opacity(isLight ? alpha + (1 - alpha) * 0.6 : alpha)
+    }
 }
 
 // MARK: - Color Extension
