@@ -2,8 +2,9 @@ import SwiftUI
 
 // MARK: - Theme
 
-// A palette is the full set of colors the UI paints with. Add a new one below and
-// expose it from `named(_:)` to make it selectable via `"theme"` in config.json.
+// A palette is the full set of colors the UI paints with. `"theme"` in
+// config.json selects one: a built-in below, or any JSON palette dropped into
+// ~/.config/pounce/themes/ (see `loaded(_:)`) — no rebuild needed.
 struct Palette {
     let base, surface0, surface1, surface2: Color
     let text, subtext, subtext0: Color
@@ -28,9 +29,45 @@ struct Palette {
 
     static func named(_ name: String) -> Palette {
         switch name.lowercased() {
-        case "mocha": return .mocha
-        default:      return .nebelung
+        case "mocha":    return .mocha
+        case "nebelung": return .nebelung
+        default:         return loaded(name) ?? .nebelung
         }
+    }
+
+    // Runtime palettes: any name that isn't a built-in resolves to
+    // ~/.config/pounce/themes/<name>.json — a flat catppuccin-style
+    // name → "#hex" map, i.e. nebelung's palette/*.hex.json files verbatim, so
+    // every nebelung variant (latte, high-contrast, …) or stock Catppuccin
+    // flavor drops in without a rebuild. Same cost model as config.json itself:
+    // tiny file, re-read per open, so a theme edit shows on the next open.
+    // Unknown name or malformed file falls back to the compiled-in default.
+    private static func loaded(_ name: String) -> Palette? {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/pounce/themes/\(name).json")
+        guard let data = try? Data(contentsOf: url),
+              let map = try? JSONDecoder().decode([String: String].self, from: data)
+        else { return nil }
+        // Pounce's roles are a subset of the catppuccin names, offset by one on
+        // the greys: pounce `subtext`/`subtext0` read catppuccin
+        // `subtext0`/`overlay0` — the same mapping pkgs/pounce/default.nix uses
+        // to generate the compiled-in nebelung.
+        func color(_ key: String) -> Color? {
+            map[key].map { Color(hex: $0.hasPrefix("#") ? String($0.dropFirst()) : $0) }
+        }
+        guard let base = color("base"),
+              let surface0 = color("surface0"),
+              let surface1 = color("surface1"),
+              let surface2 = color("surface2"),
+              let text = color("text"),
+              let subtext = color("subtext0"),
+              let subtext0 = color("overlay0"),
+              let mauve = color("mauve"),
+              let blue = color("blue")
+        else { return nil }
+        return Palette(base: base, surface0: surface0, surface1: surface1,
+                       surface2: surface2, text: text, subtext: subtext,
+                       subtext0: subtext0, mauve: mauve, blue: blue)
     }
 }
 
