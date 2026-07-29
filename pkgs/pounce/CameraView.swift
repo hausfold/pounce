@@ -43,7 +43,7 @@ struct CameraView: View {
                 .frame(height: CameraLayout.barHeight)
         }
         .frame(width: CameraLayout.width, height: CameraLayout.height)
-        .background(Theme.base.opacity(0.55))
+        .background(Theme.wash())
         .onAppear { installKeyMonitor() }
         .onDisappear { removeKeyMonitor() }
     }

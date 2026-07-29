@@ -55,6 +55,21 @@ final class PounceUI {
         return image
     }
 
+    // Point the window chrome at the ACTIVE palette's polarity. `.hudWindow`
+    // and an unset `appearance` both follow the SYSTEM appearance, so a light
+    // theme (nebelung-latte, catppuccin latte) on a dark Mac blurred a dark
+    // backdrop through its pale fill and came out muddy grey with unreadable
+    // secondary text. Pinning the effect view's appearance decouples the two:
+    // the palette decides, not System Settings. Called on every present() —
+    // `"theme"` is re-read per open, so the window outlives any one palette.
+    static func applyChrome(_ blur: NSVisualEffectView) {
+        let light = Theme.isLight
+        blur.appearance = NSAppearance(named: light ? .vibrantLight : .vibrantDark)
+        blur.material = light ? .popover : .hudWindow
+        blur.layer?.borderColor = (light ? NSColor.black : NSColor.white)
+            .withAlphaComponent(light ? 0.12 : 0.08).cgColor
+    }
+
     let window: PounceWindow
     let hosting: NSHostingView<ContentView>
     let state: DaemonState
@@ -88,14 +103,13 @@ final class PounceUI {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
 
         let blur = NSVisualEffectView()
-        blur.material = .hudWindow
         blur.blendingMode = .behindWindow
         blur.state = .active
         blur.wantsLayer = true
         blur.layer?.cornerRadius = 16
         blur.layer?.masksToBounds = true
         blur.layer?.borderWidth = 1
-        blur.layer?.borderColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        PounceUI.applyChrome(blur)   // material/appearance/border follow the palette
         // layer.cornerRadius alone doesn't clip the vibrancy material or shape the
         // window shadow — a resizable rounded maskImage does both, killing the
         // square corner that pokes out behind the rounded panel.
@@ -165,6 +179,9 @@ final class PounceUI {
         cancelLinger()
         state.isLoading = false   // new content replaces any in-flight spinner
         let fresh = !window.isVisible
+        // The palette is re-read per open; the window isn't rebuilt. Re-point
+        // the chrome at whatever `Theme.current` just became.
+        if let blur = window.contentView as? NSVisualEffectView { PounceUI.applyChrome(blur) }
 
         if fresh {
             // Record who had focus before we steal it, so an auto-paste commit can

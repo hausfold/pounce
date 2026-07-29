@@ -92,7 +92,7 @@ struct ClipboardView: View {
             .frame(maxHeight: .infinity)
         }
         .frame(width: ClipboardLayout.width, height: ClipboardLayout.height)
-        .background(Theme.base.opacity(0.55))
+        .background(Theme.wash())
         .onChange(of: query) { selectedIndex = 0 }
         .onChange(of: state.requestID) { query = ""; selectedIndex = 0 }
     }
