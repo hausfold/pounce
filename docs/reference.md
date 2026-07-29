@@ -114,6 +114,18 @@ lock, force-quit, …) all live in `commands/` as worked examples — copy one a
 go. (The `ports` command is the exception: it ships from `pkgs/pounce/ports`,
 installed as `$out/bin/ports`.)
 
+### System Settings deeplinks
+
+Every macOS System Settings pane is its own top-level palette item — typing
+"Displays", "Bluetooth", or "Accessibility" jumps straight to that pane via its
+`x-apple.systempreferences:` URL, skipping the Settings window's sidebar
+entirely. There is no per-pane script: the commands are generated at build time
+from [`pkgs/pounce-commands/settings-panes.tsv`](../pkgs/pounce-commands/settings-panes.tsv),
+one row per pane (real ExtensionKit bundle ids, verified against the OS — the
+file's header documents how to re-dump the authoritative list on a new macOS).
+Like any built-in, a pane command can be shadowed from
+`~/.config/pounce/commands` by reusing its filename (`settings-<slug>.sh`).
+
 ### Optional plugins (off by default)
 
 Beyond the built-in set there's a shelf of optional plugins in
