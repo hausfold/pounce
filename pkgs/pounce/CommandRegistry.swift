@@ -68,6 +68,11 @@ final class CommandRegistry {
         for dir in searchDirs() {
             guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { continue }
             for name in names.sorted() {
+                // Command directories may also hold data consumed by submenu
+                // scripts. Only .sh files are commands; otherwise resources
+                // such as popular-apps.tsv become bogus top-level entries and
+                // are later handed to bash if selected.
+                guard name.hasSuffix(".sh") else { continue }
                 let path = dir + "/" + name
                 var isDir: ObjCBool = false
                 guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), !isDir.boolValue
@@ -145,7 +150,7 @@ final class CommandRegistry {
     }
 
     private func idFromFilename(_ name: String) -> String {
-        name.hasSuffix(".sh") ? String(name.dropLast(3)) : name
+        String(name.dropLast(3))
     }
 
     private func header(forScriptAt path: String) -> Header {

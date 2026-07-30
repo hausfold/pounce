@@ -28,11 +28,14 @@ PATH="$HERE:$PATH"   # the pounce binary is installed alongside this script
 MAP="$(mktemp -d "${TMPDIR:-/tmp}/pounce-palette.XXXXXX")"
 trap 'rm -rf "$MAP"' EXIT
 
-scan() { # scan <dir> — later calls shadow earlier ones by filename
+scan() { # scan <dir> — later calls shadow earlier .sh commands by filename
   local dir f id
   [ -d "$1" ] || return 0
   dir="$(cd "$1" && pwd)"   # absolute, so the map's symlinks survive exec
-  for f in "$dir"/*; do
+  # Submenu scripts commonly keep data files beside themselves. Restricting
+  # discovery to the documented .sh command format keeps those resources out
+  # of the top-level palette (and prevents us from trying to run them as bash).
+  for f in "$dir"/*.sh; do
     [ -f "$f" ] || continue
     id="${f##*/}"
     id="${id%.sh}"

@@ -69,6 +69,8 @@ by default** — enable with `"quickAnswers": { "currency": true }`.
 
 A command is one self-describing shell script. The metadata lives in a
 `# pounce:` comment header, and the palette discovers commands at runtime.
+Command filenames must end in `.sh`; other files in a command directory are
+treated as support data and are not shown in the launcher.
 
 ```sh
 #!/bin/bash
