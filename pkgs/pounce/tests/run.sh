@@ -20,6 +20,7 @@ bin="$(mktemp -d)/pounce-tests"
 # collide to the same object file and silently drop one file's symbols.)
 /usr/bin/xcrun swiftc -o "$bin" \
   Frecency.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
-  Currency.swift ItemSettings.swift \
-  tests/main.swift tests/quickanswer_tests.swift tests/itemsettings_tests.swift
+  Currency.swift ItemSettings.swift CommandRegistry.swift \
+  tests/main.swift tests/quickanswer_tests.swift tests/itemsettings_tests.swift \
+  tests/commandregistry_tests.swift
 "$bin"
