@@ -123,8 +123,8 @@ enum DoctorMode {
 
         // Their configs, scanned for a binding that runs the pounce LAUNCHER
         // (pounce-palette / `pounce --launcher`) — the thing that duplicates the
-        // in-process hotkey. Sub-command bindings (--emoji, --clipboard on other
-        // keys) are legitimate and deliberately not flagged. A launcher binding
+        // in-process hotkey. Item bindings (pounce run mode:emoji on another
+        // key) are legitimate and deliberately not flagged. A launcher binding
         // is only a *problem* when the in-process hotkey has never fired (i.e.
         // it's actually shadowing it); otherwise it's a benign redundancy.
         let hotkeyDead = (status?.hotkeyEnabled ?? true) && !(status?.hotkeyReceived ?? false)
@@ -209,7 +209,7 @@ enum DoctorMode {
     // Scan the usual external-hotkey configs for a binding that runs the pounce
     // LAUNCHER — `pounce-palette` or `pounce --launcher` — the stale
     // `cmd - space : pounce-palette` class that shadows the in-process hotkey.
-    // Sub-command invocations (pounce --emoji, pounce-clipboard, …) are a
+    // Item invocations (pounce run mode:emoji, pounce-clipboard, …) are a
     // deliberate, legitimate pattern and are NOT flagged.
     private static func configBindings() -> [Binding] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path

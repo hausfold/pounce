@@ -18,11 +18,6 @@ enum Main {
 
     modes:
       --launcher             apps + commands palette (what the hotkey opens)
-      --clipboard            clipboard history
-      --emoji                emoji picker
-      --screenshots          screenshot browser
-      --camera               camera preview
-      --find-files           search files & folders by name (Spotlight index)
       --cheatsheet [path]    cheatsheet overlay (default ~/.config/pounce/cheatsheet.json)
 
     running one item:
@@ -32,6 +27,14 @@ enum Main {
                                 For binders that already own the keystroke
                                 (AeroSpace binding modes, skhd, Shortcuts):
                                 they do the chord, pounce does the action.
+
+                                The built-in windows live here:
+                                  mode:clipboard      clipboard history
+                                  mode:emoji          emoji picker
+                                  mode:screenshots    screenshot browser
+                                  mode:camera         camera preview
+                                  mode:filesearch     file/folder search
+                                  mode:launcher       the palette itself
 
     diagnostics:
       doctor                    check the hotkey path — is the daemon up, is the
@@ -180,15 +183,17 @@ enum CopyFileMode {
 
 // MARK: - Argument / Config Parsing
 
+// What a CLIENT invocation carries. The five built-in windows that used to have
+// a flag each here (--clipboard, --emoji, --screenshots, --camera, --find-files)
+// are reached as `pounce run mode:<name>` now: one grammar for "do this item",
+// whether the trigger is a Carbon hotkey, a leader sequence, a palette row or an
+// external binder. What's left is the two invocations that AREN'T an item —
+// a stdin-fed picker (optionally --launcher, which merges installed apps into the
+// list) and the cheatsheet overlay, which takes a path.
 struct Invocation {
     var placeholder: String?
     var icon: String?
     var launcher = false
-    var clipboard = false
-    var emoji = false
-    var screenshots = false
-    var camera = false
-    var fileSearch = false
     var cheatsheet = false
     var cheatsheetPath = "~/.config/pounce/cheatsheet.json"
     var maxEmpty: Int?
@@ -642,11 +647,13 @@ enum DaemonMode {
             // Esc/click-away never fire — would otherwise wedge this single accept
             // loop forever. Once wedged, the listen backlog fills and every later
             // connection (focus/status pings, `doctor`, and crucially new picker
-            // opens) gets ECONNREFUSED — so `pounce --emoji`/`--clipboard` fall back
-            // to ClientMode.runDirect in an UNTRUSTED client process that can copy
-            // to the pasteboard but can't post the ⌘V (no Accessibility), i.e.
-            // "it copies but won't paste". Handling each client off the accept loop
-            // keeps the daemon reachable so pickers always route through it.
+            // opens) gets ECONNREFUSED. A built-in window then can't open at all:
+            // `pounce run mode:clipboard` needs this socket, and reports the daemon
+            // as unreachable rather than opening an untrusted client copy that could
+            // copy to the pasteboard but never post the ⌘V (no Accessibility) —
+            // "it copies but won't paste", which was the older, worse failure.
+            // Handling each client off the accept loop keeps the daemon reachable so
+            // pickers always route through it.
             Thread.detachNewThread { handleClient(clientFD: clientFD, state: state, ui: ui) }
         }
     }
@@ -750,11 +757,6 @@ enum DaemonMode {
             if p.count > 1 && !p[1].isEmpty { inv.placeholder = p[1] }
             if p.count > 2 && !p[2].isEmpty { inv.icon = p[2] }
             if p.count > 3 && p[3] == "launcher" { inv.launcher = true }
-            if p.count > 3 && p[3] == "clipboard" { inv.clipboard = true }
-            if p.count > 3 && p[3] == "emoji" { inv.emoji = true }
-            if p.count > 3 && p[3] == "screenshots" { inv.screenshots = true }
-            if p.count > 3 && p[3] == "camera" { inv.camera = true }
-            if p.count > 3 && p[3] == "filesearch" { inv.fileSearch = true }
             if p.count > 3 && p[3] == "cheatsheet" { inv.cheatsheet = true }
             if p.count > 4, let m = Int(p[4]) { inv.maxEmpty = m }
             if p.count > 5 && !p[5].isEmpty { inv.cheatsheetPath = p[5] }
@@ -792,17 +794,7 @@ enum DaemonMode {
             Theme.current = settings.palette
             state.reset()
             state.metrics = metrics
-            if inv.clipboard {
-                state.loadClipboard(placeholder: inv.placeholder)
-            } else if inv.emoji {
-                state.loadEmoji(placeholder: inv.placeholder)
-            } else if inv.screenshots {
-                state.loadScreenshots(placeholder: inv.placeholder)
-            } else if inv.camera {
-                state.loadCamera(placeholder: inv.placeholder)
-            } else if inv.fileSearch {
-                state.loadFileSearch(placeholder: inv.placeholder)
-            } else if inv.cheatsheet {
+            if inv.cheatsheet {
                 state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
             } else {
                 state.load(lines: itemLines, placeholder: inv.placeholder, icon: inv.icon,
@@ -834,11 +826,6 @@ enum ClientMode {
             case "-p", "--placeholder": if !args.isEmpty { inv.placeholder = args.removeFirst() }
             case "-i", "--icon":        if !args.isEmpty { inv.icon = args.removeFirst() }
             case "--launcher":          inv.launcher = true
-            case "--clipboard":         inv.clipboard = true
-            case "--emoji":             inv.emoji = true
-            case "--screenshots":       inv.screenshots = true
-            case "--camera":            inv.camera = true
-            case "--find-files":        inv.fileSearch = true
             case "--cheatsheet":
                 inv.cheatsheet = true
                 // The JSON path is optional (defaults in Invocation) — don't
@@ -846,6 +833,27 @@ enum ClientMode {
                 if let next = args.first, !next.hasPrefix("--") { inv.cheatsheetPath = args.removeFirst() }
             case "--max-empty":         if !args.isEmpty { inv.maxEmpty = Int(args.removeFirst()) }
             case "--chain":             inv.chain = true
+            // An unrecognised flag used to be ignored, which is the worst possible
+            // handling for the five mode flags this release removed: with no stdin
+            // to show, `pounce --clipboard` would have opened an EMPTY generic
+            // picker and looked broken rather than telling you what to type. So
+            // flags fail loudly, and the ones that moved name where they went.
+            case let flag where flag.hasPrefix("-"):
+                let moved = [
+                    "--clipboard": "mode:clipboard",
+                    "--emoji": "mode:emoji",
+                    "--screenshots": "mode:screenshots",
+                    "--camera": "mode:camera",
+                    "--find-files": "mode:filesearch",
+                ]
+                if let target = moved[flag] {
+                    FileHandle.standardError.write(Data(
+                        "pounce: \(flag) is gone — the built-in windows are items now: `pounce run \(target)`\n".utf8))
+                } else {
+                    FileHandle.standardError.write(Data(
+                        "pounce: unknown option \(flag) (see `pounce --help`)\n".utf8))
+                }
+                exit(64)
             default: break
             }
         }
@@ -875,13 +883,8 @@ enum ClientMode {
         }) == 0
         if !connected { close(fd); runDirect(lines: stdinLines, inv: inv); return }
 
-        let mode = inv.launcher ? "launcher"
-            : (inv.clipboard ? "clipboard"
-            : (inv.emoji ? "emoji"
-            : (inv.screenshots ? "screenshots"
-            : (inv.camera ? "camera"
-            : (inv.fileSearch ? "filesearch"
-            : (inv.cheatsheet ? "cheatsheet" : ""))))))
+        // Two client-side modes left; the built-in windows arrive as RUN instead.
+        let mode = inv.launcher ? "launcher" : (inv.cheatsheet ? "cheatsheet" : "")
         let maxEmpty = inv.maxEmpty.map(String.init) ?? ""
         var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(inv.chain ? "1" : "")\n"
         for line in stdinLines { payload += line + "\n" }
@@ -918,17 +921,7 @@ enum ClientMode {
         let settings = Settings.load()
         state.metrics = settings.metrics
         Theme.current = settings.palette
-        if inv.clipboard {
-            state.loadClipboard(placeholder: inv.placeholder)
-        } else if inv.emoji {
-            state.loadEmoji(placeholder: inv.placeholder)
-        } else if inv.screenshots {
-            state.loadScreenshots(placeholder: inv.placeholder)
-        } else if inv.camera {
-            state.loadCamera(placeholder: inv.placeholder)
-        } else if inv.fileSearch {
-            state.loadFileSearch(placeholder: inv.placeholder)
-        } else if inv.cheatsheet {
+        if inv.cheatsheet {
             state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
         } else {
             state.load(lines: lines, placeholder: inv.placeholder, icon: inv.icon,

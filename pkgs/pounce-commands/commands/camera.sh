@@ -8,7 +8,7 @@
 # preview. Enter or Esc closes; ⇧Enter opens a dropdown to pick between all
 # available cameras (the choice is remembered for next time).
 #
-# The preview is rendered natively by the daemon (--camera mode) — AVFoundation
+# The preview is rendered natively by the daemon (`mode:camera`) — AVFoundation
 # lives in the Swift binary, not here. Registered submenu=true so the palette
 # swaps straight into the preview with no close→reopen flash.
-exec pounce --camera
+exec pounce run mode:camera

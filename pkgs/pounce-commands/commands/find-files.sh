@@ -14,4 +14,4 @@
 # the daemon's live NSMetadataQuery (the same Spotlight index the app launcher
 # uses), scoped to your home directory by default — tune it under `fileSearch`
 # in ~/.config/pounce/config.json.
-exec pounce --find-files
+exec pounce run mode:filesearch

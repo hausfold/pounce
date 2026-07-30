@@ -10,7 +10,7 @@
 # of the previously focused app, like clipboard history. Frecency floats
 # frequently used glyphs to the top.
 #
-# Re-invokes `pounce` in emoji mode; the daemon swaps it into the live palette
+# Asks the daemon to run `mode:emoji`; it swaps it into the live palette
 # window (this command is registered submenu=true), so there's no close→reopen
 # flash between the palette and the picker.
-exec pounce --emoji
+exec pounce run mode:emoji
