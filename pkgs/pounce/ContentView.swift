@@ -122,6 +122,57 @@ struct ContentView: View {
     static let dividerHeight: CGFloat = 1
     static let actionBarHeight: CGFloat = 44
 
+    // MARK: - The header grows with the query
+
+    // A long query used to run off the right edge with nowhere to go: the field
+    // scrolled horizontally and you typed into a moving window. It wraps now, and
+    // the header — and so the window — grows a line at a time up to this cap,
+    // after which the field editor scrolls instead. Six lines is about a
+    // paragraph; past that the palette would be a text editor.
+    static let maxQueryLines = 6
+    // Fixed so the wrap width below is arithmetic instead of a guess about how
+    // wide a given SF Symbol renders. Comfortably fits the 18pt (standard) and
+    // 16pt (compact) search icons.
+    static let searchIconColumn: CGFloat = 26
+    static let headerHPadding: CGFloat = 20
+    static let headerSpacing: CGFloat = 12
+
+    // The width the field actually wraps at — launcherBody's HStack in numbers:
+    // the window, less the padding either side, less the icon column and the gap
+    // after it. Kept in lockstep with the frames below.
+    var queryWidth: CGFloat {
+        state.metrics.width - Self.headerHPadding * 2 - Self.searchIconColumn - Self.headerSpacing
+    }
+
+    var queryFont: NSFont {
+        NSFont.systemFont(ofSize: state.metrics.searchFontSize, weight: .regular)
+    }
+
+    var queryLineHeight: CGFloat {
+        ceil(NSLayoutManager().defaultLineHeight(for: queryFont))
+    }
+
+    // COMPUTED, never measured: resizeToFit reads contentHeight in the same
+    // runloop turn as the keystroke that changed it, and on Tahoe a hosting
+    // view's fittingSize is still the previous turn's answer by then — that is
+    // the flash this whole exact-height path exists to avoid.
+    var queryLineCount: Int {
+        guard !state.query.isEmpty else { return 1 }
+        let bounds = (state.query as NSString).boundingRect(
+            with: CGSize(width: queryWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: queryFont])
+        let lines = Int(ceil(bounds.height / queryLineHeight))
+        return min(max(lines, 1), Self.maxQueryLines)
+    }
+
+    // One line is the metrics' own header height; every extra wrapped line adds
+    // exactly its own height, so the breathing room above and below the text is
+    // the same whether the query is one line or six.
+    var headerHeight: CGFloat {
+        state.metrics.headerHeight + CGFloat(queryLineCount - 1) * queryLineHeight
+    }
+
     // The launcher panel's EXACT height, mirroring launcherBody's layout 1:1 so
     // the window can size to it without measuring the hosting view (see
     // PounceUI.resizeToFit — measuring is stale in the same runloop turn on
@@ -131,7 +182,7 @@ struct ContentView: View {
     // divider and action-bar frames below are pinned to these same constants;
     // keep the two in lockstep.
     var contentHeight: CGFloat {
-        var h = state.metrics.headerHeight
+        var h = headerHeight
         if !visible.isEmpty {
             h += Self.dividerHeight + listHeight + 12
             if selectedItem != nil { h += Self.dividerHeight + Self.actionBarHeight }
@@ -179,11 +230,16 @@ struct ContentView: View {
 
     var launcherBody: some View {
         VStack(spacing: 0) {
-            // Search header
-            HStack(spacing: 12) {
+            // Search header. Top-aligned, because a wrapped query grows DOWN: the
+            // icon and the first line have to stay put while lines two and three
+            // appear beneath them, or the whole header slides as you type. The
+            // outer .frame then centres that block inside headerHeight, which is
+            // what keeps the padding above and below identical at every line count.
+            HStack(alignment: .top, spacing: Self.headerSpacing) {
                 Image(systemName: state.globalIcon ?? "magnifyingglass")
                     .font(.system(size: state.metrics.searchIconSize, weight: .medium))
                     .foregroundColor(Theme.subtext)
+                    .frame(width: Self.searchIconColumn, height: queryLineHeight)
                 CustomTextField(
                     text: $state.query,
                     selectedIndex: $selectedIndex,
@@ -192,11 +248,13 @@ struct ContentView: View {
                     fontSize: state.metrics.searchFontSize,
                     state: state,
                     onSubmit: { action in select(action: action) },
-                    onRevealDown: { revealed = true }
+                    onRevealDown: { revealed = true },
+                    wraps: true
                 )
+                .frame(height: CGFloat(queryLineCount) * queryLineHeight)
             }
-            .padding(.horizontal, 20)
-            .frame(height: state.metrics.headerHeight)
+            .padding(.horizontal, Self.headerHPadding)
+            .frame(height: headerHeight)
 
             if !visible.isEmpty {
                 Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
@@ -243,7 +301,11 @@ struct ContentView: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(Theme.wash())
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .onChange(of: state.query) { selectedIndex = 0; revealed = false }
+        // requestResize on every keystroke, not just when the result count moves:
+        // the header itself changes height now, and typing past the end of a line
+        // with the same (or no) results showing is exactly the case a
+        // visible.count hook cannot see.
+        .onChange(of: state.query) { selectedIndex = 0; revealed = false; requestResize() }
         .onChange(of: visible.count) { requestResize() }
         .onChange(of: renderRows.count) { requestResize() }
         // The answer card can appear/vanish while the row COUNT stays equal

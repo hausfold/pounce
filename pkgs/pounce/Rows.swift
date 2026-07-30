@@ -196,6 +196,12 @@ struct CustomTextField: NSViewRepresentable {
     var onRevealDown: () -> Void = {}
     // >1 turns on 2D grid navigation (emoji): ↑↓ move by a row, ←→ by one cell.
     var gridColumns: Int = 1
+    // Opt-in, and only the launcher opts in: wrapping is only safe where the host
+    // grows its header to match (LauncherView.queryLineCount). The clipboard,
+    // emoji, screenshot, file-search and cheatsheet headers are fixed-height
+    // filters — a field that wrapped in one of those would just clip its own
+    // second line.
+    var wraps: Bool = false
 
     func makeNSView(context: Context) -> NSTextField {
         let tf = NSTextField()
@@ -208,6 +214,19 @@ struct CustomTextField: NSViewRepresentable {
         tf.drawsBackground = false
         tf.placeholderString = placeholder
         tf.cell?.sendsActionOnEndEditing = false
+        // Wrap instead of scrolling sideways. The host computes how many lines
+        // this produces (LauncherView.queryLineCount) and grows the header and
+        // the window to match, up to a cap; past the cap the field editor keeps
+        // the caret visible by scrolling, which is the only part AppKit does for
+        // us. Enter cannot insert a newline even in this multi-line mode —
+        // insertNewline is intercepted below and submits.
+        if wraps {
+            tf.cell?.usesSingleLineMode = false
+            tf.cell?.wraps = true
+            tf.cell?.isScrollable = false
+            tf.lineBreakMode = .byWordWrapping
+            tf.maximumNumberOfLines = 0
+        }
 
         DispatchQueue.main.async {
             state.textField = tf
@@ -238,7 +257,26 @@ struct CustomTextField: NSViewRepresentable {
         }
 
         func controlTextDidChange(_ n: Notification) {
-            if let tf = n.object as? NSTextField { parent.text = tf.stringValue }
+            guard let tf = n.object as? NSTextField else { return }
+            // A single-line NSTextField takes a MULTI-LINE paste verbatim: the field
+            // renders the first line and the rest rides along invisibly. That is a
+            // trap for the generic picker — a command reads the chosen line as TSV,
+            // so an embedded newline silently truncates the value and a tab splits
+            // it into fields that were never meant to exist. Fold every run of
+            // newlines/tabs into one space as it lands, so pasting a paragraph, a
+            // stack trace, or a diff into a `pounce --chain` step hands the command
+            // the whole thing, on one line, exactly as the field shows it.
+            let folded = tf.stringValue.replacingOccurrences(
+                of: "[\\r\\n\\t]+", with: " ", options: .regularExpression)
+            if folded != tf.stringValue {
+                tf.stringValue = folded
+                // Rewriting stringValue collapses the selection to the start; a paste
+                // has to leave the caret after what you pasted, so put it back at the
+                // end. NSRange is UTF-16, hence NSString.length rather than .count.
+                tf.currentEditor()?.selectedRange =
+                    NSRange(location: (folded as NSString).length, length: 0)
+            }
+            parent.text = folded
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
