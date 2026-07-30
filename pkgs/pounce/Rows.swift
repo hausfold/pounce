@@ -196,6 +196,12 @@ struct CustomTextField: NSViewRepresentable {
     var onRevealDown: () -> Void = {}
     // >1 turns on 2D grid navigation (emoji): ↑↓ move by a row, ←→ by one cell.
     var gridColumns: Int = 1
+    // Opt-in, and only the launcher opts in: wrapping is only safe where the host
+    // grows its header to match (LauncherView.queryLineCount). The clipboard,
+    // emoji, screenshot, file-search and cheatsheet headers are fixed-height
+    // filters — a field that wrapped in one of those would just clip its own
+    // second line.
+    var wraps: Bool = false
 
     func makeNSView(context: Context) -> NSTextField {
         let tf = NSTextField()
@@ -208,6 +214,19 @@ struct CustomTextField: NSViewRepresentable {
         tf.drawsBackground = false
         tf.placeholderString = placeholder
         tf.cell?.sendsActionOnEndEditing = false
+        // Wrap instead of scrolling sideways. The host computes how many lines
+        // this produces (LauncherView.queryLineCount) and grows the header and
+        // the window to match, up to a cap; past the cap the field editor keeps
+        // the caret visible by scrolling, which is the only part AppKit does for
+        // us. Enter cannot insert a newline even in this multi-line mode —
+        // insertNewline is intercepted below and submits.
+        if wraps {
+            tf.cell?.usesSingleLineMode = false
+            tf.cell?.wraps = true
+            tf.cell?.isScrollable = false
+            tf.lineBreakMode = .byWordWrapping
+            tf.maximumNumberOfLines = 0
+        }
 
         DispatchQueue.main.async {
             state.textField = tf
