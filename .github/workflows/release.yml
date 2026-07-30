@@ -130,6 +130,46 @@ jobs:
           tar -czf "dist/pounce-$GITHUB_REF_NAME-macos.tar.gz" \
             -C "$RUNNER_TEMP" "pounce-$GITHUB_REF_NAME"
 
+      - name: Build + notarize the DMG (the human download)
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          # The tarball above is the FORMULA's artifact (bump-tap curls it by
+          # that exact name — never rename it). The DMG is the website's
+          # "Download for macOS" artifact: the stapled app + an /Applications
+          # symlink, nothing to explain. The app is self-contained since the
+          # commands ship in Contents/Resources/commands (build.sh) and the
+          # login item is self-registered on first launch (LoginItem.swift), so
+          # drag-to-Applications IS the whole install.
+          DMG_STAGE="$RUNNER_TEMP/dmg"
+          mkdir -p "$DMG_STAGE"
+          cp -R pkgs/pounce/Pounce.app "$DMG_STAGE/"
+          ln -s /Applications "$DMG_STAGE/Applications"
+          hdiutil create -volname "Pounce" -srcfolder "$DMG_STAGE" -ov -format UDZO \
+            "dist/pounce-$GITHUB_REF_NAME-macos.dmg"
+
+          IDENTITY="$(security find-identity -v -p codesigning "$SIGN_KEYCHAIN" \
+            | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          codesign --force --timestamp --sign "$IDENTITY" "dist/pounce-$GITHUB_REF_NAME-macos.dmg"
+
+          # Notarize + staple the DMG itself, so Gatekeeper clears it while
+          # still mounting (the app's own staple only covers post-copy runs).
+          echo "$NOTARY_KEY_P8" | base64 -d > "$RUNNER_TEMP/notary-dmg.p8"
+          CREDS=(--key "$RUNNER_TEMP/notary-dmg.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
+          JSON="$(xcrun notarytool submit "dist/pounce-$GITHUB_REF_NAME-macos.dmg" "${CREDS[@]}" --wait --output-format json)"
+          echo "$JSON"
+          read -r ID STATUS < <(echo "$JSON" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("id",""),d.get("status",""))')
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::DMG notarization $STATUS — Apple's log:"
+            xcrun notarytool log "$ID" "${CREDS[@]}" || true
+            exit 1
+          fi
+          xcrun stapler staple "dist/pounce-$GITHUB_REF_NAME-macos.dmg"
+          rm -f "$RUNNER_TEMP/notary-dmg.p8"
+
       - name: Create GitHub release
         run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes
         env:

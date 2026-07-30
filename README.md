@@ -51,6 +51,15 @@ The formula installs a prebuilt `Pounce.app`, signed with our Developer ID and
 notarized — no compile step, no Xcode CLT. The signing identity is stable across
 releases, so the Accessibility grant survives `brew upgrade`.
 
+**No Homebrew?** Grab the DMG from the [latest
+release](https://github.com/nebelhaus/pounce/releases/latest) (or
+`nebelhaus.com/download/pounce`), drag `Pounce.app` to Applications, and open
+it. First launch registers a login item (approve it in System Settings if
+macOS asks), starts the daemon, and shows the palette — the built-in commands
+travel inside the app, and the *Update Pounce* command keeps a drag-install
+current from then on. `pounce autostart on|off|status` manages the login item
+from a terminal.
+
 On Nix, take the flake input, or kick the tyres with
 `nix run github:nebelhaus/pounce -- --help`.
 
