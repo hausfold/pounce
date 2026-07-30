@@ -136,6 +136,12 @@ struct QuickAnswerSettings {
     var currency: Bool = true
 }
 
+// The daily release check (UpdateCheck.swift). `check: false` makes pounce
+// fully silent on the network once quickAnswers.currency is off too.
+struct UpdateSettings {
+    var check: Bool = true
+}
+
 // Find Files tuning. A safe, read-only feature (local Spotlight index only, no
 // network), so it's on by default. `homeOnly` scopes the search to the user's
 // home directory — the sane default for "find my file"; set false to search the
@@ -191,6 +197,10 @@ struct Settings {
     var hotkey = HotKeyConfig()
     var windows = WindowSwitcherSettings()
     var quickAnswers = QuickAnswerSettings()
+    // Daily latest-release check that nudges (palette row + one notification)
+    // but never applies — see UpdateCheck.swift. Default on; independently
+    // self-disabled on Nix-managed installs, whose updates ride the flake.
+    var updates = UpdateSettings()
     var fileSearch = FileSearchSettings()
     // Per-item overrides (enable / alias / hotkey), keyed by stable item key.
     // See ItemSettings.swift. Empty by default: an untouched config behaves
@@ -259,6 +269,9 @@ struct Settings {
         }
         if let qa = obj["quickAnswers"] as? [String: Any] {
             if let c = qa["currency"] as? Bool { s.quickAnswers.currency = c }
+        }
+        if let up = obj["updates"] as? [String: Any] {
+            if let c = up["check"] as? Bool { s.updates.check = c }
         }
         if let fs = obj["fileSearch"] as? [String: Any] {
             if let e = fs["enabled"] as? Bool { s.fileSearch.enabled = e }

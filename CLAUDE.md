@@ -74,7 +74,10 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   trigger prefix. Engines needing external data read a background-refreshed
   in-memory cache — never block a keystroke on I/O (`Currency.swift` is the
   reference: ECB rates, 12h max-age re-checked every 6h, disk fallback, gated by
-  `quickAnswers.currency` in config.json as pounce's only network call).
+  `quickAnswers.currency` in config.json. With the daily update nudge
+  (`UpdateCheck.swift`, gated by `updates.check`, auto-off on Nix-managed
+  installs) these are pounce's only two outbound network calls — a third needs
+  the same gate-plus-cache treatment and a docs update).
   Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer_tests.swift`.
 - **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
   enable / alias / hotkey for anything the palette can address, keyed by the item's

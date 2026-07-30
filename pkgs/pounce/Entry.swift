@@ -353,6 +353,15 @@ enum DaemonMode {
             }
         }
 
+        // Daily update nudge: same warm-on-a-timer shape as the rates. maxAge
+        // inside warm() makes the 6h cadence a re-check, not a re-fetch.
+        if settings.updates.check && !UpdateNudge.isNixManaged() {
+            UpdateNudge.shared.warm()
+            Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in
+                UpdateNudge.shared.warm()
+            }
+        }
+
         // The in-process launcher: what ⌘Space triggers. No shell, no client, no
         // socket — build the launcher from the cached registry + warm app list and
         // present the already-built window straight away. Toggling: a second press
@@ -374,7 +383,11 @@ enum DaemonMode {
             state.reset()
             state.metrics = settings.metrics
             registry.refresh()
-            let lines = registry.entries.map { $0.registryLine }
+            // A pending update renames the Update Pounce row in place (see
+            // UpdateCheck.swift) — the nudge lives exactly where the fix is.
+            let lines = registry.entries.map {
+                (UpdateNudge.shared.decorate($0) ?? $0).registryLine
+            }
             state.load(lines: lines, placeholder: "Search apps & actions...",
                        icon: "magnifyingglass", launcher: true, maxEmpty: 7)
             let tBuild = DispatchTime.now()   // registry + app scan + frecency + sort

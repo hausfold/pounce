@@ -7,7 +7,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.." # -> pkgs/pounce
 
-bin="$(mktemp -d)/pounce-tests"
+scratch="$(mktemp -d)"
+bin="$scratch/pounce-tests"
+
+# UpdateCheck.swift reads the build-stamped pounceVersion global, but
+# Version.generated.swift only exists after a build.sh run (and is gitignored) —
+# stub it. The suite never relies on the stub's value: isNewer takes the
+# running version as a parameter.
+echo 'let pounceVersion = "dev"' > "$scratch/version_stub.swift"
 # The sources under test are Foundation-only by design (no AppKit/SwiftUI) —
 # for the quick-answer engines that's the QuickAnswer.swift contract — which is
 # what keeps this a plain swiftc compile. Compiling them with the test files as
@@ -20,7 +27,8 @@ bin="$(mktemp -d)/pounce-tests"
 # collide to the same object file and silently drop one file's symbols.)
 /usr/bin/xcrun swiftc -o "$bin" \
   Frecency.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
-  Currency.swift ItemSettings.swift CommandRegistry.swift \
+  Currency.swift ItemSettings.swift CommandRegistry.swift UpdateCheck.swift \
+  "$scratch/version_stub.swift" \
   tests/main.swift tests/quickanswer_tests.swift tests/itemsettings_tests.swift \
-  tests/commandregistry_tests.swift
+  tests/commandregistry_tests.swift tests/update_tests.swift
 "$bin"

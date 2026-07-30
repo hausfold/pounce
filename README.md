@@ -60,6 +60,13 @@ travel inside the app, and the *Update Pounce* command keeps a drag-install
 current from then on. `pounce autostart on|off|status` manages the login item
 from a terminal.
 
+Staying current is nudged, never automatic: the daemon checks the latest
+release once a day and — brew or drag-install alike — renames the *Update
+Pounce* row while one is pending, plus a single notification per new version.
+Applying it stays your keystroke. `"updates": { "check": false }` in
+`config.json` turns the check off (Nix-managed installs skip it automatically —
+their updates ride the flake).
+
 On Nix, take the flake input, or kick the tyres with
 `nix run github:nebelhaus/pounce -- --help`.
 
