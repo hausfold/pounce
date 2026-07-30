@@ -238,7 +238,26 @@ struct CustomTextField: NSViewRepresentable {
         }
 
         func controlTextDidChange(_ n: Notification) {
-            if let tf = n.object as? NSTextField { parent.text = tf.stringValue }
+            guard let tf = n.object as? NSTextField else { return }
+            // A single-line NSTextField takes a MULTI-LINE paste verbatim: the field
+            // renders the first line and the rest rides along invisibly. That is a
+            // trap for the generic picker — a command reads the chosen line as TSV,
+            // so an embedded newline silently truncates the value and a tab splits
+            // it into fields that were never meant to exist. Fold every run of
+            // newlines/tabs into one space as it lands, so pasting a paragraph, a
+            // stack trace, or a diff into a `pounce --chain` step hands the command
+            // the whole thing, on one line, exactly as the field shows it.
+            let folded = tf.stringValue.replacingOccurrences(
+                of: "[\\r\\n\\t]+", with: " ", options: .regularExpression)
+            if folded != tf.stringValue {
+                tf.stringValue = folded
+                // Rewriting stringValue collapses the selection to the start; a paste
+                // has to leave the caret after what you pasted, so put it back at the
+                // end. NSRange is UTF-16, hence NSString.length rather than .count.
+                tf.currentEditor()?.selectedRange =
+                    NSRange(location: (folded as NSString).length, length: 0)
+            }
+            parent.text = folded
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
