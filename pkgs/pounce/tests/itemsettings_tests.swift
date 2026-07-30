@@ -48,6 +48,104 @@ func runItemSettingsTests() -> Int {
     check(HotKeySpec(key: "f5", modifiers: []).display == "f5",
           "display of a modifier-less binding is just the key")
 
+    // MARK: Sequences — the leader form
+
+    // The distinction the whole leader feature rests on: whitespace separates
+    // STEPS, "+" separates modifiers, and spacing around "+" is not a separator.
+    check(HotKeySequence.parse("opt+e")?.steps == [HotKeySpec(key: "e", modifiers: ["opt"])],
+          "one step is a plain chord")
+    check(HotKeySequence.parse("opt+e")?.isLeader == false, "a single step is not a leader")
+    check(HotKeySequence.parse("opt+space e")?.steps
+            == [HotKeySpec(key: "space", modifiers: ["opt"]),
+                HotKeySpec(key: "e", modifiers: [])],
+          "two steps: leader then a bare key")
+    check(HotKeySequence.parse("opt+space e")?.isLeader == true, "two steps is a leader")
+    check(HotKeySequence.parse("cmd + shift + v")?.steps.count == 1,
+          "spacing around + does NOT split steps")
+    check(HotKeySequence.parse("cmd+k cmd+c")?.steps
+            == [HotKeySpec(key: "k", modifiers: ["cmd"]),
+                HotKeySpec(key: "c", modifiers: ["cmd"])],
+          "a second step may carry its own modifiers")
+    check(HotKeySequence.parse("opt+space g s")?.steps.count == 3, "three steps parse")
+    check(HotKeySequence.parse(["opt+space", "e"] as Any)?.steps.count == 2,
+          "the array form records step by step")
+    check(HotKeySequence.parse("opt+space  e")?.steps.count == 2, "runs of spaces are one separator")
+    check(HotKeySequence.parse("opt+space +")  == nil, "a malformed step voids the whole sequence")
+    check(HotKeySequence.parse("")  == nil, "an empty sequence is not a binding")
+    check(HotKeySequence.parse(["opt+space", ""] as Any) == nil,
+          "an empty element voids the array form")
+    check(HotKeySequence.parse(["key": "v", "modifiers": ["cmd"]] as Any)?.steps.count == 1,
+          "the object form is a single step")
+    check(HotKeySequence.parse("opt+space e")?.display == "opt+space e",
+          "display round-trips the sequence")
+
+    // MARK: Targets
+
+    check(ItemTarget.parse("cmd:emoji") == .command("emoji"), "cmd: names a command id")
+    check(ItemTarget.parse("app:/Applications/Foo.app") == .app("/Applications/Foo.app"),
+          "app: names a path")
+    check(ItemTarget.parse("mode:clipboard") == .mode("clipboard"), "mode: names a built-in window")
+    check(ItemTarget.parse("mode:nope") == nil, "an unknown mode is not a target")
+    check(ItemTarget.parse("nonsense") == nil, "a prefix-less string is not a target")
+    check(ItemTarget.parse("cmd:") == nil, "an empty command id is not a target")
+    check(ItemTarget.parse("") == nil, "an empty string is not a target")
+
+    // problem() is what lets `pounce run` exit non-zero on a typo instead of
+    // acknowledging a key that will do nothing.
+    check(ItemTarget.problem(with: "cmd:emoji") == nil, "a well-formed target has no problem")
+    // Deliberately shape-only: the script may not exist yet, and that's warned
+    // about separately rather than refused here.
+    check(ItemTarget.problem(with: "cmd:not-installed-yet") == nil,
+          "an unknown command id is still a well-formed target")
+    check(ItemTarget.problem(with: "") == "empty target", "an empty target is named as such")
+    check(ItemTarget.problem(with: "mode:nope")?.contains("no built-in mode") == true,
+          "a bad mode says so and lists the real ones")
+    check(ItemTarget.problem(with: "mode:nope")?.contains("mode:clipboard") == true,
+          "and the list comes from ItemTarget.modes")
+    check(ItemTarget.problem(with: "emoji")?.contains("not an item key") == true,
+          "a missing prefix is named as such")
+
+    // MARK: The binding tree
+
+    // Sequences sharing a leader must share ONE node — that's what lets the
+    // daemon register ⌥Space once and grab e/c only while it's armed.
+    let (root, conflicts) = HotKeyNode.build([
+        (target: "cmd:emoji", sequence: HotKeySequence.parse("opt+space e")!),
+        (target: "mode:clipboard", sequence: HotKeySequence.parse("opt+space c")!),
+        (target: "cmd:lock", sequence: HotKeySequence.parse("opt+l")!),
+    ])
+    check(conflicts.isEmpty, "a well-formed set has no conflicts")
+    check(root.children.count == 2, "⌥Space and ⌥L are the two first steps")
+    check(root.children["opt+space"]?.children.count == 2, "both sequences share the one leader node")
+    check(root.children["opt+space"]?.isLeaf == false, "a leader is not itself a leaf")
+    check(root.children["opt+l"]?.target == "cmd:lock", "a one-step binding is a leaf of the root")
+    check(HotKeyNode.targets(under: root.children["opt+space"]!).sorted()
+            == ["cmd:emoji", "mode:clipboard"],
+          "targets(under:) finds everything a leader reaches")
+
+    // Prefix collisions can't be resolved silently — one of the two bindings
+    // would be permanently dead, so the daemon has to be able to say which.
+    let (_, shadowed) = HotKeyNode.build([
+        (target: "cmd:a", sequence: HotKeySequence.parse("opt+space")!),
+        (target: "cmd:b", sequence: HotKeySequence.parse("opt+space e")!),
+    ])
+    check(shadowed.count == 1, "a sequence extending a shorter one is reported")
+    check(shadowed.first?.contains("can never fire") == true, "and says why")
+
+    // Same in the other insertion order: the shorter arrives second.
+    let (_, blocked) = HotKeyNode.build([
+        (target: "cmd:b", sequence: HotKeySequence.parse("opt+space e")!),
+        (target: "cmd:a", sequence: HotKeySequence.parse("opt+space")!),
+    ])
+    check(blocked.count == 1, "order doesn't hide a prefix collision")
+
+    let (_, dupes) = HotKeyNode.build([
+        (target: "cmd:a", sequence: HotKeySequence.parse("opt+space e")!),
+        (target: "cmd:b", sequence: HotKeySequence.parse("opt+space e")!),
+    ])
+    check(dupes.count == 1, "two items on the identical sequence is reported")
+    check(dupes.first?.contains("bound twice") == true, "and named as a duplicate")
+
     // MARK: The map
 
     let raw: [String: Any] = [
@@ -79,10 +177,10 @@ func runItemSettingsTests() -> Int {
     check(bindings.count == 3, "only entries with a hotkey become bindings")
     check(bindings.map(\.target) == ["app:/Applications/Ghostty.app", "cmd:emoji", "mode:clipboard"],
           "bindings come back sorted by target")
-    check(bindings.first(where: { $0.target == "mode:clipboard" })?.spec.display == "cmd+shift+v",
+    check(bindings.first(where: { $0.target == "mode:clipboard" })?.sequence.display == "cmd+shift+v",
           "a mode: target carries its combo through")
-    check(bindings.first(where: { $0.target == "app:/Applications/Ghostty.app" })?.spec
-            == HotKeySpec(key: "t", modifiers: ["opt"]),
+    check(bindings.first(where: { $0.target == "app:/Applications/Ghostty.app" })?.sequence.steps
+            == [HotKeySpec(key: "t", modifiers: ["opt"])],
           "the object form works inside the map too")
 
     // A disabled item keeps its hotkey: binding a key to something you keep out

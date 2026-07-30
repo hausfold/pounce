@@ -24,9 +24,18 @@ final class HotKeyManager {
     private var eventHandler: EventHandlerRef?
     private var nextID: UInt32 = 1
 
-    // Four-char signature that tags our hotkeys to Carbon ('POUN'), so the shared
-    // application event handler can tell our events apart from anyone else's.
-    private static let signature: OSType = 0x504F_554E   // 'POUN'
+    // Four-char signature that tags this manager's hotkeys to Carbon, so its
+    // handler can tell its own events from anyone else's — including the OTHER
+    // pounce manager. The daemon runs two: the permanent bindings under 'POUN'
+    // and the leader's transient second-step grabs under 'POUS' (see
+    // LeaderRunner), so disarming a leader can never unregister the palette key.
+    // Each handler passes on events it doesn't recognise, so both coexist on the
+    // shared application event target.
+    let signature: OSType
+
+    init(signature: OSType = 0x504F_554E) {   // 'POUN'
+        self.signature = signature
+    }
 
     // Register `keyCode` (a Carbon virtual keycode, e.g. kVK_Space) plus
     // `modifiers` (a Carbon modifier mask, e.g. cmdKey), firing `onFire` on the
@@ -39,7 +48,7 @@ final class HotKeyManager {
         let id = nextID
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(keyCode, modifiers,
-                                         EventHotKeyID(signature: Self.signature, id: id),
+                                         EventHotKeyID(signature: signature, id: id),
                                          GetApplicationEventTarget(), 0, &ref)
         guard status == noErr, let ref else { return false }
         nextID += 1
@@ -62,11 +71,11 @@ final class HotKeyManager {
             GetEventParameter(event, EventParamName(kEventParamDirectObject),
                               EventParamType(typeEventHotKeyID), nil,
                               MemoryLayout<EventHotKeyID>.size, nil, &fired)
-            guard fired.signature == HotKeyManager.signature else {
-                return OSStatus(eventNotHandledErr)
-            }
             let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
-            guard let registration = manager.registrations[fired.id] else {
+            // Not ours (the other manager's, or another app's) — decline so the
+            // next handler on the shared target gets a look.
+            guard fired.signature == manager.signature,
+                  let registration = manager.registrations[fired.id] else {
                 return OSStatus(eventNotHandledErr)
             }
             registration.onFire()

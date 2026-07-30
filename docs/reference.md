@@ -16,6 +16,7 @@ authoritative flag list; this is the prose version.
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
 | `--transform '<filter>'` | act on the current selection: copy it (⌘C), pipe the text through the shell `<filter>`, paste back (⌘V) — e.g. `--transform 'tr "[:lower:]" "[:upper:]"'`. Forwarded to the daemon, which holds the grant. |
 | `focus <op>` | Focus/DND (hush): `focus status\|toggle\|on\|off`, forwarded to the daemon |
+| `run <item-key>` | run one item by the key `items` uses — `cmd:emoji`, `mode:clipboard`, `app:/Applications/Foo.app`. For binders that already own the keystroke; see [Driving pounce from another binder](#driving-pounce-from-another-binder) |
 | `--copy-file <path>` | copy a file (contents) to the clipboard |
 | `--daemon` | run the resident daemon (what `launchd` starts; also hosts the ⌘Tab window switcher) |
 | `--request-accessibility` / `--check-accessibility` | manage the Accessibility (TCC) grant |
@@ -272,10 +273,72 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   Written as `"cmd+shift+v"` — the last segment is the key, the rest are
   modifiers (`cmd` / `shift` / `opt` / `ctrl`). The object form
   `{"key": "v", "modifiers": ["cmd","shift"]}` used by the `hotkey` and `windows`
-  blocks is accepted here too.
+  blocks is accepted here too. Add a **space** for a two-step sequence — see
+  below.
 
 `enabled` and `alias` only mean something for things the palette lists, so a
 `mode:` entry carries just a hotkey.
+
+### Leader sequences (two-step keys)
+
+Whitespace separates **steps**, `+` separates **modifiers**. So `"opt+space e"`
+means press ⌥Space, then E — the notation Emacs and VS Code use:
+
+```jsonc
+{
+  "items": {
+    "cmd:emoji":       { "hotkey": "opt+space e" },
+    "mode:clipboard":  { "hotkey": "opt+space c" },
+    "cmd:lock":        { "hotkey": "opt+space l" },
+    "app:/Applications/Ghostty.app": { "hotkey": "opt+space t" }
+  }
+}
+```
+
+Sequences sharing a leader share it: ⌥Space is registered **once** and owns a map
+of next keys. Steps can carry their own modifiers (`"cmd+k cmd+c"`), sequences can
+be longer than two (`"opt+space g s"`), and a settings UI can record them as an
+array (`["opt+space", "e"]`).
+
+**Why this is the interesting one on a tiling setup:** a leader opens a namespace
+that can't collide with the ⌥/⌘ chords AeroSpace has already claimed. And it needs
+**no Accessibility grant** — pressing the leader registers its next-step keys as
+ordinary global hotkeys for ~2 seconds and releases them the moment one fires, so
+there's no event tap and no TCC prompt.
+
+Consequences of that, worth knowing:
+
+- While a leader is armed, its next-step keys are swallowed **system-wide**. The
+  window is 2s, Escape cancels, and a misfire costs one keystroke.
+- Hesitate ~0.45s and an overlay appears listing the available next keys. Press
+  through quickly and nothing ever shows.
+- A key can't be both a leader and a binding of its own: `"opt+space"` and
+  `"opt+space e"` collide, and `doctor` names whichever can never fire.
+- If another app permanently holds a next-step key, only that branch dies. The
+  daemon probes for this at startup and says so.
+
+### Driving pounce from another binder
+
+If a tool already owns your keystrokes — AeroSpace binding modes, skhd,
+Shortcuts, a Stream Deck — let it do the chord and have pounce do the action:
+
+```sh
+pounce run cmd:emoji
+pounce run mode:clipboard
+pounce run app:/Applications/Ghostty.app
+```
+
+Same target grammar as `items`, dispatched through the identical path a native
+binding takes. Exits non-zero with a reason if the target is malformed, so a typo
+in a config fails loudly instead of producing a key that does nothing. In an
+AeroSpace binding mode that's a two-step keystroke without pounce owning a key
+at all:
+
+```toml
+[mode.pounce.binding]
+e = ['exec-and-forget pounce run cmd:emoji', 'mode main']
+c = ['exec-and-forget pounce run mode:clipboard', 'mode main']
+```
 
 Unlike the rest of config.json, **hotkeys are read once at daemon start** — the
 same contract as `windows`. After adding one, restart the daemon:
