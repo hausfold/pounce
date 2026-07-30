@@ -1,0 +1,299 @@
+import Foundation
+
+// MARK: - Per-item settings (config.json's `items` map)
+//
+// The three things you'd otherwise want three config keys for — hide it, give it
+// a shorthand, give it a key — expressed as ONE map keyed by an item key. That
+// keying is the point: a single entry is exactly one row of a settings list, so
+// a UI that edits these mutates one key rather than reconciling three parallel
+// arrays.
+//
+// Foundation-only by design (no AppKit/SwiftUI), like the quick-answer engines,
+// so tests/run.sh can compile it — see tests/itemsettings_tests.swift. Settings
+// (Config.swift) owns the disk read and hands the raw `items` value here.
+
+// A key + modifier combination, as written anywhere in config.json. Two
+// spellings are accepted so neither surface is awkward:
+//
+//   "opt+e"                            the string form, used in `items`
+//   {"key": "e", "modifiers": ["opt"]} the object form, used by the `hotkey`
+//                                      and `windows` blocks (which shipped
+//                                      before the string form existed)
+//
+// Both parse to the same thing, so a settings UI can emit whichever it likes and
+// a hand-written config can mix them.
+struct HotKeySpec: Equatable {
+    var key: String
+    var modifiers: [String]
+
+    // "cmd+shift+v" → key "v", modifiers ["cmd","shift"]. The LAST segment is
+    // the key; everything before it is a modifier. Returns nil when there's no
+    // key left to bind ("", "cmd+"), which can never be a usable binding —
+    // hence omittingEmptySubsequences: false, so a trailing "+" leaves an empty
+    // last segment to reject rather than silently promoting "cmd" to the key.
+    static func parse(_ string: String) -> HotKeySpec? {
+        let parts = string.split(separator: "+", omittingEmptySubsequences: false).map {
+            $0.trimmingCharacters(in: .whitespaces).lowercased()
+        }
+        guard let key = parts.last, !key.isEmpty else { return nil }
+        return HotKeySpec(key: key, modifiers: parts.dropLast().filter { !$0.isEmpty })
+    }
+
+    static func parse(_ any: Any?) -> HotKeySpec? {
+        if let s = any as? String { return parse(s) }
+        if let obj = any as? [String: Any] {
+            guard let k = obj["key"] as? String, !k.isEmpty else { return nil }
+            return HotKeySpec(key: k.lowercased(),
+                              modifiers: ((obj["modifiers"] as? [String]) ?? []).map { $0.lowercased() })
+        }
+        return nil
+    }
+
+    // Log/diagnostic form, matching how the shipped blocks are already logged.
+    var display: String {
+        modifiers.isEmpty ? key : modifiers.joined(separator: "+") + "+" + key
+    }
+}
+
+// One or more steps pressed in ORDER. A single step is an ordinary chord
+// (⌥E); several are a leader sequence (⌥Space then E), written space-separated
+// the way Emacs and VS Code write them:
+//
+//   "opt+e"          one step  — fires immediately
+//   "opt+space e"    two steps — ⌥Space arms, E fires
+//   ["opt+space","e"] the array form, for a settings UI recording step by step
+//
+// Steps are separated by whitespace and modifiers by "+", so spacing around a
+// "+" is normalized away first ("cmd + shift + v" is ONE step, not three).
+struct HotKeySequence: Equatable {
+    var steps: [HotKeySpec]        // never empty — parse returns nil instead
+
+    var isLeader: Bool { steps.count > 1 }
+    var display: String { steps.map(\.display).joined(separator: " ") }
+
+    static func parse(_ any: Any?) -> HotKeySequence? {
+        // Array form: each element is one step.
+        if let array = any as? [Any] {
+            let steps = array.compactMap { HotKeySpec.parse($0) }
+            guard steps.count == array.count, !steps.isEmpty else { return nil }
+            return HotKeySequence(steps: steps)
+        }
+        if let string = any as? String {
+            let tokens = normalizingModifierSpacing(string)
+                .split(whereSeparator: { $0 == " " || $0 == "\t" })
+            let steps = tokens.compactMap { HotKeySpec.parse(String($0)) }
+            guard steps.count == tokens.count, !steps.isEmpty else { return nil }
+            return HotKeySequence(steps: steps)
+        }
+        // Object form ({key, modifiers}) is a single step by construction.
+        return HotKeySpec.parse(any).map { HotKeySequence(steps: [$0]) }
+    }
+
+    // Drop whitespace that merely surrounds a "+", so the only whitespace left
+    // is a genuine step separator: "cmd + shift + v" → "cmd+shift+v", while
+    // "opt+space e" keeps its one space.
+    static func normalizingModifierSpacing(_ string: String) -> String {
+        var out = ""
+        var pending = ""      // whitespace seen since the last real character
+        for ch in string {
+            if ch == " " || ch == "\t" { pending.append(ch); continue }
+            if ch == "+" {
+                pending = ""                                  // drop space BEFORE a "+"
+            } else if !out.isEmpty && out.last != "+" {
+                out += pending                                // keep a real separator
+            }                                                 // else: space AFTER "+", drop
+            pending = ""
+            out.append(ch)
+        }
+        return out
+    }
+}
+
+// One item's overrides. `enabled` and `alias` apply to things the palette
+// LISTS (commands and apps); a "mode:" entry only meaningfully carries a
+// hotkey, since no palette row corresponds to it.
+struct ItemSetting: Equatable {
+    var enabled: Bool = true
+    var alias: String?
+    var hotkey: HotKeySequence?
+}
+
+// The whole `items` map. Entries are keyed by an item's STABLE KEY — the same
+// string the frecency store already uses (see PounceItem.frecencyKey), so one
+// map covers every kind of thing the palette can address:
+//
+//   "cmd:<id>"                      a command script (its filename without .sh)
+//   "app:/Applications/Foo.app"     an application, by path
+//   "mode:<name>"                   a built-in window: launcher, clipboard,
+//                                   emoji, screenshots, camera, filesearch
+//
+//   "items": {
+//     "cmd:emoji":                    { "alias": "emo", "hotkey": "opt+e" },
+//     "cmd:brew-services":            { "enabled": false },
+//     "app:/Applications/Ghostty.app": { "hotkey": "opt+t" },
+//     "mode:clipboard":               { "hotkey": "cmd+shift+v" }
+//   }
+struct ItemSettings {
+    var entries: [String: ItemSetting] = [:]
+
+    var isEmpty: Bool { entries.isEmpty }
+
+    // Lenient like the rest of Settings.load: a malformed entry is skipped, not
+    // fatal, so one bad line can't cost you the whole map.
+    static func parse(_ any: Any?) -> ItemSettings {
+        var settings = ItemSettings()
+        guard let raw = any as? [String: Any] else { return settings }
+        for (key, value) in raw {
+            guard let fields = value as? [String: Any] else { continue }
+            var entry = ItemSetting()
+            if let e = fields["enabled"] as? Bool { entry.enabled = e }
+            if let a = fields["alias"] as? String, !a.isEmpty { entry.alias = a }
+            entry.hotkey = HotKeySequence.parse(fields["hotkey"])
+            settings.entries[key] = entry
+        }
+        return settings
+    }
+
+    // MARK: Lookups
+    //
+    // Read on the launcher's hot path (once per item per open), so they stay
+    // dictionary lookups against the already-parsed map — no re-reading of disk.
+
+    // False only when an entry explicitly says so; an unlisted item is enabled.
+    func isEnabled(_ itemKey: String) -> Bool { entries[itemKey]?.enabled ?? true }
+
+    // A user-assigned search alias ("emo" → Emoji Picker), or nil.
+    func alias(for itemKey: String) -> String? { entries[itemKey]?.alias }
+
+    // Every item carrying a hotkey, as (target, sequence) pairs. The daemon
+    // registers these at startup (see DaemonMode.run). Sorted by target so the
+    // registration order — and therefore the log and `pounce doctor` — is
+    // deterministic rather than dictionary-order roulette.
+    var bindings: [(target: String, sequence: HotKeySequence)] {
+        entries.compactMap { key, entry in entry.hotkey.map { (target: key, sequence: $0) } }
+            .sorted { $0.target < $1.target }
+    }
+}
+
+// MARK: - What a key runs
+//
+// The target grammar, in one place. It's the same string that keys the `items`
+// map and that `pounce run` takes as its argument, so a settings UI writes one
+// value and it works as a row key, a hotkey target, and a CLI argument.
+enum ItemTarget: Equatable {
+    case command(String)   // "cmd:emoji"        — a command script by id
+    case app(String)       // "app:/Applications/Foo.app"
+    case mode(String)      // "mode:clipboard"   — a built-in window
+
+    // The built-in windows a "mode:" target may name. Single-sourced here so the
+    // daemon's dispatch, the CLI's validation and the error text can't drift.
+    static let modes = ["launcher", "clipboard", "emoji", "screenshots", "camera", "filesearch"]
+
+    static func parse(_ target: String) -> ItemTarget? {
+        if target.hasPrefix("cmd:"), target.count > 4 { return .command(String(target.dropFirst(4))) }
+        if target.hasPrefix("app:"), target.count > 4 { return .app(String(target.dropFirst(4))) }
+        if target.hasPrefix("mode:") {
+            let name = String(target.dropFirst(5))
+            return modes.contains(name) ? .mode(name) : nil
+        }
+        return nil
+    }
+
+    // Why `target` can't be dispatched, or nil if its SHAPE is fine. Deliberately
+    // does not check that a command id exists: scripts can appear after the
+    // daemon starts, so that's resolved at fire time (and warned about separately
+    // at startup — see DaemonMode.run). This is the check that can be answered
+    // immediately, which is what lets `pounce run` exit non-zero on a typo
+    // instead of reporting success for a key that does nothing.
+    static func problem(with target: String) -> String? {
+        if target.isEmpty { return "empty target" }
+        if parse(target) != nil { return nil }
+        if target.hasPrefix("mode:") {
+            return "'\(target)' names no built-in mode (expected one of: "
+                + modes.map { "mode:" + $0 }.joined(separator: ", ") + ")"
+        }
+        return "'\(target)' is not an item key (expected cmd:<id>, app:<path> or mode:<name>)"
+    }
+}
+
+// MARK: - The binding tree
+//
+// Sequences that share a leader share a NODE: ⌥Space→E and ⌥Space→C mean one
+// ⌥Space registration owning a two-entry map, not two competing registrations.
+// That's the whole reason a tree exists rather than a flat list — and it's what
+// lets the daemon grab the second-step keys only while a leader is armed (see
+// Leader.swift), so a leader costs no Accessibility grant and no event tap.
+//
+// Pure data, no Carbon, so tests/run.sh can build and assert on it.
+final class HotKeyNode {
+    // Child steps, keyed by the step's canonical display form ("e", "cmd+c").
+    private(set) var children: [String: HotKeyNode] = [:]
+    // The step that reaches this node; nil at the root.
+    let step: HotKeySpec?
+    // Set on a leaf: the item key to run when this node is reached.
+    private(set) var target: String?
+
+    init(step: HotKeySpec? = nil) { self.step = step }
+
+    var isLeaf: Bool { target != nil }
+    // Children in a stable order, for registration and for the hint overlay.
+    var sortedChildren: [HotKeyNode] {
+        children.values.sorted { ($0.step?.display ?? "") < ($1.step?.display ?? "") }
+    }
+
+    // Every target reachable from `node`, itself included — what a leader key
+    // can ultimately run. Used for the startup log and doctor line, so one
+    // ⌥Space entry can say how many sequences hang off it and which of them
+    // name a command that doesn't exist.
+    static func targets(under node: HotKeyNode) -> [String] {
+        var found: [String] = []
+        if let target = node.target { found.append(target) }
+        for child in node.sortedChildren { found.append(contentsOf: targets(under: child)) }
+        return found
+    }
+
+    // Build the tree. Returns the root plus any conflicts, which are reported
+    // rather than resolved silently: a sequence that's a strict prefix of
+    // another can never fire (the shorter would always win first), and two
+    // items on the identical sequence means one of them is dead. Both are
+    // config mistakes the user needs told about — see DaemonMode.run.
+    static func build(_ bindings: [(target: String, sequence: HotKeySequence)])
+        -> (root: HotKeyNode, conflicts: [String]) {
+        let root = HotKeyNode()
+        var conflicts: [String] = []
+
+        for (target, sequence) in bindings {
+            var node = root
+            var blocked: String?
+            for step in sequence.steps {
+                // Walking THROUGH a leaf: this sequence extends one that already
+                // fires, so it could never be reached.
+                if let owner = node.target {
+                    blocked = "\(sequence.display) → \(target) can never fire: "
+                        + "a shorter sequence to \(owner) already fires first"
+                    break
+                }
+                let key = step.display
+                if let existing = node.children[key] {
+                    node = existing
+                } else {
+                    let child = HotKeyNode(step: step)
+                    node.children[key] = child
+                    node = child
+                }
+            }
+            if let blocked { conflicts.append(blocked); continue }
+            if let owner = node.target {
+                conflicts.append("\(sequence.display) is bound twice (\(owner) and \(target)); keeping \(owner)")
+                continue
+            }
+            if !node.children.isEmpty {
+                conflicts.append("\(sequence.display) → \(target) can never fire: "
+                    + "a longer sequence starting with it is already bound")
+                continue
+            }
+            node.target = target
+        }
+        return (root, conflicts)
+    }
+}

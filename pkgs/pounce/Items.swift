@@ -42,6 +42,12 @@ struct PounceItem: Identifiable {
     let baseBoost: Double     // recency boost for freshly-installed apps
     let group: String?        // optional section header; nil → flat (ungrouped) list
     let submenu: Bool         // command re-invokes pounce (two-step) → loading state
+    // A user-assigned alias from config.json's `items` map ("emo" → Emoji
+    // Picker). Distinct from `searchAlias`, which is the app's own bundle name:
+    // this one is chosen by the user, so it matches at a bonus (see
+    // DaemonState.matchScore) — typing your own shorthand should win outright.
+    // Stamped in DaemonState.load after the items are built, hence `var`.
+    var userAlias: String? = nil
 
     // Generic stdin line: title \t subtitle \t icon \t actions \t group
     // The trailing `group` field is optional; when any line carries one the list

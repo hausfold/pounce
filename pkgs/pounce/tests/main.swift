@@ -52,6 +52,7 @@ expect(more > fewer, "higher count outranks lower at equal recency")
 if failures == 0 { print("ok — all Frecency ranking tests passed") }
 
 failures += runQuickAnswerTests()
+failures += runItemSettingsTests()
 
 if failures == 0 {
     exit(0)

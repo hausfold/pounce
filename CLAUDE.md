@@ -76,6 +76,24 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   reference: ECB rates, 12h max-age re-checked every 6h, disk fallback, gated by
   `quickAnswers.currency` in config.json as pounce's only network call).
   Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer_tests.swift`.
+- **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
+  enable / alias / hotkey for anything the palette can address, keyed by the item's
+  **frecency key** — `cmd:<id>`, `app:<path>`, plus `mode:<name>` for the built-in
+  windows. One map, not three parallel keys, because one entry is one row of a
+  settings list. `ItemTarget` is the single parser for that grammar (it also backs
+  `pounce run <item-key>`, the escape hatch for external binders). Foundation-only so
+  `tests/run.sh` compiles it. Enable/alias apply in `DaemonState.load`; hotkeys are
+  registered once at daemon start (`DaemonMode.run`) and reported to `pounce doctor`
+  via `DaemonMode.bindingReport` — a binding that loses its combo, or names a command
+  that doesn't exist, is invisible otherwise.
+- **Leader sequences** (`"opt+space e"`, `Leader.swift`): whitespace separates steps,
+  `+` separates modifiers. Sequences sharing a leader share a `HotKeyNode`, so the
+  leader is registered once and owns a map of next steps. **Do not reach for a
+  CGEventTap here** — the second-step keys are grabbed as ordinary modifier-less
+  Carbon hotkeys only while the leader is armed (~2s), which is what keeps the whole
+  feature free of an Accessibility grant, unlike the ⌘Tab switcher. The transient
+  registrations live in their own `HotKeyManager` under a separate Carbon signature
+  so disarming can never unregister the palette key.
 - **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost on
   rebuild. The *rice* (`nebelhaus/modules/pounce`) re-signs a stable copy to keep the
   grant — that logic lives there, not here. Here, just: `pounce --request-accessibility`

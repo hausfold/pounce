@@ -25,6 +25,14 @@ enum Main {
       --find-files           search files & folders by name (Spotlight index)
       --cheatsheet [path]    cheatsheet overlay (default ~/.config/pounce/cheatsheet.json)
 
+    running one item:
+      run <item-key>            run a single item by the key config.json's
+                                `items` map uses — `cmd:emoji`,
+                                `mode:clipboard`, `app:/Applications/Foo.app`.
+                                For binders that already own the keystroke
+                                (AeroSpace binding modes, skhd, Shortcuts):
+                                they do the chord, pounce does the action.
+
     diagnostics:
       doctor                    check the hotkey path — is the daemon up, is the
                                 in-process hotkey actually firing, or is an
@@ -72,6 +80,13 @@ enum Main {
             // Positional, like `focus`: a health check for the hotkey path that
             // never opens the palette.
             DoctorMode.run()
+        } else if args.count >= 2 && args[1] == "run" {
+            // Positional, like `doctor` and `focus`: run one item by its key
+            // ("cmd:emoji", "mode:clipboard", "app:/Applications/Foo.app").
+            // The escape hatch for anyone whose keystrokes are already owned by
+            // an external binder — AeroSpace binding modes, skhd, a Shortcut —
+            // so a two-step there can drive pounce without pounce owning a key.
+            RunMode.run(target: args.count >= 3 ? args[2] : nil)
         } else if args.count >= 2 && args[1] == "focus" {
             // Positional on purpose: scripts probe `pounce --help` for
             // "focus" before calling, so an older binary never falls through
@@ -116,6 +131,44 @@ enum Main {
     }
 }
 
+// `pounce run <item-key>`: execute one item by the same key config.json's
+// `items` map is addressed with. Forwarded to the daemon so it runs through the
+// identical path a hotkey takes (DaemonMode.runTargetHook) — one implementation
+// of the target grammar regardless of what pressed the key.
+//
+// The point is composability with tools that already own the keyboard: a
+// nebelhaus user's AeroSpace binding mode, skhd, a Shortcut, a Stream Deck. They
+// do the two-step; pounce just executes step two.
+enum RunMode {
+    static func run(target: String?) {
+        guard let target, !target.isEmpty else {
+            FileHandle.standardError.write(Data("""
+            pounce run: needs an item key.
+              pounce run cmd:emoji                       a command script
+              pounce run mode:clipboard                  a built-in window
+              pounce run app:/Applications/Ghostty.app   an application
+            \n
+            """.utf8))
+            exit(2)
+        }
+        // A "mode:" target has to be the daemon: only it owns the window. A
+        // cmd:/app: target could be done here, but routing everything through
+        // the daemon keeps command resolution identical to the hotkey path
+        // (same command dirs, same shadowing order).
+        guard let reply = Daemon.request("RUN\t\(target)\n") else {
+            FileHandle.standardError.write(Data(
+                "pounce run: daemon not running (start it: `brew services start pounce`)\n".utf8))
+            exit(1)
+        }
+        if reply.hasPrefix("err") {
+            let detail = reply.split(separator: "\t").dropFirst().joined(separator: " ")
+            FileHandle.standardError.write(Data("pounce run: \(detail)\n".utf8))
+            exit(1)
+        }
+        exit(0)
+    }
+}
+
 // `pounce --copy-file <path>`: copy a file to the clipboard as both image and
 // file reference (see Pasteboard.copyFile) and exit. Synchronous — no run loop.
 enum CopyFileMode {
@@ -153,6 +206,13 @@ enum DaemonMode {
     static var hotKey: HotKeyManager?
     // Retained so the ⌘Tab event tap + window tracker stay alive.
     static var windowSwitcher: WindowSwitcher?
+    // Retained for the daemon's lifetime so an armed leader's transient
+    // registrations and timers survive (see Leader.swift).
+    static var leader: LeaderRunner?
+    // The one implementation of the target grammar ("cmd:emoji", "mode:clipboard"),
+    // set by run() so `pounce run <target>` over the socket dispatches exactly
+    // as a hotkey does. nil until the daemon is up.
+    static var runTargetHook: ((String) -> Void)?
     // Last Accessibility trust state we logged, so the watcher only emits on a
     // change. Seeded by the startup log line below.
     static var lastTrusted: Bool?
@@ -167,6 +227,11 @@ enum DaemonMode {
     static var hotkeyCombo = ""
     static var hotkeyRegistered = false
     static var hotkeyReceived = false
+    // Per-item bindings from config.json's `items` map, as human-readable lines
+    // ("⌥E → cmd:emoji" / "… — FAILED (taken?)"). Reported over the socket to
+    // `pounce doctor`: a binding that lost its combo to another app fails
+    // silently from the user's side, so the daemon has to be able to say so.
+    static var bindingReport: [String] = []
     // One-time guard for the "external client while the hotkey never fired" hint.
     static var shadowHintLogged = false
 
@@ -308,14 +373,71 @@ enum DaemonMode {
             }
         }
 
+        // Open a built-in window (clipboard, emoji, …) directly, the way a
+        // per-item "mode:" binding asks for. Mirrors what handleClient does for
+        // the same request arriving over the socket — release any waiting
+        // client, re-read settings, load the mode, present — minus the round
+        // trip. Pressing the same binding again while that mode is up dismisses
+        // it, matching the palette hotkey's toggle.
+        let presentMode: (DisplayMode, (DaemonState) -> Void) -> Void = { mode, load in
+            if state.isVisible && state.displayMode == mode { state.cancel(); return }
+            ui.resultSink?("")
+            ui.resultSink = nil
+            let settings = Settings.load()
+            Theme.current = settings.palette
+            state.reset()
+            state.metrics = settings.metrics
+            load(state)
+            ui.present()
+        }
+
+        // Run whatever a binding's target names. The target grammar is the same
+        // one that keys config.json's `items` map (see ItemSetting), so a
+        // settings UI writes one string and it works as both a row key and a
+        // hotkey target. Unknown targets are logged, not silently dropped —
+        // a typo'd command id would otherwise present as a dead key.
+        let runTarget: (String) -> Void = { target in
+            switch ItemTarget.parse(target) {
+            case .mode("launcher"):
+                presentLauncher()
+            case .mode("clipboard"):   presentMode(.clipboard) { $0.loadClipboard(placeholder: nil) }
+            case .mode("emoji"):       presentMode(.emoji) { $0.loadEmoji(placeholder: nil) }
+            case .mode("screenshots"): presentMode(.screenshots) { $0.loadScreenshots(placeholder: nil) }
+            case .mode("camera"):      presentMode(.camera) { $0.loadCamera(placeholder: nil) }
+            case .mode("filesearch"):  presentMode(.fileSearch) { $0.loadFileSearch(placeholder: nil) }
+            case .mode(let name):
+                // Unreachable: ItemTarget.parse only yields modes it knows.
+                NSLog("pounce daemon: built-in mode '\(name)' has no dispatch case")
+            case .command(let id):
+                registry.refresh()
+                if let path = registry.scriptPath(for: id) {
+                    CommandSpawner.run(scriptPath: path)
+                } else {
+                    NSLog("pounce daemon: target '\(target)' names no known command; check the script exists in a command dir")
+                }
+            case .app(let path):
+                let cfg = NSWorkspace.OpenConfiguration()
+                cfg.activates = true
+                NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: cfg)
+            case nil:
+                NSLog("pounce daemon: \(ItemTarget.problem(with: target) ?? "bad target '\(target)'"); ignored")
+            }
+        }
+        // Published so `pounce run <target>` arriving over the socket executes
+        // through the exact same path a hotkey does — one implementation of the
+        // target grammar, whether the trigger is Carbon or an external binder
+        // (AeroSpace, skhd) that already owns the keystroke.
+        runTargetHook = runTarget
+
         hotkeyEnabled = settings.hotkey.enabled
         hotkeyCombo = "\(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key)"
+        // One manager holds the palette key and every per-item binding.
+        let manager = HotKeyManager()
+        hotKey = manager
         if settings.hotkey.enabled {
             if let keyCode = HotKeyParser.keyCode(for: settings.hotkey.key) {
                 let modifiers = HotKeyParser.modifierMask(for: settings.hotkey.modifiers)
-                let manager = HotKeyManager(onFire: presentLauncher)
-                if manager.register(keyCode: keyCode, modifiers: modifiers) {
-                    hotKey = manager
+                if manager.register(keyCode: keyCode, modifiers: modifiers, onFire: presentLauncher) {
                     hotkeyRegistered = true
                     let combo = hotkeyCombo
                     NSLog("pounce daemon: hotkey \(combo) registered")
@@ -333,6 +455,119 @@ enum DaemonMode {
                 }
             } else {
                 NSLog("pounce daemon: unknown hotkey key '\(settings.hotkey.key)'; falling back to socket launch")
+            }
+        }
+
+        // Per-item hotkeys from config.json's `items` map: ⌥E straight to the
+        // emoji picker, ⌘⇧V to clipboard history, a key per command or app.
+        // Read once here, so adding or changing one needs a daemon restart
+        // (`launchctl kickstart -k`) — same contract as `windows`, unlike the
+        // palette settings which are re-read per open. Each binding is
+        // independent: a combo another app already owns fails alone and is
+        // named in the log, leaving the rest armed.
+        // The warm-up refresh above is async, so the registry is still empty
+        // here — resolve it now if any binding needs to be checked against it.
+        // Repeating the scan is a few stats; the async warm-up then no-ops.
+        if settings.items.bindings.contains(where: { $0.target.hasPrefix("cmd:") }) {
+            registry.refresh()
+        }
+
+        // Does this target name a command that isn't there? Targets resolve at
+        // FIRE time (a script can appear after the daemon starts), so a mistyped
+        // id would otherwise register happily and only fail on the keypress —
+        // the exact "I pressed it and nothing happened" report doctor exists to
+        // pre-empt. Name it at startup instead, without refusing the binding.
+        let namesMissingCommand: (String) -> Bool = { target in
+            target.hasPrefix("cmd:") && registry.scriptPath(for: String(target.dropFirst(4))) == nil
+        }
+
+        // Leader sequences ("opt+space e") share a tree, so a leader shared by
+        // several items is ONE registration owning a map of next steps. The
+        // leader's own key is registered permanently; the second-step keys are
+        // grabbed only while it's armed — that's what keeps this free of any
+        // Accessibility grant (see Leader.swift).
+        let (tree, conflicts) = HotKeyNode.build(settings.items.bindings)
+        for conflict in conflicts {
+            NSLog("pounce daemon: binding conflict — \(conflict)")
+            bindingReport.append("conflict — \(conflict)")
+        }
+        let leaderRunner = LeaderRunner(
+            onRun: { runTarget($0) },
+            onHint: { node in
+                // Which-key overlay, through the existing cheatsheet window.
+                // Only reached if the user hesitates past LeaderRunner.hintDelay.
+                let groups = LeaderHint.groups(for: node) { target in
+                    guard target.hasPrefix("cmd:") else { return nil }
+                    let id = String(target.dropFirst(4))
+                    return registry.entries.first { $0.id == id }?.name
+                }
+                ui.resultSink?("")
+                ui.resultSink = nil
+                let settings = Settings.load()
+                Theme.current = settings.palette
+                state.reset()
+                state.metrics = settings.metrics
+                state.displayMode = .cheatsheet
+                state.cheatsheetGroups = groups
+                ui.present()
+            },
+            onDismissHint: { if state.displayMode == .cheatsheet { state.cancel() } })
+        leader = leaderRunner
+
+        // Register the first step of every distinct sequence. A leaf child of
+        // the root is an ordinary one-step binding; anything with children of
+        // its own is a leader that arms the runner instead of acting.
+        for node in tree.sortedChildren {
+            guard let step = node.step else { continue }
+            // Every target reachable from here, for the log and doctor line.
+            let reachable = HotKeyNode.targets(under: node)
+            let label = node.isLeaf
+                ? "\(step.display) → \(node.target!)"
+                : "\(step.display) → leader (\(reachable.count) sequence\(reachable.count == 1 ? "" : "s"))"
+
+            guard let keyCode = HotKeyParser.keyCode(for: step.key) else {
+                NSLog("pounce daemon: binding \(label) uses unknown key '\(step.key)'; skipped")
+                bindingReport.append("\(label) — unknown key '\(step.key)'")
+                continue
+            }
+            let modifiers = HotKeyParser.modifierMask(for: step.modifiers)
+            let fire: () -> Void = node.isLeaf
+                ? { runTarget(node.target!) }
+                : { leaderRunner.arm(node) }
+
+            guard manager.register(keyCode: keyCode, modifiers: modifiers, onFire: fire) else {
+                NSLog("pounce daemon: could not register binding \(label) (already taken by another app?)")
+                bindingReport.append("\(label) — FAILED, combo already taken")
+                continue
+            }
+            NSLog("pounce daemon: binding \(label) registered")
+
+            // For a leader, confirm now that its second-step keys can actually
+            // be grabbed. A bare key another app holds permanently would kill
+            // just that branch, and only on the day you pressed it.
+            if !node.isLeaf {
+                let probe = leaderRunner.probe(node)
+                if probe.failed.isEmpty {
+                    NSLog("pounce daemon: leader \(step.display) — \(probe.grabbed)/\(probe.grabbed) next-step keys grabbable")
+                } else {
+                    NSLog("pounce daemon: WARNING — leader \(step.display) cannot grab \(probe.failed.joined(separator: ", ")); those branches won't fire (another app holds the key)")
+                    bindingReport.append("\(label) — cannot grab next-step key: \(probe.failed.joined(separator: ", "))")
+                    continue
+                }
+            }
+
+            if let conflict = HotKeyConflict.systemConflict(keyName: step.key,
+                                                            modifierNames: step.modifiers) {
+                NSLog("pounce daemon: WARNING — \(step.display) is also bound to \(conflict); macOS routes the key there, so this binding likely never fires.")
+                bindingReport.append("\(label) — also bound to \(conflict)")
+                continue
+            }
+            let missing = reachable.filter(namesMissingCommand)
+            if missing.isEmpty {
+                bindingReport.append(label)
+            } else {
+                NSLog("pounce daemon: WARNING — binding \(label) reaches \(missing.joined(separator: ", ")), which name no command found in any command dir; those keys will do nothing until the scripts exist.")
+                bindingReport.append("\(label) — no such command: \(missing.joined(separator: ", "))")
             }
         }
 
@@ -439,10 +674,37 @@ enum DaemonMode {
                 "hotkeyCombo": DaemonMode.hotkeyCombo,
                 "hotkeyRegistered": DaemonMode.hotkeyRegistered,
                 "hotkeyReceived": DaemonMode.hotkeyReceived,
+                "bindings": DaemonMode.bindingReport,
             ]
             let json = (try? JSONSerialization.data(withJSONObject: status)) ?? Data("{}".utf8)
             var reply = json; reply.append(0x0A)
             reply.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, reply.count) }
+            close(clientFD)
+            return
+        }
+
+        // `pounce run <item-key>` arrives as "RUN\t<target>" and dispatches
+        // through the SAME closure a hotkey fires (runTargetHook), so an
+        // external binder that already owns the keystroke — an AeroSpace binding
+        // mode, skhd, a Shortcut — gets identical behaviour to a native binding.
+        // Hopped to the main queue because the target may present a window;
+        // acknowledged immediately rather than waiting on that window to close.
+        if payload.hasPrefix("RUN\t") {
+            let target = String(payload.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let reply: String
+            // Reject a malformed target BEFORE acknowledging: dispatch is
+            // fire-and-forget on the main queue, so without this a typo'd target
+            // would exit 0 and look like it worked.
+            if let problem = ItemTarget.problem(with: target) {
+                reply = "err\t\(problem)"
+            } else if let run = DaemonMode.runTargetHook {
+                DispatchQueue.main.async { run(target) }
+                reply = "ok"
+            } else {
+                reply = "err\tdaemon has no target dispatcher (not fully started?)"
+            }
+            let replyData = Data((reply + "\n").utf8)
+            replyData.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, replyData.count) }
             close(clientFD)
             return
         }

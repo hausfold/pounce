@@ -16,6 +16,7 @@ authoritative flag list; this is the prose version.
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
 | `--transform '<filter>'` | act on the current selection: copy it (⌘C), pipe the text through the shell `<filter>`, paste back (⌘V) — e.g. `--transform 'tr "[:lower:]" "[:upper:]"'`. Forwarded to the daemon, which holds the grant. |
 | `focus <op>` | Focus/DND (hush): `focus status\|toggle\|on\|off`, forwarded to the daemon |
+| `run <item-key>` | run one item by the key `items` uses — `cmd:emoji`, `mode:clipboard`, `app:/Applications/Foo.app`. For binders that already own the keystroke; see [Driving pounce from another binder](#driving-pounce-from-another-binder) |
 | `--copy-file <path>` | copy a file (contents) to the clipboard |
 | `--daemon` | run the resident daemon (what `launchd` starts; also hosts the ⌘Tab window switcher) |
 | `--request-accessibility` / `--check-accessibility` | manage the Accessibility (TCC) grant |
@@ -181,8 +182,9 @@ on Nix? Every plugin is still just one script: copy it into
 ## Configuration
 
 Optional settings live in `~/.config/pounce/config.json`. The file is re-read on
-every open, so edits apply on the next launch — no restart needed. Every key is
-optional and falls back to a default.
+every open, so edits apply on the next launch — no restart needed. (The two
+exceptions are the things the daemon has to *grab* at startup: `windows` and the
+`items` hotkeys.) Every key is optional and falls back to a default.
 
 ```jsonc
 {
@@ -214,7 +216,8 @@ optional and falls back to a default.
   "apps": {
     "demoteBundleIds": [],  // apps ranked lower in the launcher (bundle IDs)
     "hideBundleIds": []     // apps hidden from the launcher entirely (bundle IDs)
-  }
+  },
+  "items": {}               // per-item enable / alias / hotkey — see below
 }
 ```
 
@@ -270,6 +273,121 @@ matching variant and points `"theme"` at it.
 The window chrome (blur material, appearance, border, fill opacity) follows the
 **palette's** own lightness, not the system's — a light palette in Dark Mode
 still renders as a light panel.
+
+### Per-item settings (`items`)
+
+One map covers the three things you'd otherwise want three keys for — hide it,
+give it a shorthand, give it a key. Each entry is keyed by an **item key**:
+
+| Item key | What it addresses |
+|---|---|
+| `cmd:<id>` | a command script, by filename without `.sh` |
+| `app:/Applications/Foo.app` | an application, by path |
+| `mode:<name>` | a built-in window: `launcher`, `clipboard`, `emoji`, `screenshots`, `camera`, `filesearch` |
+
+```jsonc
+{
+  "items": {
+    "cmd:emoji":                     { "alias": "emo", "hotkey": "opt+e" },
+    "cmd:brew-services":             { "enabled": false },
+    "app:/Applications/Ghostty.app": { "alias": "term", "hotkey": "opt+t" },
+    "mode:clipboard":                { "hotkey": "cmd+shift+v" }
+  }
+}
+```
+
+- **`enabled: false`** drops the row from the launcher. It does *not* disarm that
+  item's hotkey — binding a key to something you keep out of the list is a
+  legitimate setup. (`apps.hideBundleIds` still works and hides by bundle ID
+  instead of path; use whichever you have to hand.)
+- **`alias`** is a search shorthand. It matches at a bonus over the item's real
+  name, so typing your alias lands on your item rather than on whatever app
+  happens to fuzzy-match the same letters.
+- **`hotkey`** is a global key that runs the item directly, skipping the palette.
+  Written as `"cmd+shift+v"` — the last segment is the key, the rest are
+  modifiers (`cmd` / `shift` / `opt` / `ctrl`). The object form
+  `{"key": "v", "modifiers": ["cmd","shift"]}` used by the `hotkey` and `windows`
+  blocks is accepted here too. Add a **space** for a two-step sequence — see
+  below.
+
+`enabled` and `alias` only mean something for things the palette lists, so a
+`mode:` entry carries just a hotkey.
+
+### Leader sequences (two-step keys)
+
+Whitespace separates **steps**, `+` separates **modifiers**. So `"opt+space e"`
+means press ⌥Space, then E — the notation Emacs and VS Code use:
+
+```jsonc
+{
+  "items": {
+    "cmd:emoji":       { "hotkey": "opt+space e" },
+    "mode:clipboard":  { "hotkey": "opt+space c" },
+    "cmd:lock":        { "hotkey": "opt+space l" },
+    "app:/Applications/Ghostty.app": { "hotkey": "opt+space t" }
+  }
+}
+```
+
+Sequences sharing a leader share it: ⌥Space is registered **once** and owns a map
+of next keys. Steps can carry their own modifiers (`"cmd+k cmd+c"`), sequences can
+be longer than two (`"opt+space g s"`), and a settings UI can record them as an
+array (`["opt+space", "e"]`).
+
+**Why this is the interesting one on a tiling setup:** a leader opens a namespace
+that can't collide with the ⌥/⌘ chords AeroSpace has already claimed. And it needs
+**no Accessibility grant** — pressing the leader registers its next-step keys as
+ordinary global hotkeys for ~2 seconds and releases them the moment one fires, so
+there's no event tap and no TCC prompt.
+
+Consequences of that, worth knowing:
+
+- While a leader is armed, its next-step keys are swallowed **system-wide**. The
+  window is 2s, Escape cancels, and a misfire costs one keystroke.
+- Hesitate ~0.45s and an overlay appears listing the available next keys. Press
+  through quickly and nothing ever shows.
+- A key can't be both a leader and a binding of its own: `"opt+space"` and
+  `"opt+space e"` collide, and `doctor` names whichever can never fire.
+- If another app permanently holds a next-step key, only that branch dies. The
+  daemon probes for this at startup and says so.
+
+### Driving pounce from another binder
+
+If a tool already owns your keystrokes — AeroSpace binding modes, skhd,
+Shortcuts, a Stream Deck — let it do the chord and have pounce do the action:
+
+```sh
+pounce run cmd:emoji
+pounce run mode:clipboard
+pounce run app:/Applications/Ghostty.app
+```
+
+Same target grammar as `items`, dispatched through the identical path a native
+binding takes. Exits non-zero with a reason if the target is malformed, so a typo
+in a config fails loudly instead of producing a key that does nothing. In an
+AeroSpace binding mode that's a two-step keystroke without pounce owning a key
+at all:
+
+```toml
+[mode.pounce.binding]
+e = ['exec-and-forget pounce run cmd:emoji', 'mode main']
+c = ['exec-and-forget pounce run mode:clipboard', 'mode main']
+```
+
+Unlike the rest of config.json, **hotkeys are read once at daemon start** — the
+same contract as `windows`. After adding one, restart the daemon:
+
+```sh
+brew services restart pounce                            # Homebrew
+launchctl kickstart -k gui/$(id -u)/org.nixos.pounce    # nebelhaus / Nix
+```
+
+Then check it armed. A binding whose combo another app already owns fails
+silently from your side, so `doctor` reports what the daemon actually got:
+
+```sh
+pounce doctor        # ✔ binding opt+e → cmd:emoji
+```
 
 ## The hotkey (near-instant open)
 

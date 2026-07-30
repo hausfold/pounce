@@ -170,6 +170,10 @@ struct Settings {
     var windows = WindowSwitcherSettings()
     var quickAnswers = QuickAnswerSettings()
     var fileSearch = FileSearchSettings()
+    // Per-item overrides (enable / alias / hotkey), keyed by stable item key.
+    // See ItemSettings.swift. Empty by default: an untouched config behaves
+    // exactly as it did before this key existed.
+    var items = ItemSettings()
     // Color palette: a built-in name, or a ~/.config/pounce/themes/<name>.json
     // (see Palette.named).
     //
@@ -253,6 +257,7 @@ struct Settings {
             if let k = w["key"] as? String, !k.isEmpty { s.windows.key = k }
             if let m = w["modifiers"] as? [String], !m.isEmpty { s.windows.modifiers = m }
         }
+        s.items = ItemSettings.parse(obj["items"])
         return s
     }
 }

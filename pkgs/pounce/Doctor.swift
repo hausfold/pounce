@@ -26,6 +26,7 @@ enum DoctorMode {
         let hotkeyCombo: String
         let hotkeyRegistered: Bool
         let hotkeyReceived: Bool
+        let bindings: [String]
     }
 
     static func run() {
@@ -77,6 +78,28 @@ enum DoctorMode {
                 bad("hotkey \(combo) has NEVER fired since the daemon started")
                 problems.append("\(combo) is registered but has never reached pounce — "
                                 + "something is intercepting it (see below).")
+            }
+        }
+
+        // Per-item bindings from config.json's `items` map. The daemon reports
+        // what it actually armed at startup, which is the only way to see that a
+        // binding lost its combo to another app — from the user's side a dead
+        // binding and a mistyped target look identical (nothing happens).
+        if let status, !status.bindings.isEmpty {
+            for line in status.bindings {
+                if line.hasPrefix("conflict — ") {
+                    bad(line)
+                    problems.append("Two bindings collide, so one can never fire: "
+                                    + line.replacingOccurrences(of: "conflict — ", with: ""))
+                } else if line.contains("FAILED") || line.contains("unknown key")
+                    || line.contains("no such command") {
+                    bad("binding \(line)")
+                    problems.append("A binding in config.json's `items` map isn't armed: \(line)")
+                } else if line.contains("also bound to") {
+                    warn("binding \(line)")
+                } else {
+                    ok("binding \(line)")
+                }
             }
         }
 
@@ -139,42 +162,17 @@ enum DoctorMode {
     // Ask the running daemon for its live state (STATUS verb, JSON reply). Returns
     // nil if the daemon isn't listening.
     private static func queryDaemon() -> Status? {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return nil }
-        defer { close(fd) }
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
-            SocketConfig.path.withCString { cstr in
-                _ = memcpy(ptr, cstr, min(strlen(cstr) + 1, MemoryLayout.size(ofValue: ptr.pointee)))
-            }
-        }
-        let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
-        let connected = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, addrLen) }
-        } == 0
-        guard connected else { return nil }
-
-        let req = Data("STATUS\n".utf8)
-        req.withUnsafeBytes { ptr in _ = write(fd, ptr.baseAddress!, req.count) }
-        shutdown(fd, SHUT_WR)
-
-        var data = Data()
-        var buf = [UInt8](repeating: 0, count: 4096)
-        while true {
-            let n = read(fd, &buf, buf.count)
-            if n <= 0 { break }
-            data.append(contentsOf: buf[0..<n])
-        }
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        guard let reply = Daemon.request("STATUS\n"),
+              let obj = try? JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: Any]
+        else { return nil }
         return Status(
             version: obj["version"] as? String ?? "?",
             accessibility: obj["accessibility"] as? Bool ?? false,
             hotkeyEnabled: obj["hotkeyEnabled"] as? Bool ?? false,
             hotkeyCombo: obj["hotkeyCombo"] as? String ?? "",
             hotkeyRegistered: obj["hotkeyRegistered"] as? Bool ?? false,
-            hotkeyReceived: obj["hotkeyReceived"] as? Bool ?? false)
+            hotkeyReceived: obj["hotkeyReceived"] as? Bool ?? false,
+            bindings: obj["bindings"] as? [String] ?? [])
     }
 
     // MARK: Environment probes

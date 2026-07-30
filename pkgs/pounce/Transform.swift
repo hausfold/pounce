@@ -129,37 +129,7 @@ enum TransformMode {
     // answers — the caller falls back to the local attempt. Mirrors
     // FocusMode.askDaemon.
     static func askDaemon(_ filter: String) -> String? {
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { return nil }
-        defer { close(fd) }
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
-            SocketConfig.path.withCString { cstr in
-                _ = memcpy(ptr, cstr, min(strlen(cstr) + 1, MemoryLayout.size(ofValue: ptr.pointee)))
-            }
-        }
-        let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
-        let connected = withUnsafePointer(to: &addr, { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, addrLen) }
-        }) == 0
-        guard connected else { return nil }
-
-        let payload = "TRANSFORM\t\(filter)\n".data(using: .utf8)!
-        payload.withUnsafeBytes { ptr in _ = write(fd, ptr.baseAddress!, payload.count) }
-        shutdown(fd, SHUT_WR)
-
-        var replyData = Data()
-        var buf = [UInt8](repeating: 0, count: 4096)
-        while true {
-            let n = read(fd, &buf, buf.count)
-            if n <= 0 { break }
-            replyData.append(contentsOf: buf[0..<n])
-        }
-        guard let reply = String(data: replyData, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !reply.isEmpty else { return nil }
-        return reply
+        Daemon.request("TRANSFORM\t\(filter)\n")
     }
 
     static func warn(_ message: String) {

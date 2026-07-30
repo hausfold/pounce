@@ -293,11 +293,22 @@ final class DaemonState: ObservableObject {
 
         var built: [PounceItem] = []
         if launcher {
+            let settings = Settings.load()
             built.append(contentsOf: lines.filter { !$0.isEmpty }.map { PounceItem.parseCommand($0) })
-            let launcherCfg = Settings.load().appLauncher
             built.append(contentsOf: AppScanner.shared.apps(
-                demotedBundleIds: launcherCfg.demoteBundleIds,
-                hiddenBundleIds: Set(launcherCfg.hideBundleIds)))
+                demotedBundleIds: settings.appLauncher.demoteBundleIds,
+                hiddenBundleIds: Set(settings.appLauncher.hideBundleIds)))
+            // Apply the per-item overrides from config.json's `items` map. Both
+            // passes key off frecencyKey ("cmd:<id>" / "app:<path>"), which is
+            // exactly how the map is addressed — see ItemSetting. Done here, on
+            // the assembled list, so commands and apps obey the same rules and a
+            // future settings UI has one place to reason about.
+            if !settings.items.isEmpty {
+                built.removeAll { !settings.items.isEnabled($0.frecencyKey) }
+                for i in built.indices {
+                    built[i].userAlias = settings.items.alias(for: built[i].frecencyKey)
+                }
+            }
             placeholderText = placeholder ?? "Search apps & actions..."
         } else {
             built = lines.map { PounceItem.parsePlain($0, globalIcon: icon) }
@@ -329,8 +340,12 @@ final class DaemonState: ObservableObject {
         // An app's bundle name (e.g. "Live" for Ableton) scores at full weight —
         // it's a legitimate name for the app, just not the one we display.
         let alias = item.searchAlias.flatMap { Fuzzy.score(query, $0.lowercased()) }
+        // A user-assigned alias beats both: the user picked this shorthand for
+        // this item, so typing it should land here rather than on whatever app
+        // happens to fuzzy-match the same letters more tightly.
+        let user = item.userAlias.flatMap { Fuzzy.score(query, $0.lowercased()).map { $0 + 4.0 } }
         let sub = item.subtitle.flatMap { Fuzzy.score(query, $0.lowercased()) }
-        let candidates = [title, alias, sub.map { $0 * 0.5 }].compactMap { $0 }
+        let candidates = [title, alias, user, sub.map { $0 * 0.5 }].compactMap { $0 }
         guard let best = candidates.max() else { return nil }
         let frec = frecency(for: item)
         let normFrec = frec / (frec + 5)                 // 0..1
