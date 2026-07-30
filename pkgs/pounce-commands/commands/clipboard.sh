@@ -9,7 +9,7 @@
 # and the daemon holds Accessibility, pastes it straight into the previously
 # focused app (synthesize ⌘V), Raycast-style.
 #
-# Re-invokes `pounce` in clipboard mode; the daemon swaps it into the live
+# Asks the daemon to run `mode:clipboard`; it swaps it into the live
 # palette window (this command is registered submenu=true), so there's no
 # close→reopen flash between the palette and the picker.
-exec pounce --clipboard
+exec pounce run mode:clipboard
