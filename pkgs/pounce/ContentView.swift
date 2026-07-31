@@ -135,25 +135,16 @@ struct ContentView: View {
 
     // A long query used to run off the right edge with nowhere to go: the field
     // scrolled horizontally and you typed into a moving window. It wraps now, and
-    // the header — and so the window — grows a line at a time until the box would
-    // reach half way down the screen, after which it scrolls.
-    //
-    // The window's TOP sits at topInsetFraction of the visible frame, so the room
-    // available before the bottom edge hits the half-way mark is what's left of
-    // that half. Derived per screen rather than a fixed line count: the same six
-    // lines is a third of a laptop display and a sliver of a 5K one.
-    var maxQueryLines: Int {
-        let screen = NSScreen.main?.visibleFrame.height ?? 900
-        let room = screen * (0.5 - state.metrics.topInsetFraction)
-        return max(3, Int(floor(room / queryLineHeight)))
-    }
+    // the header — and so the window — grows a line at a time up to this cap.
+    // Six lines keeps a pasted task readable without turning the palette into a
+    // half-screen text editor on a large display.
+    static let maxQueryLines = 6
     // Fixed so the wrap width below is arithmetic instead of a guess about how
     // wide a given SF Symbol renders. Comfortably fits the 18pt (standard) and
     // 16pt (compact) search icons.
     static let searchIconColumn: CGFloat = 26
     static let headerHPadding: CGFloat = 20
     static let headerSpacing: CGFloat = 12
-    static let queryAnchor = "query"
 
     // The width the field actually wraps at — launcherBody's HStack in numbers:
     // the window, less the padding either side, less the icon column and the gap
@@ -174,35 +165,21 @@ struct ContentView: View {
     // runloop turn as the keystroke that changed it, and on Tahoe a hosting
     // view's fittingSize is still the previous turn's answer by then — that is
     // the flash this whole exact-height path exists to avoid.
-    //
-    // Uncapped, because this is the height the FIELD gets. Handing an NSTextField
-    // less room than its text needs and asking its field editor to scroll the
-    // difference is what produced the broken box: the editor scrolled to the
-    // caret, drew the tail of the text at the top of the frame with a half-clipped
-    // line above it, and left the rest of the frame empty. Give the field every
-    // line it needs and it never scrolls; the SwiftUI ScrollView around it does
-    // the clipping, at displayedQueryLines.
-    var queryLineCountRaw: Int {
+    var queryLineCount: Int {
         guard !state.query.isEmpty else { return 1 }
         let bounds = (state.query as NSString).boundingRect(
             with: CGSize(width: queryWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: queryFont])
-        return max(Int(ceil(bounds.height / queryLineHeight)), 1)
+        let lines = Int(ceil(bounds.height / queryLineHeight))
+        return min(max(lines, 1), Self.maxQueryLines)
     }
-
-    // What the window actually shows. Equal to the raw count until the box hits
-    // the half-way cap, so below the cap there is no scroll view to scroll.
-    var displayedQueryLines: Int { min(queryLineCountRaw, maxQueryLines) }
-
-    var queryFieldHeight: CGFloat { CGFloat(queryLineCountRaw) * queryLineHeight }
-    var queryViewportHeight: CGFloat { CGFloat(displayedQueryLines) * queryLineHeight }
 
     // One line is the metrics' own header height; every extra shown line adds
     // exactly its own height, so the breathing room above and below the text is
-    // the same whether the query is one line or fills the cap.
+    // the same whether the query is one line or six.
     var headerHeight: CGFloat {
-        state.metrics.headerHeight + CGFloat(displayedQueryLines - 1) * queryLineHeight
+        state.metrics.headerHeight + CGFloat(queryLineCount - 1) * queryLineHeight
     }
 
     // The launcher panel's EXACT height, mirroring launcherBody's layout 1:1 so
@@ -272,35 +249,24 @@ struct ContentView: View {
                     .font(.system(size: state.metrics.searchIconSize, weight: .medium))
                     .foregroundColor(Theme.subtext)
                     .frame(width: Self.searchIconColumn, height: queryLineHeight)
-                // The field always gets every line its text needs; the scroll view
-                // is what stops at the cap. Below the cap the two heights are
-                // equal, so there is nothing to scroll and nothing behaves
-                // differently from a one-line query.
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical, showsIndicators: false) {
-                        CustomTextField(
-                            text: $state.query,
-                            selectedIndex: $selectedIndex,
-                            itemCount: visible.count,
-                            placeholder: state.placeholderText,
-                            fontSize: state.metrics.searchFontSize,
-                            state: state,
-                            onSubmit: { action in select(action: action) },
-                            onRevealDown: { revealed = true },
-                            wraps: true
-                        )
-                        .frame(height: queryFieldHeight)
-                        .id(Self.queryAnchor)
-                    }
-                    .frame(height: queryViewportHeight)
-                    // Typing appends at the end, so past the cap the end is the
-                    // only part worth looking at. Without this you would be typing
-                    // into text you cannot see — the same complaint as the
-                    // sideways scrolling this replaced.
-                    .onChange(of: state.query) {
-                        proxy.scrollTo(Self.queryAnchor, anchor: .bottom)
-                    }
-                }
+                CustomTextField(
+                    text: $state.query,
+                    selectedIndex: $selectedIndex,
+                    itemCount: visible.count,
+                    placeholder: state.placeholderText,
+                    fontSize: state.metrics.searchFontSize,
+                    state: state,
+                    onSubmit: { action in select(action: action) },
+                    onRevealDown: { revealed = true },
+                    wraps: true
+                )
+                // NSViewRepresentable otherwise asks AppKit for an intrinsic width
+                // before the HStack has proposed one. A multiline NSTextField then
+                // computes itself at an effectively unbounded width/height and can
+                // make the whole panel balloon. Give it the header's remaining
+                // width and only the height we have already computed for it.
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(height: CGFloat(queryLineCount) * queryLineHeight, alignment: .topLeading)
             }
             .padding(.horizontal, Self.headerHPadding)
             .frame(height: headerHeight)
@@ -361,6 +327,9 @@ struct ContentView: View {
         // (its slot swaps with a match) — that still changes the height.
         .onChange(of: hasAnswer) { requestResize() }
         .onChange(of: state.requestID) { selectedIndex = 0; revealed = false; requestResize() }
+        // Seed the window with its arithmetic height before AppKit's first
+        // fitting-size pass installs the multiline field.
+        .onAppear { requestResize() }
     }
 
     func select(action: String) {

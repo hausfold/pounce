@@ -225,7 +225,10 @@ struct CustomTextField: NSViewRepresentable {
             tf.cell?.wraps = true
             tf.cell?.isScrollable = false
             tf.lineBreakMode = .byWordWrapping
-            tf.maximumNumberOfLines = 0
+            // Zero is unbounded: its intrinsic height escapes into SwiftUI's
+            // fitting-size pass and turns the palette into a tall blank panel.
+            // Match the launcher's explicit six-line frame instead.
+            tf.maximumNumberOfLines = ContentView.maxQueryLines
         }
 
         DispatchQueue.main.async {
@@ -240,6 +243,11 @@ struct CustomTextField: NSViewRepresentable {
         tf.placeholderString = placeholder
         if tf.font?.pointSize != fontSize {
             tf.font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
+        }
+        if wraps, tf.bounds.width > 0 {
+            // Use the width the header actually gave us when AppKit measures its
+            // intrinsic size; the first measurement otherwise has no wrap width.
+            tf.preferredMaxLayoutWidth = tf.bounds.width
         }
         context.coordinator.itemCount = itemCount
         context.coordinator.parent = self

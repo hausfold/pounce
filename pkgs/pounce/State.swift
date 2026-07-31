@@ -128,6 +128,7 @@ final class DaemonState: ObservableObject {
         query = ""
         answerQuery = ""
         answerItem = nil
+        pendingContentHeight = nil
         noticeVersion = nil
         noticeItem = nil
     }
