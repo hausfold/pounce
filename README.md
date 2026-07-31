@@ -63,7 +63,8 @@ from a terminal.
 Staying current is nudged, never automatic. The daemon checks for a new release
 hourly; while one is pending, *Update Pounce* is renamed with the new version
 and pinned to the palette's first row, and a notification repeats at most once
-a day. The nudge names your install's own command — Return installs it on a
+a day. `⌘⏎` on that row skips the version — the pin and the notification stop
+until the *next* release. The nudge names your install's own command — Return installs it on a
 Homebrew or drag install, while a Nix or nebelhaus-rice install is pointed at
 `haus update` / your flake, since those update through the store rather than in
 place. Applying it is always your keystroke. `"updates": { "check": false }` in

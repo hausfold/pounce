@@ -18,7 +18,11 @@ import FoundationNetworking
 //             frecency, and nobody runs the updater often enough to rank
 //             there — you'd have to already suspect an update to search for
 //             it. Pinned, the next ⌘Space shows it without interrupting
-//             anything, and it disappears the moment you're current.
+//             anything, and it disappears the moment you're current. ⌘⏎ on
+//             that row skips the version: the pin is the one thing here that
+//             takes over a row you didn't ask for, so it owes you a way out —
+//             and for the Nix cohorts ⏎ can't clear it by installing. Skipping
+//             is per-version, so the next release pins again.
 //   banner    a macOS notification on first discovery, then at most once a
 //             day while the update stays pending (see `renotify`) — enough to
 //             not be forgotten, rare enough not to be a nag.
@@ -98,7 +102,36 @@ final class UpdateNudge {
     // Newer-than-running version ("2026.07.30", no leading v), or nil. Main
     // thread only, like the registry it decorates.
     private(set) var availableVersion: String?
+    // The version the user waved off with ⌘⏎, persisted. Per-version on
+    // purpose: skipping 2026.07.30 says nothing about 2026.08.01.
+    private(set) var dismissedVersion: String?
     private var fetching = false
+
+    // Whether the palette should PIN the nudge to its first row. Pure so the
+    // suite can pin the one rule that matters: a dismissal must expire when a
+    // newer release lands, or "skip" silently becomes "never tell me again".
+    static func shouldPin(available: String?, dismissed: String?) -> Bool {
+        guard let available else { return false }
+        return available != dismissed
+    }
+
+    // The pending update worth interrupting the first row for.
+    var pendingVersion: String? {
+        Self.shouldPin(available: availableVersion, dismissed: dismissedVersion)
+            ? availableVersion : nil
+    }
+
+    // ⌘⏎ on the nudge: stop pinning and stop notifying for THIS version. The
+    // row keeps its rename, so searching "update" still tells you one is
+    // waiting — dismissal hides the interruption, not the fact.
+    func dismiss() {
+        guard let v = availableVersion else { return }
+        dismissedVersion = v
+        let prev = Self.readState()
+        Self.writeState(checkedAt: prev?.checkedAt ?? Date().timeIntervalSince1970,
+                        latest: prev?.latest ?? v, notified: prev?.notified,
+                        notifiedAt: prev?.notifiedAt, dismissed: v)
+    }
 
     static let endpoint = URL(string: "https://api.github.com/repos/nebelhaus/pounce/releases/latest")!
     // Hourly: the nudge should show up the day it's cut, not up to a day late.
@@ -198,22 +231,31 @@ final class UpdateNudge {
     private func apply(latest: String?, previous: State?, checkedAt: TimeInterval) {
         guard let latest else { return }
         let now = Date().timeIntervalSince1970
+        // Rehydrate the dismissal before deciding anything: a daemon restart
+        // must not resurrect a nudge the user already waved off.
+        dismissedVersion = previous?.dismissed
         guard Self.isNewer(latest, than: pounceVersion) else {
             // Up to date (or ahead — a rice user can run a build newer than the
             // last tagged release). Clear any stale nudge and remember the
             // answer so the next hour is a no-op.
             availableVersion = nil
             Self.writeState(checkedAt: checkedAt, latest: latest,
-                            notified: previous?.notified, notifiedAt: previous?.notifiedAt)
+                            notified: previous?.notified, notifiedAt: previous?.notifiedAt,
+                            dismissed: previous?.dismissed)
             return
         }
         availableVersion = latest
+        // A dismissal silences the banner too — waving the row away and then
+        // being notified about the same version tomorrow is the nag this whole
+        // design is trying not to be.
         let firstSighting = previous?.notified != latest
         let staleReminder = (previous?.notifiedAt).map { now - $0 >= Self.renotify } ?? true
-        let due = firstSighting || staleReminder
+        let due = Self.shouldPin(available: latest, dismissed: dismissedVersion)
+            && (firstSighting || staleReminder)
         if due { Self.postBanner(version: latest, kind: installKind) }
         Self.writeState(checkedAt: checkedAt, latest: latest, notified: latest,
-                        notifiedAt: due ? now : previous?.notifiedAt)
+                        notifiedAt: due ? now : previous?.notifiedAt,
+                        dismissed: previous?.dismissed)
     }
 
     private struct State {
@@ -221,6 +263,7 @@ final class UpdateNudge {
         let latest: String?
         let notified: String?
         let notifiedAt: TimeInterval?
+        let dismissed: String?
     }
 
     private static func readState() -> State? {
@@ -231,15 +274,18 @@ final class UpdateNudge {
         return State(checkedAt: checkedAt,
                      latest: obj["latest"] as? String,
                      notified: obj["notified"] as? String,
-                     notifiedAt: obj["notifiedAt"] as? TimeInterval)
+                     notifiedAt: obj["notifiedAt"] as? TimeInterval,
+                     dismissed: obj["dismissed"] as? String)
     }
 
     private static func writeState(checkedAt: TimeInterval, latest: String?,
-                                   notified: String?, notifiedAt: TimeInterval?) {
+                                   notified: String?, notifiedAt: TimeInterval?,
+                                   dismissed: String?) {
         var obj: [String: Any] = ["checkedAt": checkedAt]
         if let latest { obj["latest"] = latest }
         if let notified { obj["notified"] = notified }
         if let notifiedAt { obj["notifiedAt"] = notifiedAt }
+        if let dismissed { obj["dismissed"] = dismissed }
         guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
         try? FileManager.default.createDirectory(at: statePath.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)

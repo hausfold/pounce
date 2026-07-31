@@ -80,6 +80,21 @@ func runUpdateNudgeTests() -> Int {
     expect(InstallKind.rice.actionHint.contains("haus update"),
            "the rice cohort is told to run haus update")
 
+    // Dismissal ("Skip this version", ⌘⏎) is per-version. The rule that
+    // matters is that it EXPIRES: if a dismissal outlived its version, "skip"
+    // would quietly become "never nudge me again" and the next release would
+    // ship to a user who never hears about it.
+    func pins(_ available: String?, _ dismissed: String?, _ want: Bool, _ label: String) {
+        let got = UpdateNudge.shouldPin(available: available, dismissed: dismissed)
+        expect(got == want, "\(label): pin(available: \(available ?? "nil"), "
+                          + "dismissed: \(dismissed ?? "nil")) → \(got), want \(want)")
+    }
+    pins("2026.07.30", nil, true, "a fresh update pins")
+    pins("2026.07.30", "2026.07.30", false, "the dismissed version stays down")
+    pins("2026.07.31", "2026.07.30", true, "the NEXT release pins again")
+    pins("2026.07.30-1", "2026.07.30", true, "a same-day respin is its own version")
+    pins(nil, "2026.07.30", false, "nothing pending, nothing to pin")
+
     if failures == 0 { print("ok — all update-nudge tests passed") }
     return failures
 }
