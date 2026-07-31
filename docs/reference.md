@@ -42,9 +42,20 @@ does not have this problem.
 
 ## Updating
 
-Run **Update Pounce** from the palette — it runs `brew update && brew upgrade
-pounce && brew services restart pounce` in the background and notifies you when
-it's done. The command no-ops with a hint on non-Homebrew installs.
+Run **Update Pounce** from the palette to self-update in place. What it does
+depends on how Pounce was installed: a Homebrew build runs `brew update && brew
+upgrade pounce && brew services restart pounce`; a copy dragged to
+`/Applications` downloads the latest release, verifies its signature, and swaps
+the app in place (the Developer ID matches on both sides, so the Accessibility
+grant survives). A Nix or nebelhaus-rice install updates through the store
+instead, so the command no-ops there with a hint to run `haus update` or bump
+your flake input. Either way it runs in the background and reports via
+notifications.
+
+Staying current is nudged, never automatic: the daemon checks for a new release
+hourly, and while one is pending *Update Pounce* is renamed with the new version
+and pinned to the palette's first row (`⌘⏎` on that row skips the version). Set
+`"updates": { "check": false }` in `config.json` to turn the check off.
 
 ## Quick answers (inline calculator)
 
@@ -213,6 +224,9 @@ exceptions are the things the daemon has to *grab* at startup: `windows` and the
   },
   "quickAnswers": {
     "currency": false       // enable the currency engine (its only network call)
+  },
+  "updates": {
+    "check": true           // hourly check for a new release — nudge only, never auto-installs
   },
   "apps": {
     "demoteBundleIds": [],  // apps ranked lower in the launcher (bundle IDs)
