@@ -60,12 +60,14 @@ travel inside the app, and the *Update Pounce* command keeps a drag-install
 current from then on. `pounce autostart on|off|status` manages the login item
 from a terminal.
 
-Staying current is nudged, never automatic: the daemon checks the latest
-release once a day and — brew or drag-install alike — renames the *Update
-Pounce* row while one is pending, plus a single notification per new version.
-Applying it stays your keystroke. `"updates": { "check": false }` in
-`config.json` turns the check off (Nix-managed installs skip it automatically —
-their updates ride the flake).
+Staying current is nudged, never automatic. The daemon checks for a new release
+hourly; while one is pending, *Update Pounce* is renamed with the new version
+and pinned to the palette's first row, and a notification repeats at most once
+a day. The nudge names your install's own command — Return installs it on a
+Homebrew or drag install, while a Nix or nebelhaus-rice install is pointed at
+`haus update` / your flake, since those update through the store rather than in
+place. Applying it is always your keystroke. `"updates": { "check": false }` in
+`config.json` turns the check off.
 
 On Nix, take the flake input, or kick the tyres with
 `nix run github:nebelhaus/pounce -- --help`.

@@ -127,7 +127,15 @@ else
         APP="$cand"; break
     done
     if [ -z "$APP" ]; then
-        notify "Pounce is managed by Nix here — update it via your flake (bench ship / rebuild)."
+        # Keep this wording in step with InstallKind.actionHint (UpdateCheck.swift):
+        # the daemon's pinned nudge names the same command, and the rice cohort's
+        # is `haus update` — "bench ship / rebuild" is the workshop's own verb,
+        # not something an end user of the rice has ever run.
+        if [ -d "$HOME/.local/state/pounce" ]; then
+            notify "Pounce comes from the nebelhaus rice — run 'haus update' to pick up the new version."
+        else
+            notify "Pounce is managed by Nix here — update your pounce flake input to pick up the new version."
+        fi
         exit 0
     fi
     MODE=(direct "$APP")

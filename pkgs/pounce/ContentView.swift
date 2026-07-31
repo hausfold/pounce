@@ -49,7 +49,16 @@ struct ContentView: View {
             }
             base = scored.sorted { $0.1 > $1.1 }.map { $0.0 }
         }
-        let rows = grouped(base)
+        var rows = grouped(base)
+        // A pending update rides the launcher's first row until it's taken —
+        // pinned AFTER grouped() for the same reason the quick answer is:
+        // bucketing would otherwise drop it back among the commands. Empty
+        // query only; once you type, it competes on merit like any other row.
+        // Deduped, because frecency may already have ranked it into the prefix.
+        if queryIsEmpty, let notice = state.updateNoticeItem() {
+            rows.removeAll { $0.frecencyKey == notice.frecencyKey }
+            rows.insert(notice, at: 0)
+        }
         // Expression-shaped query? Pin its quick answer (inline calculator,
         // conversions, …) above the matches; ⏎ on it copies.
         if let answer = state.quickAnswerItem(for: trimmed) { return [answer] + rows }

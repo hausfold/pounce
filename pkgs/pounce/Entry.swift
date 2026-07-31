@@ -353,11 +353,15 @@ enum DaemonMode {
             }
         }
 
-        // Daily update nudge: same warm-on-a-timer shape as the rates. maxAge
-        // inside warm() makes the 6h cadence a re-check, not a re-fetch.
-        if settings.updates.check && !UpdateNudge.isNixManaged() {
+        // Update nudge: same warm-on-a-timer shape as the rates, but hourly —
+        // a release should surface the day it's cut, not up to a day later.
+        // maxAge inside warm() keeps that a re-check rather than a re-fetch,
+        // and the banner it may raise is separately rate-limited to daily.
+        // Every install kind is nudged (the copy names each one's own command,
+        // per InstallKind); only `updates.check` and dev builds opt out.
+        if settings.updates.check {
             UpdateNudge.shared.warm()
-            Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in
+            Timer.scheduledTimer(withTimeInterval: UpdateNudge.maxAge, repeats: true) { _ in
                 UpdateNudge.shared.warm()
             }
         }

@@ -48,6 +48,38 @@ func runUpdateNudgeTests() -> Int {
     notNewer("2026.07.30", "dev")
     notNewer("2026.07.30", "")
 
+    // Install cohorts. What this decides is the command the nudge tells the
+    // user to run, so a misread here sends someone to a command that does
+    // nothing for their install — the exact failure this enum exists to stop.
+    let home = "/Users/nib"
+    func kind(_ path: String, _ want: InstallKind, _ label: String) {
+        let got = InstallKind.detect(bundlePath: path, home: home)
+        expect(got == want, "\(label): \(path) → \(got), want \(want)")
+    }
+    kind("/opt/homebrew/Cellar/pounce/2026.07.30/Pounce.app", .homebrew, "brew keg (Apple Silicon)")
+    kind("/usr/local/Cellar/pounce/2026.07.30/Pounce.app", .homebrew, "brew keg (Intel prefix)")
+    kind("/Applications/Pounce.app", .direct, "drag install")
+    kind("\(home)/Applications/Pounce.app", .direct, "per-user drag install")
+    kind("/nix/store/abc123-pounce/Applications/Pounce.app", .nix, "bare store path")
+    kind("\(home)/.local/state/pounce/Pounce.app", .rice, "rice re-signed copy")
+    kind("/Users/nib/src/pounce/Pounce.app", .unknown, "a build tree is nobody's cohort")
+
+    // The rice publishes /Applications/Pounce.app as a symlink INTO the state
+    // dir; callers resolve before detecting (as update-pounce.sh's readlink -f
+    // does), so the resolved path must win — otherwise a rice user is told to
+    // press Return for an install the script will refuse.
+    kind("\(home)/.local/state/pounce/current/Pounce.app", .rice, "resolved rice symlink")
+
+    // Only the two cohorts that own their bytes may promise an install.
+    for k in [InstallKind.homebrew, .direct] {
+        expect(k.canSelfUpdate, "\(k) should self-update")
+    }
+    for k in [InstallKind.rice, .nix] {
+        expect(!k.canSelfUpdate, "\(k) must not promise an install")
+    }
+    expect(InstallKind.rice.actionHint.contains("haus update"),
+           "the rice cohort is told to run haus update")
+
     if failures == 0 { print("ok — all update-nudge tests passed") }
     return failures
 }

@@ -140,6 +140,18 @@ final class DaemonState: ObservableObject {
         return answerItem
     }
 
+    // A pending update, pinned as the launcher's first row on an empty query
+    // (ContentView.filtered). This hoists the EXISTING Update Pounce row rather
+    // than minting a new item, so ⏎ runs the same script through the same path
+    // and the row already carries UpdateNudge.decorate's rename + per-install
+    // hint. Without the pin the rename is close to invisible: an empty query
+    // shows the top `maxEmpty` rows by frecency, and the updater never ranks.
+    func updateNoticeItem() -> PounceItem? {
+        guard isLauncher, displayMode == .list, UpdateNudge.shared.availableVersion != nil
+        else { return nil }
+        return items.first { $0.frecencyKey == "cmd:update-pounce" }
+    }
+
     // Load the clipboard history view from the daemon's own store.
     func loadClipboard(placeholder: String?) {
         displayMode = .clipboard
