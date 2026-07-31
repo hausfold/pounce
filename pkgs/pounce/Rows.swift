@@ -242,7 +242,7 @@ struct CustomTextField: NSViewRepresentable {
             tf.cell?.wraps = true
             tf.cell?.isScrollable = false
             tf.lineBreakMode = .byWordWrapping
-            tf.maximumNumberOfLines = ContentView.maxQueryLines
+            tf.maximumNumberOfLines = 0
             if let pw = preferredWidth, pw > 0 {
                 tf.preferredMaxLayoutWidth = pw
             }
@@ -289,40 +289,27 @@ struct CustomTextField: NSViewRepresentable {
 
         func controlTextDidChange(_ n: Notification) {
             guard let tf = n.object as? NSTextField else { return }
-            // A single-line NSTextField takes a MULTI-LINE paste verbatim: the field
-            // renders the first line and the rest rides along invisibly. That is a
-            // trap for the generic picker — a command reads the chosen line as TSV,
-            // so an embedded newline silently truncates the value and a tab splits
-            // it into fields that were never meant to exist. Fold every run of
-            // newlines/tabs into one space as it lands, so pasting a paragraph, a
-            // stack trace, or a diff into a `pounce --chain` step hands the command
-            // the whole thing, on one line, exactly as the field shows it.
-            let folded = tf.stringValue.replacingOccurrences(
-                of: "[\\r\\n\\t]+", with: " ", options: .regularExpression)
-            if folded != tf.stringValue {
-                tf.stringValue = folded
-                // Rewriting stringValue collapses the selection to the start; a paste
-                // has to leave the caret after what you pasted, so put it back at the
-                // end. NSRange is UTF-16, hence NSString.length rather than .count.
-                tf.currentEditor()?.selectedRange =
-                    NSRange(location: (folded as NSString).length, length: 0)
-            }
-            parent.text = folded
+            parent.text = tf.stringValue
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
             let cols = max(1, parent.gridColumns)
             switch sel {
             case #selector(NSResponder.moveDown(_:)):
-                if itemCount == 0 {
+                if itemCount > 0 {
+                    if parent.selectedIndex + cols < itemCount { parent.selectedIndex += cols }
+                    return true
+                } else if parent.state.isLauncher && parent.state.metrics.hideEmptyList {
                     parent.onRevealDown()        // compact mode: ↓ reveals the list
-                } else if parent.selectedIndex + cols < itemCount {
-                    parent.selectedIndex += cols
+                    return true
                 }
-                return true
+                return false
             case #selector(NSResponder.moveUp(_:)):
-                if parent.selectedIndex - cols >= 0 { parent.selectedIndex -= cols }
-                return true
+                if itemCount > 0 {
+                    if parent.selectedIndex - cols >= 0 { parent.selectedIndex -= cols }
+                    return true
+                }
+                return false
             case #selector(NSResponder.moveRight(_:)) where cols > 1:
                 if parent.selectedIndex < itemCount - 1 { parent.selectedIndex += 1 }
                 return true
@@ -331,7 +318,10 @@ struct CustomTextField: NSViewRepresentable {
                 return true
             case #selector(NSResponder.insertNewline(_:)):
                 let flags = NSEvent.modifierFlags
-                if flags.contains(.command) { parent.onSubmit("cmd") }
+                if flags.contains(.shift) {
+                    textView.insertNewline(nil)
+                    return true
+                } else if flags.contains(.command) { parent.onSubmit("cmd") }
                 else if flags.contains(.option) { parent.onSubmit("opt") }
                 else if flags.contains(.control) { parent.onSubmit("ctrl") }
                 else { parent.onSubmit("enter") }
