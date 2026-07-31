@@ -185,6 +185,19 @@ struct KeyCap: View {
 
 // MARK: - CustomTextField
 
+final class PounceTextField: NSTextField {
+    var wrapsText: Bool = false
+    var calculatedHeight: CGFloat?
+
+    override var intrinsicContentSize: NSSize {
+        var size = super.intrinsicContentSize
+        if wrapsText, let h = calculatedHeight {
+            size.height = h
+        }
+        return size
+    }
+}
+
 struct CustomTextField: NSViewRepresentable {
     @Binding var text: String
     @Binding var selectedIndex: Int
@@ -202,9 +215,13 @@ struct CustomTextField: NSViewRepresentable {
     // filters — a field that wrapped in one of those would just clip its own
     // second line.
     var wraps: Bool = false
+    var calculatedHeight: CGFloat? = nil
+    var preferredWidth: CGFloat? = nil
 
     func makeNSView(context: Context) -> NSTextField {
-        let tf = NSTextField()
+        let tf = PounceTextField()
+        tf.wrapsText = wraps
+        tf.calculatedHeight = calculatedHeight
         tf.delegate = context.coordinator
         tf.font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
         tf.textColor = NSColor(Theme.text)
@@ -225,10 +242,10 @@ struct CustomTextField: NSViewRepresentable {
             tf.cell?.wraps = true
             tf.cell?.isScrollable = false
             tf.lineBreakMode = .byWordWrapping
-            // Zero is unbounded: its intrinsic height escapes into SwiftUI's
-            // fitting-size pass and turns the palette into a tall blank panel.
-            // Match the launcher's explicit six-line frame instead.
             tf.maximumNumberOfLines = ContentView.maxQueryLines
+            if let pw = preferredWidth, pw > 0 {
+                tf.preferredMaxLayoutWidth = pw
+            }
         }
 
         DispatchQueue.main.async {
@@ -239,15 +256,21 @@ struct CustomTextField: NSViewRepresentable {
     }
 
     func updateNSView(_ tf: NSTextField, context: Context) {
+        if let ptf = tf as? PounceTextField {
+            ptf.wrapsText = wraps
+            ptf.calculatedHeight = calculatedHeight
+        }
         if tf.stringValue != text { tf.stringValue = text }
         tf.placeholderString = placeholder
         if tf.font?.pointSize != fontSize {
             tf.font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
         }
-        if wraps, tf.bounds.width > 0 {
-            // Use the width the header actually gave us when AppKit measures its
-            // intrinsic size; the first measurement otherwise has no wrap width.
-            tf.preferredMaxLayoutWidth = tf.bounds.width
+        if wraps {
+            if let pw = preferredWidth, pw > 0 {
+                tf.preferredMaxLayoutWidth = pw
+            } else if tf.bounds.width > 0 {
+                tf.preferredMaxLayoutWidth = tf.bounds.width
+            }
         }
         context.coordinator.itemCount = itemCount
         context.coordinator.parent = self

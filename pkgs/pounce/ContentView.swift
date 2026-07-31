@@ -258,7 +258,9 @@ struct ContentView: View {
                     state: state,
                     onSubmit: { action in select(action: action) },
                     onRevealDown: { revealed = true },
-                    wraps: true
+                    wraps: true,
+                    calculatedHeight: CGFloat(queryLineCount) * queryLineHeight,
+                    preferredWidth: queryWidth
                 )
                 // NSViewRepresentable otherwise asks AppKit for an intrinsic width
                 // before the HStack has proposed one. A multiline NSTextField then

@@ -200,8 +200,9 @@ final class PounceUI {
             // resizeToFit snaps it down — the flash you see going from a big
             // window (clipboard) back to the empty launcher bar.
             hosting.layoutSubtreeIfNeeded()
-            let size = hosting.fittingSize
-            let target = NSSize(width: state.targetWidth, height: size.height)
+            let height = state.pendingContentHeight ?? hosting.fittingSize.height
+            state.pendingContentHeight = nil
+            let target = NSSize(width: state.targetWidth, height: height)
             window.setContentSize(target)
             positionFresh(size: target)
             hosting.frame = window.contentView?.bounds ?? .zero
