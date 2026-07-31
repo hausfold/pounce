@@ -86,6 +86,8 @@ final class DaemonState: ObservableObject {
     // this is read — re-evaluates on every render, not just on keystrokes.
     private var answerQuery = ""
     private var answerItem: PounceItem?
+    private var noticeVersion: String?
+    private var noticeItem: PounceItem?
 
     var onCommit: ((Commit) -> Void)?
     var onResize: (() -> Void)?       // content height changed; window should refit
@@ -126,6 +128,8 @@ final class DaemonState: ObservableObject {
         query = ""
         answerQuery = ""
         answerItem = nil
+        noticeVersion = nil
+        noticeItem = nil
     }
 
     // The quick answer pinned above the launcher's results, if the query is
@@ -138,6 +142,44 @@ final class DaemonState: ObservableObject {
             answerItem = QuickAnswerHub.answer(for: query).map(PounceItem.answer)
         }
         return answerItem
+    }
+
+    // A pending update, pinned as the launcher's first row on an empty query
+    // (ContentView.filtered). This hoists the EXISTING Update Pounce row rather
+    // than minting a new item, so ⏎ runs the same script through the same path
+    // and the row already carries UpdateNudge.decorate's rename + per-install
+    // hint. Without the pin the rename is close to invisible: an empty query
+    // shows the top `maxEmpty` rows by frecency, and the updater never ranks.
+    // Cached like the quick answer, and for the same reason: `filtered`
+    // recomputes on every render, and PounceItem mints a fresh UUID per
+    // instance — rebuilding here would hand SwiftUI a new identity each pass
+    // and thrash the row. Cleared in reset(), so each summon rebuilds it once
+    // against that summon's registry.
+    func updateNoticeItem() -> PounceItem? {
+        guard isLauncher, displayMode == .list,
+              let version = UpdateNudge.shared.pendingVersion
+        else { return nil }
+        if noticeVersion != version {
+            noticeVersion = version
+            let source = items.first { $0.frecencyKey == "cmd:update-pounce" }
+            noticeItem = source.map { row in
+                // Same payload/kind, so ⏎ still runs the script through the
+                // usual path — only the advertised actions change. ⌘⏎ is the
+                // way out for anyone who can't clear it with a keystroke (the
+                // Nix cohorts update through the store, not from here).
+                let kind = UpdateNudge.shared.installKind
+                return PounceItem(
+                    raw: row.raw, title: row.title, searchAlias: row.searchAlias,
+                    subtitle: row.subtitle, icon: row.icon,
+                    actions: [ItemAction(key: "enter",
+                                         label: kind.canSelfUpdate ? "Install now" : "Show how"),
+                              ItemAction(key: "cmd", label: "Skip this version")],
+                    kind: row.kind, payload: row.payload, frecencyKey: row.frecencyKey,
+                    baseBoost: row.baseBoost, group: row.group, submenu: row.submenu)
+            }
+            noticeItem?.userAlias = source?.userAlias
+        }
+        return noticeItem
     }
 
     // Load the clipboard history view from the daemon's own store.
@@ -357,6 +399,18 @@ final class DaemonState: ObservableObject {
         // A quick answer copies to the clipboard — no frecency (it's derived
         // from the query, its rank is fixed) and no client round-trip.
         if item.kind == .answer { commitAnswer(item); return }
+        // ⌘⏎ on the update nudge waves it off until the NEXT release, instead
+        // of running the updater. The pin is the only thing that takes over a
+        // row you didn't ask for, so it owes you a way out — especially for
+        // the Nix cohorts, where ⏎ can't clear it by installing.
+        if action == "cmd", item.frecencyKey == "cmd:update-pounce",
+           UpdateNudge.shared.availableVersion != nil {
+            UpdateNudge.shared.dismiss()
+            noticeVersion = nil
+            noticeItem = nil
+            cancel()
+            return
+        }
         frecency.record(item.frecencyKey)
         // For a two-step command, seed the loading header with its name + icon so
         // it matches the step-2 header (which arrives with the same -p / -i).

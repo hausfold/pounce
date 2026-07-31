@@ -41,6 +41,7 @@ mkdir -p Pounce.app/Contents/MacOS Pounce.app/Contents/Resources
   -framework Carbon \
   -framework CoreBluetooth \
   -framework CoreServices \
+  -framework ServiceManagement \
   -O
 
 cp Info.plist Pounce.app/Contents/
@@ -49,3 +50,66 @@ cp Info.plist Pounce.app/Contents/
 
 # Bundle the emoji dataset (read at runtime via Bundle.main).
 cp emoji.json Pounce.app/Contents/Resources/
+
+# The self-registered login agent (SMAppService — see LoginItem.swift). It MUST
+# live at Contents/Library/LaunchAgents/<name>.plist inside the bundle; that
+# path is the SMAppService.agent contract, and the name must match
+# Autostart.plistName. BundleProgram is bundle-relative (launchd resolves it),
+# and ProgramArguments supplies argv so the login launch is a plain
+# `pounce --daemon` — the same invocation every packager uses. KeepAlive only
+# resurrects crashes: the single-instance guard's clean exit(0) (e.g. brew
+# services already owns the socket) must not throttle-loop launchd.
+mkdir -p Pounce.app/Contents/Library/LaunchAgents
+cat > Pounce.app/Contents/Library/LaunchAgents/com.local.pounce.daemon.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.local.pounce.daemon</string>
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/pounce</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>pounce</string>
+        <string>--daemon</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>AssociatedBundleIdentifiers</key>
+    <string>com.local.pounce</string>
+</dict>
+</plist>
+EOF
+
+# Bundle the built-in command library INSIDE the app, so a Pounce.app that was
+# simply dragged to /Applications still ships Emoji, Clipboard, Find Files and
+# friends. Without this, discovery falls back to `<prefix>/share/pounce/commands`
+# relative to the executable (CommandRegistry.defaultBuiltinDir) — which resolves
+# to /Applications/share/pounce/commands for a drag install, doesn't exist, and
+# leaves the palette listing apps and NOTHING else. Apps still scan (AppScanner
+# needs no environment), so the failure reads as a broken app rather than a
+# missing install step. This copy is the last-resort fallback only: a packager
+# that places the commands itself still wins, because POUNCE_BUILTIN_DIR (the Nix
+# rice) and the keg's share dir (Homebrew) are both checked first.
+#
+# Optional on purpose: the Nix derivation sets `src = ./.` (pkgs/pounce alone),
+# so ../pounce-commands is outside its sandbox. Nothing is lost there — that path
+# exports POUNCE_BUILTIN_DIR and never reaches this fallback. Override the
+# location with POUNCE_COMMANDS_DIR.
+COMMANDS_DIR="${POUNCE_COMMANDS_DIR:-../pounce-commands/commands}"
+if [ -d "$COMMANDS_DIR" ]; then
+  mkdir -p Pounce.app/Contents/Resources/commands
+  cp "$COMMANDS_DIR"/*.sh Pounce.app/Contents/Resources/commands/
+  chmod +x Pounce.app/Contents/Resources/commands/*.sh
+  echo "build.sh: bundled $(find "$COMMANDS_DIR" -name '*.sh' | wc -l | tr -d ' ') built-in commands into the app"
+else
+  echo "build.sh: no command library at $COMMANDS_DIR — skipping the in-bundle copy (the packager supplies them)"
+fi

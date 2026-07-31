@@ -6,6 +6,28 @@ enum SocketConfig {
     static let dir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".local/share/pounce").path
     static let path = dir + "/pounce.sock"
+
+    // True iff a live daemon owns the socket. A stale socket FILE left by a
+    // crashed daemon fails connect() (ECONNREFUSED), so connecting — not the
+    // file's existence — is the truth test. Used by the daemon's single-instance
+    // guard and the Finder-launch path (LoginItem.swift), both of which need
+    // "is pounce already running?" answered without a subprocess.
+    static func daemonAlive() -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+            path.withCString { cstr in
+                _ = memcpy(ptr, cstr, min(strlen(cstr) + 1, MemoryLayout.size(ofValue: ptr.pointee)))
+            }
+        }
+        let addrLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+        return withUnsafePointer(to: &addr, { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, addrLen) }
+        }) == 0
+    }
 }
 
 // MARK: - Settings & Layout
@@ -114,6 +136,12 @@ struct QuickAnswerSettings {
     var currency: Bool = true
 }
 
+// The daily release check (UpdateCheck.swift). `check: false` makes pounce
+// fully silent on the network once quickAnswers.currency is off too.
+struct UpdateSettings {
+    var check: Bool = true
+}
+
 // Find Files tuning. A safe, read-only feature (local Spotlight index only, no
 // network), so it's on by default. `homeOnly` scopes the search to the user's
 // home directory — the sane default for "find my file"; set false to search the
@@ -169,6 +197,10 @@ struct Settings {
     var hotkey = HotKeyConfig()
     var windows = WindowSwitcherSettings()
     var quickAnswers = QuickAnswerSettings()
+    // Daily latest-release check that nudges (palette row + one notification)
+    // but never applies — see UpdateCheck.swift. Default on; independently
+    // self-disabled on Nix-managed installs, whose updates ride the flake.
+    var updates = UpdateSettings()
     var fileSearch = FileSearchSettings()
     // Per-item overrides (enable / alias / hotkey), keyed by stable item key.
     // See ItemSettings.swift. Empty by default: an untouched config behaves
@@ -237,6 +269,9 @@ struct Settings {
         }
         if let qa = obj["quickAnswers"] as? [String: Any] {
             if let c = qa["currency"] as? Bool { s.quickAnswers.currency = c }
+        }
+        if let up = obj["updates"] as? [String: Any] {
+            if let c = up["check"] as? Bool { s.updates.check = c }
         }
         if let fs = obj["fileSearch"] as? [String: Any] {
             if let e = fs["enabled"] as? Bool { s.fileSearch.enabled = e }

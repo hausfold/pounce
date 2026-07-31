@@ -60,6 +60,12 @@ enum Main {
       --daemon                  run the resident daemon (launchd uses this; also
                                 hosts the MRU window switcher when config.json
                                 sets windows.enabled — see the README)
+      autostart on|off|status   start the daemon at login via a self-registered
+                                login item (System Settings → Login Items).
+                                For drag-installs of Pounce.app; Homebrew users
+                                use `brew services`, the nebelhaus rice wires
+                                its own agent. Double-clicking Pounce.app
+                                registers this automatically.
       --copy-file <path>        copy a file to the clipboard and exit
       --request-accessibility   prompt for the Accessibility (TCC) grant
       --check-accessibility     print true/false for the grant
@@ -117,17 +123,22 @@ enum Main {
             // One-shot bootstrap: fire the system Bluetooth prompt (see
             // BluetoothGrant.swift for why blueutil can't do this itself).
             BluetoothGrant.request()
+        } else if args.count >= 2 && args[1] == "autostart" {
+            // Positional like `focus`/`doctor` (see those branches for why).
+            // Manages the self-registered login item — the drag-install
+            // counterpart of `brew services start pounce` (LoginItem.swift).
+            Autostart.run(op: args.count >= 3 ? args[2] : nil)
         } else if args.contains("--daemon") {
-            // Homebrew and the rice both run the executable inside Pounce.app
-            // directly rather than opening the bundle through Launch Services.
-            // Register it explicitly so Background Items can resolve the
-            // launch-agent AssociatedBundleIdentifiers entry to "Pounce"
-            // instead of falling back to the Developer ID certificate owner.
-            let status = LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
-            if status != noErr {
-                NSLog("pounce: Launch Services registration failed (status \(status))")
-            }
             DaemonMode.run()
+        } else if args.count == 1 && getppid() == 1 {
+            // No arguments AND launchd is the parent: this is Launch Services
+            // starting the app — a Finder double-click, `open Pounce.app`, or a
+            // login item — not a CLI use (a terminal invocation's parent is the
+            // shell, pipes included, and every packager's agent passes
+            // --daemon). Without this branch a double-click of the downloaded
+            // app fell into ClientMode: an empty stdin picker, the worst
+            // possible first run. See LoginItem.swift for the flow.
+            AppLaunchMode.run()
         } else {
             ClientMode.run()
         }
@@ -288,6 +299,28 @@ enum DaemonMode {
     }
 
     static func run() {
+        // Single-instance guard. Two supervisors can legitimately race for the
+        // daemon — brew services and the self-registered login item, or launchd's
+        // copy arriving while AppLaunchMode's in-process fallback is booting —
+        // and startSocketServer would otherwise silently STEAL the socket from
+        // the incumbent, leaving two daemons fighting over one hotkey. The loser
+        // exits 0 on purpose: the login agent's KeepAlive only restarts on
+        // non-zero exits, so a clean "already running" never spins launchd.
+        if SocketConfig.daemonAlive() {
+            NSLog("pounce daemon: another daemon already owns \(SocketConfig.path) — exiting")
+            exit(0)
+        }
+
+        // Homebrew and the rice run the executable inside Pounce.app directly
+        // rather than opening the bundle through Launch Services. Register it
+        // explicitly so Background Items can resolve the launch-agent
+        // AssociatedBundleIdentifiers entry to "Pounce" instead of falling back
+        // to the Developer ID certificate owner.
+        let lsStatus = LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
+        if lsStatus != noErr {
+            NSLog("pounce: Launch Services registration failed (status \(lsStatus))")
+        }
+
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
@@ -320,6 +353,19 @@ enum DaemonMode {
             }
         }
 
+        // Update nudge: same warm-on-a-timer shape as the rates, but hourly —
+        // a release should surface the day it's cut, not up to a day later.
+        // maxAge inside warm() keeps that a re-check rather than a re-fetch,
+        // and the banner it may raise is separately rate-limited to daily.
+        // Every install kind is nudged (the copy names each one's own command,
+        // per InstallKind); only `updates.check` and dev builds opt out.
+        if settings.updates.check {
+            UpdateNudge.shared.warm()
+            Timer.scheduledTimer(withTimeInterval: UpdateNudge.maxAge, repeats: true) { _ in
+                UpdateNudge.shared.warm()
+            }
+        }
+
         // The in-process launcher: what ⌘Space triggers. No shell, no client, no
         // socket — build the launcher from the cached registry + warm app list and
         // present the already-built window straight away. Toggling: a second press
@@ -341,7 +387,11 @@ enum DaemonMode {
             state.reset()
             state.metrics = settings.metrics
             registry.refresh()
-            let lines = registry.entries.map { $0.registryLine }
+            // A pending update renames the Update Pounce row in place (see
+            // UpdateCheck.swift) — the nudge lives exactly where the fix is.
+            let lines = registry.entries.map {
+                (UpdateNudge.shared.decorate($0) ?? $0).registryLine
+            }
             state.load(lines: lines, placeholder: "Search apps & actions...",
                        icon: "magnifyingglass", launcher: true, maxEmpty: 7)
             let tBuild = DispatchTime.now()   // registry + app scan + frecency + sort
@@ -860,12 +910,15 @@ enum ClientMode {
         return inv
     }
 
-    static func run() {
+    // `override` bypasses argv parsing for callers that aren't a CLI parse —
+    // today only AppLaunchMode (LoginItem.swift), which summons the launcher
+    // from a Finder double-click where argv carries nothing.
+    static func run(_ override: Invocation? = nil) {
         var stdinLines: [String] = []
         if isatty(FileHandle.standardInput.fileDescriptor) == 0 {
             while let line = readLine() { stdinLines.append(line) }
         }
-        let inv = parseArgs()
+        let inv = override ?? parseArgs()
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { runDirect(lines: stdinLines, inv: inv); return }

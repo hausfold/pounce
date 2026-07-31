@@ -134,18 +134,30 @@ final class CommandRegistry {
     // bundle executable (<prefix>/Pounce.app/Contents/MacOS/pounce), so the
     // keg's share dir is four components up; a plain `<prefix>/bin/pounce`
     // layout is one deletion shallower — try both, return the first that exists.
+    //
+    // Last resort: the copy build.sh bakes into the app bundle itself
+    // (Contents/Resources/commands). That is what keeps a Pounce.app dragged
+    // straight to /Applications from a release download working: there is no
+    // keg and no launch agent to export anything, so without the in-bundle copy
+    // the palette would list apps and zero built-ins. Deliberately LAST so any
+    // packager-managed dir (which the user may have patched) shadows it.
     private static func defaultBuiltinDir() -> String? {
-        guard let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return nil }
-        let candidates = [
-            exe.deletingLastPathComponent()   // …/Contents/MacOS
-               .deletingLastPathComponent()   // …/Contents
-               .deletingLastPathComponent()   // …/Pounce.app
-               .deletingLastPathComponent()   // <prefix>
-               .appendingPathComponent("share/pounce/commands"),
-            exe.deletingLastPathComponent()   // …/bin
-               .deletingLastPathComponent()   // <prefix>
-               .appendingPathComponent("share/pounce/commands"),
-        ]
+        var candidates: [URL] = []
+        if let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() {
+            candidates = [
+                exe.deletingLastPathComponent()   // …/Contents/MacOS
+                   .deletingLastPathComponent()   // …/Contents
+                   .deletingLastPathComponent()   // …/Pounce.app
+                   .deletingLastPathComponent()   // <prefix>
+                   .appendingPathComponent("share/pounce/commands"),
+                exe.deletingLastPathComponent()   // …/bin
+                   .deletingLastPathComponent()   // <prefix>
+                   .appendingPathComponent("share/pounce/commands"),
+            ]
+        }
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("commands") {
+            candidates.append(bundled)
+        }
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }?.path
     }
 

@@ -54,6 +54,7 @@ if failures == 0 { print("ok — all Frecency ranking tests passed") }
 failures += runQuickAnswerTests()
 failures += runItemSettingsTests()
 failures += runCommandRegistryTests()
+failures += runUpdateNudgeTests()
 
 if failures == 0 {
     exit(0)
