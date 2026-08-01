@@ -10,12 +10,19 @@ struct EmojiView: View {
     var filtered: [EmojiEntry] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            // Empty query: most-used first (frecency), stable dataset order otherwise.
-            return state.emojiEntries.enumerated().sorted { a, b in
-                let fa = state.emojiFrecency(a.element.c)
-                let fb = state.emojiFrecency(b.element.c)
-                return fa != fb ? fa > fb : a.offset < b.offset
-            }.map { $0.element }
+            // Empty query: most-used first (frecency), stable dataset order
+            // otherwise. Symbols are hidden here until you've actually used one
+            // — the browse grid stays the emoji grid it has always been, and a
+            // symbol earns its place in it by frecency exactly like an emoji
+            // does. Typing surfaces the whole corpus (see the scored branch).
+            var browse: [(entry: EmojiEntry, order: Int, frec: Double)] = []
+            for (i, e) in state.emojiEntries.enumerated() {
+                let frec = state.emojiFrecency(e.c)
+                guard e.kind == .emoji || frec > 0 else { continue }
+                browse.append((e, i, frec))
+            }
+            browse.sort { a, b in a.frec != b.frec ? a.frec > b.frec : a.order < b.order }
+            return browse.map { $0.entry }
         }
         let q = Array(trimmed.lowercased())
         let scored = state.emojiEntries.compactMap { e -> (EmojiEntry, Double)? in
@@ -57,8 +64,13 @@ struct EmojiView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 4) {
                         ForEach(Array(filtered.enumerated()), id: \.element.id) { i, e in
+                            // Color emoji carry their own ink; a monochrome
+                            // symbol drawn at the same size next to them reads
+                            // as thin and unaligned, so it gets its own metrics
+                            // and the theme's text color.
                             Text(e.c)
-                                .font(.system(size: 26))
+                                .font(.system(size: e.kind == .emoji ? 26 : 22))
+                                .foregroundColor(e.kind == .emoji ? .primary : Theme.text)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: EmojiLayout.cellHeight)
                                 .background(
@@ -81,11 +93,18 @@ struct EmojiView: View {
 
             HStack(spacing: 10) {
                 if let e = selected {
-                    Text(e.c).font(.system(size: 18))
+                    Text(e.c)
+                        .font(.system(size: 18))
+                        .foregroundColor(e.kind == .emoji ? .primary : Theme.text)
                     Text(e.name)
                         .foregroundColor(Theme.subtext)
                         .font(.system(size: 12))
                         .lineLimit(1)
+                    if e.kind == .symbol {
+                        Text(e.codepoints)
+                            .foregroundColor(Theme.subtext0)
+                            .font(.system(size: 11, design: .monospaced))
+                    }
                 } else {
                     Text("No match").foregroundColor(Theme.subtext0).font(.system(size: 12))
                 }

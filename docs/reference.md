@@ -65,6 +65,36 @@ Central Bank reference rates in the background (pounce's only network call) and
 answers from an in-memory cache, so a keystroke never blocks on I/O. It's **off
 by default** — enable with `"quickAnswers": { "currency": true }`.
 
+## The emoji picker (emoji + symbols)
+
+`mode:emoji` opens one grid over two datasets: the emoji set, and a curated set
+of plain-text Unicode **symbols** — the mac modifier keys, arrows, math,
+typography, currency, box drawing.
+
+| you type | you get |
+|----------|---------|
+| `command` | ⌘ &nbsp;(also `option` ⌥, `shift` ⇧, `control` ⌃, `escape` ⎋, `delete` ⌫, `tab` ⇥) |
+| `arrow` | ← → ⇐ ⇒ ⟶ ⇄ ↻ … alongside the emoji arrows |
+| `em dash` | — &nbsp;(and `ellipsis` …, `bullet` •, `interrobang` ‽) |
+| `not equal` | ≠ &nbsp;(and `approximately` ≈, `infinity` ∞, `sum` ∑, `degree` °) |
+| `sparkline` | ▁▂▃▄▅▆▇█ |
+
+They're **ordinary characters**, not icon-font glyphs — ⌘ is `U+2318`, so it
+pastes into Slack, a browser, or a commit message and survives. (SF Symbols
+would be private-use glyphs that render as tofu outside Apple apps; that's why
+this is a codepoint dataset. SF Symbols stay what they are elsewhere in pounce:
+the `icon =` for a command's row.) The footer shows the selected symbol's
+codepoint.
+
+One picker, not two, because the point is *not* having to know which set holds
+the thing you want — you type the word and it's there. The mode is still named
+`emoji`, so `mode:emoji` / `cmd:emoji` keys and hotkeys are unchanged.
+
+With an empty query the grid is the emoji browse grid it has always been;
+symbols appear there once you've used one, floated in by the same frecency that
+ranks emoji. ⏎ copies (and auto-pastes, with `clipboard.autoPaste` and the
+Accessibility grant) exactly like emoji.
+
 ## Writing a command
 
 A command is one self-describing shell script. The metadata lives in a
