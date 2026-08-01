@@ -79,6 +79,19 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   outbound network calls — a third needs the same gate-plus-cache treatment and
   a docs update).
   Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer_tests.swift`.
+- **New picker glyph (emoji/symbol)**: the emoji grid is ONE mode over two
+  datasets — `emoji.json` (vendored emoji, filtered at load to what Apple Color
+  Emoji actually draws on this OS) and `symbols.json` (hand-curated plain-text
+  symbols: ⌘ ⌥ ⇧, arrows, math, typography, box drawing). Add to `symbols.json`,
+  never a new mode: the whole point is that you type "command" without first
+  deciding which set owns ⌘. A symbol must be an **ordinary character** with no
+  emoji-presentation variant — SF Symbols are private-use glyphs and paste as
+  tofu outside Apple apps, so they stay a *row icon* thing (`icon =`), never a
+  picker entry. Symbols deliberately skip the emoji-font filter (`renders` in
+  `Emoji.swift` would reject every one). `tests/symbols_tests.swift` guards
+  dupes / cross-file collisions / lowercased search text; the emoji-font-claims
+  check needs CoreText and is authoring-time only. The mode key stays `emoji`
+  (`ItemSettings.modes`) — renaming it would break users' `mode:emoji` hotkeys.
 - **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
   enable / alias / hotkey for anything the palette can address, keyed by the item's
   **frecency key** — `cmd:<id>`, `app:<path>`, plus `mode:<name>` for the built-in

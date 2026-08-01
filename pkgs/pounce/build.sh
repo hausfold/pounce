@@ -48,8 +48,10 @@ cp Info.plist Pounce.app/Contents/
 /usr/bin/plutil -replace CFBundleShortVersionString -string "$VERSION" Pounce.app/Contents/Info.plist
 /usr/bin/plutil -replace CFBundleVersion -string "$VERSION" Pounce.app/Contents/Info.plist
 
-# Bundle the emoji dataset (read at runtime via Bundle.main).
-cp emoji.json Pounce.app/Contents/Resources/
+# Bundle the picker datasets (read at runtime via Bundle.main). Both feed the
+# one emoji-mode grid: emoji.json is the vendored emoji superset, symbols.json
+# the curated plain-text symbols (⌘ ⌥ ⇧, arrows, math, box drawing).
+cp emoji.json symbols.json Pounce.app/Contents/Resources/
 
 # The self-registered login agent (SMAppService — see LoginItem.swift). It MUST
 # live at Contents/Library/LaunchAgents/<name>.plist inside the bundle; that

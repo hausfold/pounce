@@ -30,5 +30,5 @@ echo 'let pounceVersion = "dev"' > "$scratch/version_stub.swift"
   Currency.swift ItemSettings.swift CommandRegistry.swift UpdateCheck.swift \
   "$scratch/version_stub.swift" \
   tests/main.swift tests/quickanswer_tests.swift tests/itemsettings_tests.swift \
-  tests/commandregistry_tests.swift tests/update_tests.swift
+  tests/commandregistry_tests.swift tests/update_tests.swift tests/symbols_tests.swift
 "$bin"

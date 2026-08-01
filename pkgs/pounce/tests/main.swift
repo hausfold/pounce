@@ -55,6 +55,7 @@ failures += runQuickAnswerTests()
 failures += runItemSettingsTests()
 failures += runCommandRegistryTests()
 failures += runUpdateNudgeTests()
+failures += runSymbolsTests()
 
 if failures == 0 {
     exit(0)
