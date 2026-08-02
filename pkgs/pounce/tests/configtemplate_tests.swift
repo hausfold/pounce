@@ -9,8 +9,8 @@
 //
 // ConfigSpec's real table isn't reachable from here (it reads `Settings`, which
 // pulls in AppKit and can't join this Foundation-only suite). It gets the same
-// check at runtime instead: `ConfigSpec.render` strips and parses its own output
-// before `pounce config init` writes anything.
+// check at runtime instead: `ConfigSpec.render` parses its own output before
+// `pounce config init` writes anything.
 //
 // Named with a _tests suffix (see tests/run.sh) so it can't collide with
 // ConfigTemplate.swift on a case-insensitive filesystem.
@@ -49,7 +49,9 @@ func runConfigTemplateTests() -> Int {
     let text = ConfigTemplate.render(fixture, version: "test")
 
     func parse(_ s: String) -> [String: Any]? {
-        try? JSONSerialization.jsonObject(with: Data(JSONC.strip(s).utf8)) as? [String: Any]
+        // `.json5Allowed`, exactly as Settings.load() reads a real config.
+        try? JSONSerialization.jsonObject(with: Data(s.utf8), options: [.json5Allowed])
+            as? [String: Any]
     }
 
     // MARK: as shipped
@@ -104,7 +106,7 @@ func runConfigTemplateTests() -> Int {
     check(clip?["enabled"] as? Bool == true && clip?["maxEntries"] as? Int == 200,
           "uncommenting TWO siblings needs no comma fixups — the commas are already there")
 
-    // The last line before a `}` is the orphan-comma case JSONC.strip forgives.
+    // The last line before a `}` is the orphan-comma case JSON5 forgives.
     let last = parse(uncomment(text, ["theme"]))
     check(last != nil && last?.keys.contains("theme") == true,
           "uncommenting the last setting in a section leaves a trailing comma that's forgiven")

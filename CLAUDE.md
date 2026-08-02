@@ -101,8 +101,9 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   read it off a live `Settings()` (`json(s.clipboard.maxEntries)`), so a documented
   default can't drift from the real one. Prose in the spec is user-facing; the
   comments on the structs are maintainer-facing — neither should try to be the
-  other. `config.json` is parsed through `JSONC.swift` (comments + trailing commas),
-  which is what lets the file people READ be the file pounce reads.
+  other. `config.json` is parsed with `.json5Allowed` (comments + trailing commas —
+  Foundation's own flag, not a hand-rolled stripper), which is what lets the file
+  people READ be the file pounce reads.
 - **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
   enable / alias / hotkey for anything the palette can address, keyed by the item's
   **frecency key** — `cmd:<id>`, `app:<path>`, plus `mode:<name>` for the built-in

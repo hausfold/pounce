@@ -9,24 +9,24 @@
 // you had to know a setting existed before you could look it up.
 //
 // THREE THINGS ABOUT JSON MAKE THIS FIDDLIER THAN THE NIX VERSION, and all three
-// are why JSONC.swift exists next door:
+// are why `Settings.load()` parses with `.json5Allowed`:
 //
-//   1. JSON has no comments. Without the stripper, the annotated file could not
-//      be the file pounce reads, and you'd be copying lines between two files.
+//   1. JSON has no comments. Without them the annotated file could not be the
+//      file pounce reads, and you'd be copying lines between two files.
 //   2. Section objects have to be REAL, not commented, or uncommenting a leaf
 //      inside them does nothing. So `"clipboard": { }` is written out empty and
 //      its children are the commented lines — an empty object overrides nothing,
 //      which is exactly the inert default we want.
 //   3. Every commented line carries its OWN trailing comma. Uncomment any
-//      subset and the commas are already right; the last one before a `}` is an
-//      orphan, which is precisely the case JSONC.strip forgives. Without that,
-//      uncommenting two lines in a section would produce invalid JSON and the
-//      whole promise of the file would be a lie on the second edit.
+//      subset and the commas are already right; the last one before a `}` is
+//      then an orphan, which strict JSON rejects and JSON5 forgives. Without
+//      that, uncommenting two lines in a section would produce invalid JSON and
+//      the whole promise of the file would be a lie on the second edit.
 //
 // Foundation-only (no AppKit, no Settings): the table that knows pounce's actual
 // settings is ConfigSpec.swift, and it hands this a plain description. That split
-// is what lets tests/run.sh compile the renderer and prove its output survives
-// JSONC.strip + JSONSerialization.
+// is what lets tests/run.sh compile the renderer and prove its output parses,
+// both as shipped and once uncommented.
 
 import Foundation
 
@@ -115,7 +115,7 @@ enum ConfigTemplate {
             "// space after the slashes. Prose is indented one column further, so nothing you",
             "// can't act on ever looks like something you can.",
             "//",
-            "// Comments and trailing commas are fine here: pounce strips both before parsing,",
+            "// Comments and trailing commas are both fine here (pounce parses this as JSON5),",
             "// which is what lets you uncomment any subset of lines without fixing up commas",
             "// by hand. Unknown keys are ignored, so a newer pounce never chokes on this file",
             "// and an older one never chokes on a newer one.",

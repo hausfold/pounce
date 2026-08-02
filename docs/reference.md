@@ -73,8 +73,10 @@ an ordinary search. Hit ⏎ to copy the result.
 
 Currency is the one engine that touches the network: it refreshes European
 Central Bank reference rates in the background (pounce's only network call) and
-answers from an in-memory cache, so a keystroke never blocks on I/O. It's **off
-by default** — enable with `"quickAnswers": { "currency": true }`.
+answers from an in-memory cache, so a keystroke never blocks on I/O. It's **on
+by default** — set `"quickAnswers": { "currency": false }` (and
+`"updates": { "check": false }`) for a pounce that makes no network requests at
+all.
 
 ## The emoji picker (emoji + symbols)
 
@@ -243,7 +245,7 @@ replaces). On a machine managed by the nebelhaus rice it refuses outright: that
 config.json is generated from `nebelhaus.pounce.*`, and the next rebuild would
 put the generated one straight back.
 
-**Comments and trailing commas are fine** — pounce strips both before parsing,
+**Comments and trailing commas are fine** — pounce parses config.json as JSON5,
 which is what lets you uncomment any subset of lines without fixing up commas by
 hand. `//` and `/* */` inside a string value are left alone, so a URL in a
 setting is safe. Unknown keys are ignored, so an older pounce never chokes on a

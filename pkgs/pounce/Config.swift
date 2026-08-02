@@ -347,20 +347,30 @@ struct Settings {
     // Cheap enough (tiny file) to re-read per invocation, so edits take effect
     // on the next open without restarting the daemon.
     //
-    // Comments and trailing commas are stripped first (JSONC.swift). That's what
-    // lets `pounce config init` write a config with every setting documented
-    // above it and commented out — the file you READ is the file pounce reads,
-    // rather than a reference document you copy lines out of. A config written
-    // before that existed is plain JSON, which the stripper passes through
-    // unchanged, so nothing about an old file's behaviour moves.
+    // `.json5Allowed` is what lets `pounce config init` write a config with every
+    // setting documented above it and commented out: JSON5 permits `//` and
+    // `/* */` comments AND trailing commas, so the file you READ is the file
+    // pounce reads, rather than a reference document you copy lines out of.
+    //
+    // The trailing commas matter as much as the comments here. Every commented
+    // line in the generated config carries its own comma, so uncommenting any
+    // SUBSET of lines needs no punctuation fixups — the last one before a `}` is
+    // then an orphan, which strict JSON rejects.
+    //
+    // Foundation's own flag rather than a hand-rolled stripper (which this had,
+    // briefly): the lexing is genuinely fiddly — `"https://example.com"` must not
+    // lose its tail to a "comment" — and Apple has already written it, for every
+    // macOS this app supports (12+; pounce needs 14).
+    //
+    // JSON5 is a superset, so it accepts a few things we never generate
+    // (unquoted keys, single quotes, hex). For a config file read leniently on
+    // purpose, more forgiving is the right direction, and a plain-JSON config
+    // written before any of this parses exactly as it always did.
     static func load() -> Settings {
         var s = Settings()
-        guard let data = try? Data(contentsOf: configPath) else { return s }
-        // Non-UTF-8 can't be JSON either, but fall through to the raw bytes
-        // rather than bailing: JSONSerialization detects UTF-16/32 itself, and a
-        // file it can read is a file we shouldn't refuse.
-        let cleaned = String(data: data, encoding: .utf8).map { Data(JSONC.strip($0).utf8) } ?? data
-        guard let obj = try? JSONSerialization.jsonObject(with: cleaned) as? [String: Any]
+        guard let data = try? Data(contentsOf: configPath),
+              let obj = try? JSONSerialization.jsonObject(with: data, options: [.json5Allowed])
+                as? [String: Any]
         else { return s }
         if let wm = obj["windowMode"] as? String, let mode = WindowMode(rawValue: wm) {
             s.windowMode = mode

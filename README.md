@@ -107,7 +107,7 @@ next open. No registry, no rebuild, no restart.
 - **System Settings, deep-linked** — every settings pane (Displays, Bluetooth, Accessibility, …) is a first-class palette item that jumps straight to that pane, not just to the Settings window.
 - **optional plugins** — docker, ssh, tailscale, spotify, bluetooth, audio, github, caffeinate. off by default; enable by id.
 - **`pounce doctor`** — one command: is the daemon up, is Accessibility granted, is a macOS shortcut or another hotkey daemon quietly eating your key.
-- **`pounce config init`** — a config.json with every setting at its default, a sentence above each one, all commented out. Uncomment what you want, delete the rest; you never have to know a setting exists before you can find it. (Comments and trailing commas are fine — pounce strips both.)
+- **`pounce config init`** — a config.json with every setting at its default, a sentence above each one, all commented out. Uncomment what you want, delete the rest; you never have to know a setting exists before you can find it. (Comments and trailing commas are fine — it's parsed as JSON5.)
 
 ## more
 
