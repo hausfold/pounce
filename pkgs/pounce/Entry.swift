@@ -56,6 +56,17 @@ enum Main {
                                 (⌘V). e.g. --transform 'tr "[:lower:]" "[:upper:]"'.
                                 Forwarded to the daemon, which holds the grant.
 
+    settings:
+      config                    print the config path
+      config print              print an annotated config to stdout, touching
+                                nothing — pipe it, or diff it against yours
+      config init               write config.json with EVERY setting at its
+                                default, documented and commented out — you
+                                learn the settings by reading your own config.
+                                Uncomment what you want, delete the rest.
+                                --force replaces an existing one (otherwise it
+                                writes config.json.new beside it).
+
     housekeeping:
       --daemon                  run the resident daemon (launchd uses this; also
                                 hosts the MRU window switcher when config.json
@@ -123,6 +134,11 @@ enum Main {
             // One-shot bootstrap: fire the system Bluetooth prompt (see
             // BluetoothGrant.swift for why blueutil can't do this itself).
             BluetoothGrant.request()
+        } else if args.count >= 2 && args[1] == "config" {
+            // Positional like `focus`/`doctor` (see those branches for why).
+            // `pounce config init` writes an annotated config.json: every
+            // setting at its default, documented, and commented out.
+            ConfigMode.run(op: args.count >= 3 ? args[2] : nil, args: args)
         } else if args.count >= 2 && args[1] == "autostart" {
             // Positional like `focus`/`doctor` (see those branches for why).
             // Manages the self-registered login item — the drag-install

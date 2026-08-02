@@ -56,6 +56,8 @@ failures += runItemSettingsTests()
 failures += runCommandRegistryTests()
 failures += runUpdateNudgeTests()
 failures += runSymbolsTests()
+failures += runJSONCTests()
+failures += runConfigTemplateTests()
 
 if failures == 0 {
     exit(0)

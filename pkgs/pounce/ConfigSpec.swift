@@ -1,0 +1,228 @@
+// The settings table `pounce config init` writes out: one entry per key
+// `Settings.load()` reads, with the prose a user needs and the default it
+// actually has.
+//
+// THE DEFAULTS ARE NOT WRITTEN DOWN HERE. Each entry reads its value off a live
+// `Settings()` — `json(s.clipboard.maxEntries)`, not `json(200)` — so the
+// generated file cannot document a default that the struct doesn't have. That's
+// the one kind of drift a config template makes worse than no template: a
+// confident, wrong number in a file that looks authoritative.
+//
+// What DOES have to be kept in step by hand is coverage: a setting added to
+// `Settings` and to `load()` but not added here is simply absent from the
+// generated file. It still works; it's just undiscoverable, which is the exact
+// problem this feature exists to fix. When you add a setting, add it here — the
+// section order below mirrors `Settings.load()` on purpose so the two read as
+// one list.
+//
+// The prose is the USER-FACING half. The comments on the structs in Config.swift
+// are the maintainer-facing half — why the default is what it is, what breaks if
+// you change it. Neither should try to be the other.
+//
+// Rendering, wrapping and the JSON-with-comments shape live in
+// ConfigTemplate.swift, which is Foundation-only so it can be tested.
+
+import Foundation
+
+enum ConfigSpec {
+    /// Render any Swift value as a JSON literal. Arrays come back
+    /// pretty-printed, which is what keeps a thirteen-entry bundle-id list from
+    /// becoming one 500-character line in a file people are meant to read.
+    static func json(_ value: Any) -> String {
+        // `Set` isn't a JSON type, and its iteration order isn't stable — a
+        // template that reordered itself between runs would make `haus`-style
+        // "is it current?" comparisons meaningless.
+        let normalized: Any
+        if let set = value as? Set<String> {
+            normalized = set.sorted()
+        } else if let d = value as? CGFloat {
+            normalized = Double(d)
+        } else {
+            normalized = value
+        }
+
+        var options: JSONSerialization.WritingOptions = [
+            .fragmentsAllowed, .withoutEscapingSlashes,
+        ]
+        if let array = normalized as? [Any], array.count > 3 { options.insert(.prettyPrinted) }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: normalized, options: options),
+              let text = String(data: data, encoding: .utf8)
+        else { return "null" }
+        return text
+    }
+
+    /// Every section of config.json, in the order `Settings.load()` reads them.
+    static func sections(defaults s: Settings = Settings()) -> [ConfigSection] {
+        [
+            ConfigSection(
+                name: nil,
+                doc: "The palette itself — its proportions, its size, and its colours.",
+                fields: [
+                    ConfigField(
+                        name: "windowMode",
+                        doc: "How tightly the launcher reads: \"default\", or \"compact\" for a narrower window with shorter rows. Independent of \"scale\" below — a compact palette can still be drawn large.",
+                        json: json(s.windowMode.rawValue)),
+                    ConfigField(
+                        name: "scale",
+                        doc: "Multiplies every size in the UI — text, rows, icons, and the emoji / clipboard / screenshot panels behind the palette. 1.0 is the tuned look; 0.8 to 2.0 is the range, and anything outside it is clamped rather than rejected.",
+                        json: json(s.scale)),
+                    ConfigField(
+                        name: "theme",
+                        doc: "Colour palette: a built-in name, or a ~/.config/pounce/themes/<name>.json. Unset (null) means the nebelung / nebelung-latte pair, so pounce follows macOS light and dark by itself. Setting this PINS one palette for both appearances.",
+                        json: json(s.theme as Any)),
+                    ConfigField(
+                        name: "themeLight",
+                        doc: "The palette to use when macOS is in Light appearance, overriding \"theme\". Set this alongside \"theme\" to get a following pair again: \"theme\": \"gruvbox-dark\" + \"themeLight\": \"gruvbox\".",
+                        json: json(s.themeLight as Any)),
+                    ConfigField(
+                        name: "themeDark",
+                        doc: "The palette to use when macOS is in Dark appearance, overriding \"theme\".",
+                        json: json(s.themeDark as Any)),
+                ]),
+
+            ConfigSection(
+                name: "clipboard",
+                doc: "Clipboard history — the ⌘⇧V panel.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Record copies at all. Off means the clipboard panel stays empty and nothing is written to disk.",
+                        json: json(s.clipboard.enabled)),
+                    ConfigField(
+                        name: "maxEntries",
+                        doc: "How many copies to remember. The oldest fall off the end.",
+                        json: json(s.clipboard.maxEntries)),
+                    ConfigField(
+                        name: "blacklistBundleIds",
+                        doc: "Copies made while one of these apps is frontmost are never recorded. Belt and braces on top of the concealed-type filter that already drops password-manager copies.",
+                        json: json(s.clipboard.blacklistBundleIds)),
+                    ConfigField(
+                        name: "autoPaste",
+                        doc: "Paste a chosen entry straight into the app you came from (a synthesized ⌘V) instead of only setting the clipboard. Needs the daemon's Accessibility grant; without it, pounce falls back to clipboard-only rather than failing. Off by default so a fresh install never quietly needs a permission.",
+                        json: json(s.clipboard.autoPaste)),
+                ]),
+
+            ConfigSection(
+                name: "quickAnswers",
+                doc: "The inline answer engines — maths, unit and time conversion, currency.",
+                fields: [
+                    ConfigField(
+                        name: "currency",
+                        doc: "Convert currencies, which needs daily reference rates over the network — pounce's only outbound call. Set false (with \"updates\".\"check\" too) for a fully offline pounce. The other engines are pure arithmetic and are always on.",
+                        json: json(s.quickAnswers.currency)),
+                ]),
+
+            ConfigSection(
+                name: "updates",
+                doc: "The daily release check.",
+                fields: [
+                    ConfigField(
+                        name: "check",
+                        doc: "Look once a day for a newer pounce and nudge — a palette row and one notification. It never installs anything. Already off by itself on Nix-managed installs, whose updates ride the flake.",
+                        json: json(s.updates.check)),
+                ]),
+
+            ConfigSection(
+                name: "fileSearch",
+                doc: "Find Files — the local Spotlight-index search.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Offer file search at all. Read-only and local (the Spotlight index, no network), so it's on by default.",
+                        json: json(s.fileSearch.enabled)),
+                    ConfigField(
+                        name: "homeOnly",
+                        doc: "Search only your home directory. False searches everything indexed on the machine.",
+                        json: json(s.fileSearch.homeOnly)),
+                    ConfigField(
+                        name: "maxResults",
+                        doc: "How many hits the list shows.",
+                        json: json(s.fileSearch.maxResults)),
+                ]),
+
+            ConfigSection(
+                name: "apps",
+                doc: "The app launcher's opinions about which apps matter.",
+                fields: [
+                    ConfigField(
+                        name: "demoteBundleIds",
+                        doc: "Apps that sink below everything else on an empty query and have to climb back by actual use. Defaults to Apple utilities nobody launches on purpose — the fix for Feedback Assistant squatting the top slot. Set [] to disable, or list your own; unknown ids are harmless.",
+                        json: json(s.appLauncher.demoteBundleIds)),
+                    ConfigField(
+                        name: "hideBundleIds",
+                        doc: "Apps dropped from the launcher entirely, on top of the built-in filter that already hides background agents and droplet bridges.",
+                        json: json(s.appLauncher.hideBundleIds)),
+                ]),
+
+            ConfigSection(
+                name: "hotkey",
+                doc: "The global key that summons the palette. Read ONCE when the daemon starts — changing it needs a daemon restart, unlike everything above.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Let pounce bind the key itself. False leaves it to an external binder (skhd, AeroSpace, a launch agent spawning pounce-palette).",
+                        json: json(s.hotkey.enabled)),
+                    ConfigField(
+                        name: "key",
+                        doc: "A named key: \"space\", \"return\", a letter.",
+                        json: json(s.hotkey.key)),
+                    ConfigField(
+                        name: "modifiers",
+                        doc: "Any of \"cmd\", \"shift\", \"opt\", \"ctrl\".",
+                        json: json(s.hotkey.modifiers)),
+                ]),
+
+            ConfigSection(
+                name: "windows",
+                doc: "The most-recently-used window switcher: hold the modifiers, tap the key to walk windows, release to land. Off by default — taking over ⌘Tab is a bold move, and the event tap needs the Accessibility grant. Read once at daemon start, like \"hotkey\".",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Turn the switcher on.",
+                        json: json(s.windows.enabled)),
+                    ConfigField(
+                        name: "key",
+                        doc: "The key you tap to advance.",
+                        json: json(s.windows.key)),
+                    ConfigField(
+                        name: "modifiers",
+                        doc: "The modifiers you hold. Releasing them lands on the highlighted window.",
+                        json: json(s.windows.modifiers)),
+                ]),
+
+            // `items` is the one setting with no fixed key list — it's keyed by
+            // pounce's own stable item keys, of which there are dozens, and which
+            // you discover with `pounce --help`. Enumerating them here would be a
+            // second, staler copy of that list; an example that shows all four
+            // per-item fields is the honest documentation.
+            ConfigSection(
+                name: "items",
+                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys.",
+                // Three fields, and only three — see ItemSettings.parse.
+                raw: """
+                // "cmd:emoji": {
+                //   "enabled": true,   // false removes the item from the palette
+                //   "alias": "emo",    // an extra name it answers to in search
+                //   "hotkey": "opt+e", // a global key straight to this item
+                // },
+                // "app:/Applications/Ghostty.app": { "hotkey": "opt+t" },
+                """),
+        ]
+    }
+
+    /// The whole file. Fails rather than returns if what it produced isn't valid
+    /// JSON once comments are stripped — writing a config pounce can't read would
+    /// turn "here are your settings" into "your settings are gone", silently,
+    /// since `load()` falls back to defaults on a parse failure.
+    static func render(version: String) throws -> String {
+        let text = ConfigTemplate.render(sections(), version: version)
+        let stripped = JSONC.strip(text)
+        guard (try? JSONSerialization.jsonObject(with: Data(stripped.utf8))) != nil else {
+            throw ConfigTemplateError.invalidJSON
+        }
+        return text
+    }
+}
+
+enum ConfigTemplateError: Error { case invalidJSON }

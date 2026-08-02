@@ -99,7 +99,7 @@ next open. No registry, no rebuild, no restart.
 
 ## what's in the box
 
-- **quick answers** — type `2*847`, `72 f in c`, `100 usd in eur`, or `14:00 utc in pst` and the answer pins to the top row. ⏎ copies it. (currency is the one engine that touches the network, and it's off by default.)
+- **quick answers** — type `2*847`, `72 f in c`, `100 usd in eur`, or `14:00 utc in pst` and the answer pins to the top row. ⏎ copies it. (currency is the one engine that touches the network — daily reference rates, pounce's only outbound call; `"quickAnswers": { "currency": false }` turns it off.)
 - **the hotkey** — the daemon grabs ⌘Space in-process, so a press lands in an already-warm process: no shell, no client spawn, no socket round-trip.
 - **⌘Tab window switcher** — opt-in MRU switcher across *windows*, fuzzy-filterable, with workspace badges when AeroSpace is running.
 - **native modes** — clipboard history, emoji & symbols, screenshots, camera, cheatsheets.
@@ -107,6 +107,7 @@ next open. No registry, no rebuild, no restart.
 - **System Settings, deep-linked** — every settings pane (Displays, Bluetooth, Accessibility, …) is a first-class palette item that jumps straight to that pane, not just to the Settings window.
 - **optional plugins** — docker, ssh, tailscale, spotify, bluetooth, audio, github, caffeinate. off by default; enable by id.
 - **`pounce doctor`** — one command: is the daemon up, is Accessibility granted, is a macOS shortcut or another hotkey daemon quietly eating your key.
+- **`pounce config init`** — a config.json with every setting at its default, a sentence above each one, all commented out. Uncomment what you want, delete the rest; you never have to know a setting exists before you can find it. (Comments and trailing commas are fine — pounce strips both.)
 
 ## more
 
