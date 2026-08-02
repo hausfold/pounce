@@ -228,6 +228,27 @@ every open, so edits apply on the next launch — no restart needed. (The two
 exceptions are the things the daemon has to *grab* at startup: `windows` and the
 `items` hotkeys.) Every key is optional and falls back to a default.
 
+**Start from a config that documents itself:**
+
+```sh
+pounce config init      # writes ~/.config/pounce/config.json
+pounce config print     # …or just look at it, touching nothing
+```
+
+That writes **every** setting at its default, with a sentence above it, all
+commented out — so the file changes nothing until you uncomment a line, and you
+make it minimal by deleting the lines you never touched. It never overwrites a
+config you already have (it writes `config.json.new` beside it instead; `--force`
+replaces). On a machine managed by the nebelhaus rice it refuses outright: that
+config.json is generated from `nebelhaus.pounce.*`, and the next rebuild would
+put the generated one straight back.
+
+**Comments and trailing commas are fine** — pounce strips both before parsing,
+which is what lets you uncomment any subset of lines without fixing up commas by
+hand. `//` and `/* */` inside a string value are left alone, so a URL in a
+setting is safe. Unknown keys are ignored, so an older pounce never chokes on a
+config written by a newer one.
+
 ```jsonc
 {
   // Omit all three and pounce follows macOS: nebelung dark / nebelung-latte
