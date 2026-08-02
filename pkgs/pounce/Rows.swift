@@ -5,18 +5,18 @@ import AppKit
 
 // A non-selectable section header rendered between groups of items.
 struct GroupHeaderRow: View {
-    static let height: CGFloat = 28
+    static var height: CGFloat { pt(28) }
     let title: String
 
     var body: some View {
         Text(title.uppercased())
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .font(.system(size: pt(11), weight: .semibold, design: .rounded))
             .foregroundColor(Theme.subtext0)
             .kerning(0.6)
-            .padding(.horizontal, 22)
+            .padding(.horizontal, pt(22))
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: GroupHeaderRow.height, alignment: .bottom)
-            .padding(.bottom, 4)
+            .padding(.bottom, pt(4))
     }
 }
 
@@ -36,39 +36,39 @@ struct ItemRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: pt(14)) {
             Group {
                 if let path = iconFilePath {
                     Image(nsImage: AppIconCache.shared.icon(for: path))
                         .resizable().aspectRatio(contentMode: .fit)
                 } else if let iconName = item.icon {
                     Image(systemName: iconName)
-                        .font(.system(size: 17, weight: .medium))
+                        .font(.system(size: pt(17), weight: .medium))
                         .foregroundColor(isSelected ? Theme.mauve : Theme.subtext)
                 }
             }
-            .frame(width: 26, height: 26)
+            .frame(width: pt(26), height: pt(26))
 
             Text(item.title)
                 .foregroundColor(Theme.text)
-                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .font(.system(size: pt(16), weight: .medium, design: .rounded))
                 .lineLimit(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: pt(8))
 
             if let subtitle = item.subtitle {
                 Text(subtitle)
                     .foregroundColor(Theme.subtext0)
-                    .font(.system(size: 13, design: .rounded))
+                    .font(.system(size: pt(13), design: .rounded))
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, pt(14))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: pt(10))
                 .fill(isSelected ? Theme.mauve.opacity(0.20) : Color.clear)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, pt(8))
         )
         .contentShape(Rectangle())
     }
@@ -81,45 +81,45 @@ struct ItemRow: View {
 // interpretation underneath. Taller than a standard row — ContentView's
 // listHeight accounts for the difference via AnswerRow.height.
 struct AnswerRow: View {
-    static let height: CGFloat = 76
+    static var height: CGFloat { pt(76) }
     let item: PounceItem
     let isSelected: Bool
 
     var accent: Color { isSelected ? Theme.mauve : Theme.blue }
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: pt(14)) {
             ZStack {
-                RoundedRectangle(cornerRadius: 9)
+                RoundedRectangle(cornerRadius: pt(9))
                     .fill(accent.opacity(0.18))
                 Image(systemName: item.icon ?? "equal.square")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: pt(18), weight: .semibold))
                     .foregroundColor(accent)
             }
-            .frame(width: 40, height: 40)
+            .frame(width: pt(40), height: pt(40))
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: pt(3)) {
                 Text(item.title)
                     .foregroundColor(Theme.text)
-                    .font(.system(size: 25, weight: .semibold, design: .rounded))
+                    .font(.system(size: pt(25), weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.45)   // long results shrink, never clip
                 if let subtitle = item.subtitle {
                     Text(subtitle)
                         .foregroundColor(Theme.subtext0)
-                        .font(.system(size: 12, design: .rounded))
+                        .font(.system(size: pt(12), design: .rounded))
                         .lineLimit(1)
                 }
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: pt(8))
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, pt(14))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: pt(10))
                 .fill(isSelected ? Theme.mauve.opacity(0.20) : Color.clear)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, pt(8))
         )
         .contentShape(Rectangle())
     }
@@ -151,18 +151,18 @@ struct ActionBar: View {
                 if index > 0 {
                     Rectangle()
                         .fill(Theme.surface1.opacity(0.6))
-                        .frame(width: 1, height: 16)
-                        .padding(.horizontal, 14)
+                        .frame(width: 1, height: pt(16))
+                        .padding(.horizontal, pt(14))
                 }
-                HStack(spacing: 7) {
+                HStack(spacing: pt(7)) {
                     Text(action.label)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: pt(12), weight: .medium, design: .rounded))
                         .foregroundColor(Theme.subtext)
                     KeyCap(action.displayKey)
                 }
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, pt(18))
     }
 }
 
@@ -172,12 +172,12 @@ struct KeyCap: View {
 
     var body: some View {
         Text(symbol)
-            .font(.system(size: 12, weight: .medium, design: .rounded))
+            .font(.system(size: pt(12), weight: .medium, design: .rounded))
             .foregroundColor(Theme.subtext)
-            .frame(minWidth: 22, minHeight: 22)
-            .padding(.horizontal, 4)
+            .frame(minWidth: pt(22), minHeight: pt(22))
+            .padding(.horizontal, pt(4))
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: pt(6))
                     .fill(Theme.surface1.opacity(0.5))
             )
     }

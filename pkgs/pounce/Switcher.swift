@@ -214,7 +214,7 @@ final class WindowSwitcher {
     private func showHUD() {
         guard active, !hudShown else { return }
         hudShown = true
-        Theme.current = Settings.load().palette   // config edits apply on next show
+        Settings.load().apply()   // config + scale edits apply on next show
         panel.show()
         // Badges arrive async — the HUD is already up and usable without them.
         Aerospace.workspaces { [weak self] map in

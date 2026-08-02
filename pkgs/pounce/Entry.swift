@@ -383,7 +383,7 @@ enum DaemonMode {
             if state.isVisible { state.cancel(); return }
             let t0 = DispatchTime.now()
             let settings = Settings.load()   // re-read so config edits apply live
-            Theme.current = settings.palette
+            settings.apply()
             state.reset()
             state.metrics = settings.metrics
             registry.refresh()
@@ -439,7 +439,7 @@ enum DaemonMode {
             ui.resultSink?("")
             ui.resultSink = nil
             let settings = Settings.load()
-            Theme.current = settings.palette
+            settings.apply()
             state.reset()
             state.metrics = settings.metrics
             load(state)
@@ -559,7 +559,7 @@ enum DaemonMode {
                 ui.resultSink?("")
                 ui.resultSink = nil
                 let settings = Settings.load()
-                Theme.current = settings.palette
+                settings.apply()
                 state.reset()
                 state.metrics = settings.metrics
                 state.displayMode = .cheatsheet
@@ -841,7 +841,7 @@ enum DaemonMode {
             // in semaphore.wait() with its clientFD open — behind the new window.
             ui.resultSink?("")
             ui.resultSink = nil
-            Theme.current = settings.palette
+            settings.apply()
             state.reset()
             state.metrics = metrics
             if inv.cheatsheet {
@@ -973,7 +973,7 @@ enum ClientMode {
         let ui = PounceUI(state: state)
         let settings = Settings.load()
         state.metrics = settings.metrics
-        Theme.current = settings.palette
+        settings.apply()
         if inv.cheatsheet {
             state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
         } else {

@@ -38,14 +38,14 @@ struct EmojiView: View {
     }
 
     var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 4), count: EmojiLayout.columns)
+        Array(repeating: GridItem(.flexible(), spacing: pt(4)), count: EmojiLayout.columns)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: pt(12)) {
                 Image(systemName: "face.smiling")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: pt(16), weight: .medium))
                     .foregroundColor(Theme.subtext)
                 CustomTextField(
                     text: $query, selectedIndex: $selectedIndex,
@@ -55,14 +55,14 @@ struct EmojiView: View {
                     gridColumns: EmojiLayout.columns
                 )
             }
-            .padding(.horizontal, 20)
-            .frame(height: 52)
+            .padding(.horizontal, pt(20))
+            .frame(height: pt(52))
 
             Divider().background(Theme.surface1.opacity(0.3))
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVGrid(columns: columns, spacing: 4) {
+                    LazyVGrid(columns: columns, spacing: pt(4)) {
                         ForEach(Array(filtered.enumerated()), id: \.element.id) { i, e in
                             // Color emoji carry their own ink; a monochrome
                             // symbol drawn at the same size next to them reads
@@ -74,14 +74,14 @@ struct EmojiView: View {
                                 .frame(maxWidth: .infinity)
                                 .frame(height: EmojiLayout.cellHeight)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: pt(8))
                                         .fill(i == selectedIndex ? Theme.mauve.opacity(0.30) : Color.clear)
                                 )
                                 .id(e.c)
                                 .onTapGesture { selectedIndex = i; commit() }
                         }
                     }
-                    .padding(8)
+                    .padding(pt(8))
                 }
                 .frame(height: EmojiLayout.gridHeight)
                 .onChange(of: selectedIndex) {
@@ -91,27 +91,27 @@ struct EmojiView: View {
 
             Divider().background(Theme.surface1.opacity(0.3))
 
-            HStack(spacing: 10) {
+            HStack(spacing: pt(10)) {
                 if let e = selected {
                     Text(e.c)
-                        .font(.system(size: 18))
+                        .font(.system(size: pt(18)))
                         .foregroundColor(e.kind == .emoji ? .primary : Theme.text)
                     Text(e.name)
                         .foregroundColor(Theme.subtext)
-                        .font(.system(size: 12))
+                        .font(.system(size: pt(12)))
                         .lineLimit(1)
                     if e.kind == .symbol {
                         Text(e.codepoints)
                             .foregroundColor(Theme.subtext0)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(size: pt(11), design: .monospaced))
                     }
                 } else {
-                    Text("No match").foregroundColor(Theme.subtext0).font(.system(size: 12))
+                    Text("No match").foregroundColor(Theme.subtext0).font(.system(size: pt(12)))
                 }
                 Spacer()
             }
-            .padding(.horizontal, 16)
-            .frame(height: 36)
+            .padding(.horizontal, pt(16))
+            .frame(height: pt(36))
         }
         .frame(width: EmojiLayout.width)
         .fixedSize(horizontal: false, vertical: true)

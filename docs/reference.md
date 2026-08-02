@@ -235,7 +235,8 @@ exceptions are the things the daemon has to *grab* at startup: `windows` and the
   "theme": "nebelung",      // "nebelung", "mocha", or a themes/ file
   "themeLight": "nebelung-latte",  // used when macOS is in Light Mode
   "themeDark": "nebelung",         // used when macOS is in Dark Mode
-  "windowMode": "default",  // "default" or "compact"
+  "windowMode": "default",  // "default" or "compact" — the launcher's proportions
+  "scale": 1.0,             // 0.8–2.0 — how BIG the whole UI is drawn
   "hotkey": {
     "enabled": true,        // daemon grabs a global hotkey in-process
     "key": "space",         // "space", "return", "a"…"z", "0"…"9"
@@ -265,6 +266,30 @@ exceptions are the things the daemon has to *grab* at startup: `windows` and the
   "items": {}               // per-item enable / alias / hotkey — see below
 }
 ```
+
+### Sizing: `windowMode` and `scale`
+
+Two independent knobs. `windowMode` picks the launcher's *proportions* —
+`"compact"` is a narrower window with tighter rows that hides its list until you
+type. `scale` picks how *big* the whole thing is drawn: every size in the UI —
+text, rows, icons, the emoji grid, clipboard history, Find Files, the cheatsheet —
+is multiplied by it. They compose, so a compact launcher at `1.4` is still the
+compact layout, just readable from further away.
+
+Sizes are resolved before layout rather than by scaling the rendered window, so
+text stays crisp at any value. Out-of-range values are clamped to 0.8–2.0 rather
+than rejected: a config asking for `3.0` wants the biggest palette pounce can
+draw, and handing it back the smallest would be the opposite of the ask.
+
+Two things adapt on their own so a large scale can't push the window off the
+screen: the launcher shows fewer rows when the scaled rows no longer fit under it,
+and every panel's width is held inside the visible screen. That matters most on a
+Mac that has *also* been set to a lower-resolution "larger text" display mode —
+both make things bigger, and they multiply.
+
+On the [nebelhaus](https://github.com/nebelhaus/nebelhaus) rice this is written
+for you from `nebelhaus.ui.scale`, so the palette grows with the rest of the
+desktop.
 
 The **nebelung** palette and its light counterpart **nebelung-latte** are both
 compiled into the binary straight from the

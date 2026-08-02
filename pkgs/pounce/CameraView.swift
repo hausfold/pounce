@@ -31,7 +31,7 @@ struct CameraView: View {
                         selectedIndex: pickerIndex,
                         onPick: { i in pick(i) }
                     )
-                    .padding(12)
+                    .padding(pt(12))
                 }
             }
             .frame(height: CameraLayout.previewHeight)
@@ -64,16 +64,16 @@ struct CameraView: View {
     }
 
     func statusMessage(_ title: String, detail: String?) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: pt(8)) {
             Image(systemName: "video.slash")
-                .font(.system(size: 28, weight: .medium))
+                .font(.system(size: pt(28), weight: .medium))
                 .foregroundColor(Theme.subtext0)
             Text(title)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .font(.system(size: pt(15), weight: .medium, design: .rounded))
                 .foregroundColor(Theme.subtext)
             if let detail = detail {
                 Text(detail)
-                    .font(.system(size: 12))
+                    .font(.system(size: pt(12)))
                     .foregroundColor(Theme.subtext0)
             }
         }
@@ -84,12 +84,12 @@ struct CameraView: View {
     var actionBar: some View {
         HStack(spacing: 0) {
             if let name = activeName, camera.status == .running {
-                HStack(spacing: 7) {
+                HStack(spacing: pt(7)) {
                     Image(systemName: "web.camera")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: pt(12), weight: .medium))
                         .foregroundColor(Theme.subtext0)
                     Text(name)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: pt(12), weight: .medium, design: .rounded))
                         .foregroundColor(Theme.subtext0)
                         .lineLimit(1)
                 }
@@ -105,19 +105,19 @@ struct CameraView: View {
                     }
                     Rectangle()
                         .fill(Theme.surface1.opacity(0.6))
-                        .frame(width: 1, height: 16)
-                        .padding(.horizontal, 14)
+                        .frame(width: 1, height: pt(16))
+                        .padding(.horizontal, pt(14))
                 }
                 barAction(label: pickerOpen ? "Select" : "Close", key: "↵") { submit(shift: false) }
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, pt(18))
     }
 
     func barAction(label: String, key: String, action: @escaping () -> Void) -> some View {
-        HStack(spacing: 7) {
+        HStack(spacing: pt(7)) {
             Text(label)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.system(size: pt(12), weight: .medium, design: .rounded))
                 .foregroundColor(Theme.subtext)
             KeyCap(key)
         }
@@ -199,40 +199,40 @@ struct CameraPickerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(devices.enumerated()), id: \.element.id) { i, device in
-                HStack(spacing: 8) {
+                HStack(spacing: pt(8)) {
                     Image(systemName: "web.camera")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: pt(12), weight: .medium))
                         .foregroundColor(i == selectedIndex ? Theme.mauve : Theme.subtext)
                     Text(device.name)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.system(size: pt(13), weight: .medium, design: .rounded))
                         .foregroundColor(Theme.text)
                         .lineLimit(1)
-                    Spacer(minLength: 12)
+                    Spacer(minLength: pt(12))
                     if device.id == activeID {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: pt(11), weight: .semibold))
                             .foregroundColor(Theme.mauve)
                     }
                 }
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .frame(minWidth: 220, alignment: .leading)
+                .padding(.horizontal, pt(10))
+                .frame(height: pt(30))
+                .frame(minWidth: pt(220), alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 7)
+                    RoundedRectangle(cornerRadius: pt(7))
                         .fill(i == selectedIndex ? Theme.mauve.opacity(0.20) : Color.clear)
                 )
                 .contentShape(Rectangle())
                 .onTapGesture { onPick(i) }
             }
         }
-        .padding(6)
+        .padding(pt(6))
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: pt(10))
                 .fill(Theme.surface0.opacity(0.97))
-                .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+                .shadow(color: .black.opacity(0.35), radius: pt(12), y: 4)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: pt(10))
                 .stroke(Theme.surface1.opacity(0.6), lineWidth: 1)
         )
     }
