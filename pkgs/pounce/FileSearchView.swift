@@ -33,7 +33,7 @@ struct FileSearchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: pt(12)) {
                 Image(systemName: "doc.text.magnifyingglass")
                     .font(.system(size: state.metrics.searchIconSize, weight: .medium))
                     .foregroundColor(Theme.subtext)
@@ -43,7 +43,7 @@ struct FileSearchView: View {
                     fontSize: state.metrics.searchFontSize, state: state,
                     onSubmit: { action in commit(action: action) })
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, pt(20))
             .frame(height: FileSearchLayout.headerHeight)
 
             Divider().frame(height: 1).background(Theme.surface1.opacity(0.3))
@@ -53,12 +53,12 @@ struct FileSearchView: View {
 
             Divider().frame(height: 1).background(Theme.surface1.opacity(0.3))
             ActionBar(actions: selected != nil ? actions : [])
-                .frame(height: 44)
+                .frame(height: pt(44))
         }
         .frame(width: FileSearchLayout.width)
         .fixedSize(horizontal: false, vertical: true)
         .background(Theme.wash())
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: PanelChrome.cornerRadius))
         .onChange(of: query) {
             selectedIndex = 0
             state.fileQueryChanged(query)
@@ -95,7 +95,7 @@ struct FileSearchView: View {
                             .onTapGesture { selectedIndex = i; commit(action: "enter") }
                     }
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, pt(6))
             }
             .onChange(of: selectedIndex) {
                 if let hit = selected { proxy.scrollTo(hit.id) }
@@ -104,13 +104,13 @@ struct FileSearchView: View {
     }
 
     func centeredNote(_ title: String, _ subtitle: String?) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: pt(6)) {
             Text(title)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .font(.system(size: pt(15), weight: .medium, design: .rounded))
                 .foregroundColor(Theme.subtext)
             if let subtitle {
                 Text(subtitle)
-                    .font(.system(size: 12, design: .rounded))
+                    .font(.system(size: pt(12), design: .rounded))
                     .foregroundColor(Theme.subtext0)
                     .lineLimit(1)
             }

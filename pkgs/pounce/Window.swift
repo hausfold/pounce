@@ -106,14 +106,14 @@ final class PounceUI {
         blur.blendingMode = .behindWindow
         blur.state = .active
         blur.wantsLayer = true
-        blur.layer?.cornerRadius = 16
+        blur.layer?.cornerRadius = PanelChrome.cornerRadius
         blur.layer?.masksToBounds = true
         blur.layer?.borderWidth = 1
         PounceUI.applyChrome(blur)   // material/appearance/border follow the palette
         // layer.cornerRadius alone doesn't clip the vibrancy material or shape the
         // window shadow — a resizable rounded maskImage does both, killing the
         // square corner that pokes out behind the rounded panel.
-        blur.maskImage = PounceUI.roundedMask(radius: 16)
+        blur.maskImage = PounceUI.roundedMask(radius: PanelChrome.cornerRadius)
         // Pin the content to the TOP edge (fixed height, flexible bottom margin)
         // so an animated window resize reveals/covers from the bottom instead of
         // letting NSHostingView re-center the content and slide it vertically.

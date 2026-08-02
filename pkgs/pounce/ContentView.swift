@@ -8,7 +8,21 @@ struct ContentView: View {
     @State private var revealed = false   // compact mode: list shown after ↓ / typing
 
     var rowHeight: CGFloat { state.metrics.rowHeight }
-    var maxVisibleItems: Int { state.metrics.maxVisibleItems }
+
+    // How many rows the window will show. The preset's count is a preference; the
+    // screen has the last word, because `scale` multiplies the row height while the
+    // desktop stays the same size — eight 46pt rows fit anywhere, eight 92pt ones
+    // do not. Without this the panel simply grows off the bottom of the screen at a
+    // large scale, which is the failure a legibility setting can least afford.
+    // Floored at 3 so it degrades to a short list rather than to nothing.
+    var maxVisibleItems: Int {
+        let screen = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.height ?? 900
+        let chrome = state.metrics.headerHeight + Self.actionBarHeight
+            + Self.dividerHeight * 2 + Self.listVPadding * 2
+        let room = screen * (1 - state.metrics.topInsetFraction) - chrome
+        let fits = Int(floor(room / max(rowHeight, 1)))
+        return max(3, min(state.metrics.maxVisibleItems, fits))
+    }
 
     var queryIsEmpty: Bool {
         state.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -128,8 +142,13 @@ struct ContentView: View {
         return CGFloat(cap) * rowHeight + CGFloat(headers) * GroupHeaderRow.height + answerExtra
     }
 
+    // A hairline stays a hairline: it is a 1px rule, not a size, so it is the one
+    // constant here that does not scale.
     static let dividerHeight: CGFloat = 1
-    static let actionBarHeight: CGFloat = 44
+    static var actionBarHeight: CGFloat { pt(44) }
+    // The list's breathing room, above and below. Named because `contentHeight`
+    // and the ScrollView frame both have to count it and used to say `12` twice.
+    static var listVPadding: CGFloat { pt(6) }
 
     // MARK: - The header grows with the query
 
@@ -145,16 +164,16 @@ struct ContentView: View {
     // Fixed so the wrap width below is arithmetic instead of a guess about how
     // wide a given SF Symbol renders. Comfortably fits the 18pt (standard) and
     // 16pt (compact) search icons.
-    static let searchIconColumn: CGFloat = 26
-    static let headerHPadding: CGFloat = 20
-    static let headerSpacing: CGFloat = 12
+    static var searchIconColumn: CGFloat { pt(26) }
+    static var headerHPadding: CGFloat { pt(20) }
+    static var headerSpacing: CGFloat { pt(12) }
     static let queryAnchor = "query"
 
     // The width the field actually wraps at — launcherBody's HStack in numbers:
     // the window, less the padding either side, less the icon column and the gap
     // after it. Kept in lockstep with the frames below.
     var queryWidth: CGFloat {
-        state.metrics.width - Self.headerHPadding * 2 - Self.searchIconColumn - Self.headerSpacing
+        state.targetWidth - Self.headerHPadding * 2 - Self.searchIconColumn - Self.headerSpacing
     }
 
     var queryFont: NSFont {
@@ -199,7 +218,7 @@ struct ContentView: View {
     var contentHeight: CGFloat {
         var h = headerHeight
         if !visible.isEmpty {
-            h += Self.dividerHeight + listHeight + 12
+            h += Self.dividerHeight + listHeight + Self.listVPadding * 2
             if selectedItem != nil { h += Self.dividerHeight + Self.actionBarHeight }
         }
         return h
@@ -309,9 +328,9 @@ struct ContentView: View {
                                 }
                             }
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, Self.listVPadding)
                     }
-                    .frame(height: listHeight + 12)
+                    .frame(height: listHeight + Self.listVPadding * 2)
                     .onChange(of: selectedIndex) {
                         if selectedIndex < visible.count { proxy.scrollTo(visible[selectedIndex].id) }
                     }
@@ -324,10 +343,10 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(width: state.metrics.width)
+        .frame(width: state.targetWidth)
         .fixedSize(horizontal: false, vertical: true)
         .background(Theme.wash())
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: PanelChrome.cornerRadius))
         // requestResize on every keystroke, not just when the result count moves:
         // the header itself changes height now, and typing past the end of a line
         // with the same (or no) results showing is exactly the case a
@@ -365,7 +384,7 @@ struct SkeletonView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: pt(12)) {
                 Image(systemName: state.loadingIcon)
                     .font(.system(size: state.metrics.searchIconSize, weight: .medium))
                     .foregroundColor(Theme.subtext)
@@ -375,7 +394,7 @@ struct SkeletonView: View {
                     .lineLimit(1)
                 Spacer()
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, pt(20))
             .frame(height: state.metrics.headerHeight)
 
             Divider().background(Theme.surface1.opacity(0.3))
@@ -393,12 +412,12 @@ struct SkeletonView: View {
                     Spacer(minLength: 0)
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, ContentView.listVPadding)
         }
         .frame(width: state.targetWidth)
         .frame(maxHeight: .infinity)
         .background(Theme.wash())
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: PanelChrome.cornerRadius))
     }
 }
 
@@ -408,16 +427,16 @@ struct SkeletonRow: View {
     @State private var pulse = false
 
     var body: some View {
-        HStack(spacing: 14) {
-            RoundedRectangle(cornerRadius: 6)
+        HStack(spacing: pt(14)) {
+            RoundedRectangle(cornerRadius: pt(6))
                 .fill(Theme.surface1)
-                .frame(width: 24, height: 24)
-            RoundedRectangle(cornerRadius: 5)
+                .frame(width: pt(24), height: pt(24))
+            RoundedRectangle(cornerRadius: pt(5))
                 .fill(Theme.surface1)
-                .frame(width: 150, height: 11)
+                .frame(width: pt(150), height: pt(11))
             Spacer()
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, pt(18))
         .opacity(pulse ? 0.9 : 0.3)
         .onAppear {
             withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true).delay(delay)) {

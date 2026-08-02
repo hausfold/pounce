@@ -116,9 +116,9 @@ struct CheatsheetView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: pt(12)) {
                 Image(systemName: searching ? "magnifyingglass" : "keyboard")
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: pt(20), weight: .medium))
                     .foregroundColor(Theme.subtext)
                 if searching {
                     // The launcher's field: takes first responder on creation,
@@ -134,34 +134,34 @@ struct CheatsheetView: View {
                     )
                 } else {
                     Text(state.placeholderText)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: pt(20), weight: .semibold))
                         .foregroundColor(Theme.text)
                     if pages.count > 1 {
-                        HStack(spacing: 4) {
+                        HStack(spacing: pt(4)) {
                             ForEach(pages, id: \.self) { p in
                                 Text(p)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: pt(12), weight: .semibold))
                                     .foregroundColor(p == activePage ? Theme.base : Theme.subtext)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, pt(10))
+                                    .padding(.vertical, pt(4))
                                     .background(p == activePage ? Theme.mauve : Theme.surface1.opacity(0.5))
                                     .clipShape(Capsule())
                                     .onTapGesture { currentPage = p }
                             }
                         }
-                        .padding(.leading, 8)
+                        .padding(.leading, pt(8))
                     }
                 }
                 Spacer()
                 Text(hintText)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: pt(13), weight: .medium))
                     .foregroundColor(Theme.subtext0)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, pt(10))
+                    .padding(.vertical, pt(4))
                     .background(Theme.surface1.opacity(0.5))
                     .clipShape(Capsule())
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, pt(24))
             .frame(height: CheatsheetLayout.headerHeight)
 
             Divider().background(Theme.surface1.opacity(0.3))
@@ -173,16 +173,16 @@ struct CheatsheetView: View {
             } else {
                 let cols = columns(for: visibleGroups)
                 ScrollView {
-                    HStack(alignment: .top, spacing: 24) {
+                    HStack(alignment: .top, spacing: pt(24)) {
                         ForEach(cols.indices, id: \.self) { i in
-                            VStack(spacing: 24) {
+                            VStack(spacing: pt(24)) {
                                 ForEach(cols[i]) { group in
                                     GroupCard(group: group)
                                 }
                             }
                         }
                     }
-                    .padding(24)
+                    .padding(pt(24))
                     // Report the columns' natural height so the frame below —
                     // and with it the window — can hug the content.
                     .background(GeometryReader { geo in
@@ -202,7 +202,7 @@ struct CheatsheetView: View {
         // More opaque than the launcher's 0.55: this is a dense wall of 14pt
         // text, and whatever's behind the blur bleeds through smaller type.
         .background(Theme.wash(0.75))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: PanelChrome.cornerRadius))
         .contentShape(Rectangle())
         .onTapGesture { if !searching { state.cancel() } }
         .onAppear {
@@ -238,32 +238,32 @@ struct CheatsheetView: View {
     // A missing/unparseable file used to render as a giant blank panel — say
     // where pounce looked instead, so a typo'd path is a ten-second fix.
     var emptyBody: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: pt(10)) {
             Image(systemName: "questionmark.square.dashed")
-                .font(.system(size: 32, weight: .regular))
+                .font(.system(size: pt(32), weight: .regular))
                 .foregroundColor(Theme.subtext0)
             Text("No cheatsheet at \((state.cheatsheetPath as NSString).abbreviatingWithTildeInPath)")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: pt(14), weight: .medium))
                 .foregroundColor(Theme.subtext)
             Text("Expected a JSON array of { title, items: [{ key, action }] } groups.")
-                .font(.system(size: 12))
+                .font(.system(size: pt(12)))
                 .foregroundColor(Theme.subtext0)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 260)
+        .frame(height: pt(260))
     }
 
     var noMatchBody: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: pt(10)) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 32, weight: .regular))
+                .font(.system(size: pt(32), weight: .regular))
                 .foregroundColor(Theme.subtext0)
             Text("No shortcuts match \u{201C}\(query)\u{201D}")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: pt(14), weight: .medium))
                 .foregroundColor(Theme.subtext)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 260)
+        .frame(height: pt(260))
     }
 }
 
@@ -271,40 +271,40 @@ struct GroupCard: View {
     let group: CheatsheetGroup
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: pt(12)) {
             Text(group.title)
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: pt(14), weight: .bold))
                 .foregroundColor(Theme.mauve)
-                .padding(.bottom, 4)
+                .padding(.bottom, pt(4))
 
             ForEach(group.items) { item in
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: pt(12)) {
                     Text(item.key)
-                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .font(.system(size: pt(14), weight: .semibold, design: .monospaced))
                         .foregroundColor(Theme.text)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, pt(8))
+                        .padding(.vertical, pt(4))
                         .background(Theme.surface0)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .clipShape(RoundedRectangle(cornerRadius: pt(6)))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: pt(6))
                                 .stroke(Theme.surface2, lineWidth: 1)
                         )
 
                     Text(item.action)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: pt(15), weight: .medium))
                         .foregroundColor(Theme.text)
-                        .padding(.top, 3)
+                        .padding(.top, pt(3))
 
                     Spacer()
                 }
             }
         }
-        .padding(16)
+        .padding(pt(16))
         .background(Theme.surface1.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: pt(12)))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: pt(12))
                 .stroke(Theme.surface2.opacity(0.5), lineWidth: 1)
         )
     }

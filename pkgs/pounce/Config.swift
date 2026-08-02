@@ -32,9 +32,67 @@ enum SocketConfig {
 
 // MARK: - Settings & Layout
 
+// MARK: UI scale
+
+// Every size in pounce's UI is a point value written for scale 1.0 and read back
+// through `pt(_:)`. `"scale"` in config.json multiplies them, so the whole window
+// — text, rows, icons, and the panels behind the palette — grows as one piece
+// rather than one hand-tuned number at a time. This is the seam the nebelhaus
+// rice's `ui.scale` reaches when a rice asks for a Mac you can read.
+//
+// Deliberately NOT a `.scaleEffect` on the hosting view: that rasterises and then
+// transforms, and soft text is the one thing a legibility setting must not ship.
+// Sizes resolve before layout, so the window is crisp at any scale.
+//
+// A global, mirroring `Theme.current`, rather than a value threaded through the
+// views: both are installed from the same `Settings` on the same path
+// (`Settings.apply`), so they cannot disagree, and the leaf views (rows, keycaps,
+// the emoji grid) stay free of a metrics parameter they would only pass along.
+enum UIScale {
+    // Clamped to `range` on load. 1.0 is today's look, unchanged.
+    static var factor: CGFloat = 1
+    // Below 0.8 the search field's own line height stops shrinking with it and
+    // the header lies about its size; above 2.0 the launcher is taller than the
+    // room under its top inset even after the row cap kicks in.
+    static let range: ClosedRange<CGFloat> = 0.8...2.0
+}
+
+// Scale a point value. Rounded, because half-point row heights accumulate into a
+// window whose arithmetic height (`ContentView.contentHeight`) disagrees with what
+// AppKit lays out — and the exact-height fast path in `PounceUI.resizeToFit`, the
+// fix for Tahoe's stale `fittingSize`, depends on those two matching.
+func pt(_ base: CGFloat) -> CGFloat { (base * UIScale.factor).rounded() }
+
+// Hold a window width inside the screen. Scale and display mode COMPOUND — a
+// large-print Mac turns both up (`nebelhaus.ui.scale` and
+// `nebelhaus.displays.*.uiScale = "larger-text"`), and 820pt at 1.4× is wider than
+// the 1147pt-wide desktop that the second one leaves — so the panels have to be
+// told where the screen ends. A panel narrower than intended is a compromise; one
+// wider than the screen is unusable.
+//
+// Main thread only (NSScreen is not thread-safe), which is why the launcher clamps
+// in `DaemonState.targetWidth` — read while drawing — rather than inside
+// `LayoutMetrics.scaled(by:)`, which Entry resolves off-main.
+func clampToScreen(_ width: CGFloat) -> CGFloat {
+    guard let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else { return width }
+    return min(width, vf.width - 48)
+}
+
+// Scale a window width and clamp it. `pt` + `clampToScreen` in one call.
+func ptWidth(_ base: CGFloat) -> CGFloat { clampToScreen(pt(base)) }
+
+// Chrome shared by every pounce window: the rounded panel. The radius is written
+// in three places that MUST agree — SwiftUI's clipShape, the vibrancy layer's
+// cornerRadius, and the mask image that shapes the window shadow (Window.swift) —
+// so it lives here rather than as the same literal three times.
+enum PanelChrome {
+    static var cornerRadius: CGFloat { pt(16) }
+}
+
 // Layout dimensions for a given window mode. The window resizes to `width` and
 // the list/header shrink with the other fields, so "compact" reads as a tighter
-// launcher.
+// launcher. The constants below are the scale-1.0 base; `Settings.metrics` hands
+// out `scaled(by:)` copies.
 struct LayoutMetrics {
     let width: CGFloat
     let rowHeight: CGFloat
@@ -56,59 +114,81 @@ struct LayoutMetrics {
         width: 600, rowHeight: 42, maxVisibleItems: 6, headerHeight: 52,
         searchIconSize: 16, searchFontSize: 18, topInsetFraction: 0.20,
         hideEmptyList: true)
+
+    // Takes the factor as an argument rather than reading `UIScale.factor`,
+    // because `Settings.metrics` is resolved off the main thread (Entry's request
+    // handler computes it before hopping to the main queue to draw) while the
+    // global is installed on the main thread. The row COUNT is untouched: how many
+    // results fit is a question about the screen, answered where the screen is
+    // known (`ContentView.maxVisibleItems`).
+    func scaled(by factor: CGFloat) -> LayoutMetrics {
+        func s(_ v: CGFloat) -> CGFloat { (v * factor).rounded() }
+        return LayoutMetrics(
+            width: s(width), rowHeight: s(rowHeight), maxVisibleItems: maxVisibleItems,
+            headerHeight: s(headerHeight), searchIconSize: s(searchIconSize),
+            searchFontSize: s(searchFontSize), topInsetFraction: topInsetFraction,
+            hideEmptyList: hideEmptyList)
+    }
 }
 
-// Fixed geometry for the clipboard history's two-pane window (independent of the
-// launcher's windowMode).
+// The panels below carry FIXED geometry — fixed in the sense of "not varying with
+// the launcher's windowMode", not "not varying at all": each dimension is a
+// scale-1.0 base read through `pt(_:)`, so they grow with `"scale"` like the
+// launcher does. They are `static var` for exactly that reason; a `static let`
+// would freeze the first read's scale for the life of the process.
+
+// Geometry for the clipboard history's two-pane window.
 enum ClipboardLayout {
-    static let width: CGFloat = 820
-    static let height: CGFloat = 480
-    static let listWidth: CGFloat = 300
-    static let rowHeight: CGFloat = 56
+    static var width: CGFloat { ptWidth(820) }
+    static var height: CGFloat { pt(480) }
+    static var listWidth: CGFloat { pt(300) }
+    static var rowHeight: CGFloat { pt(56) }
 }
 
-// Fixed geometry for the emoji grid window.
+// Geometry for the emoji grid window. `columns` is a count, not a size: the grid
+// keeps its 9 columns and the cells (and so the window) get wider.
 enum EmojiLayout {
-    static let width: CGFloat = 520
+    static var width: CGFloat { ptWidth(520) }
     static let columns = 9
-    static let cellHeight: CGFloat = 50
-    static let gridHeight: CGFloat = 320
+    static var cellHeight: CGFloat { pt(50) }
+    static var gridHeight: CGFloat { pt(320) }
 }
 
-// Fixed geometry for the recent-screenshots two-pane window. Mirrors the
-// clipboard history layout (list on the left, large preview on the right).
+// Geometry for the recent-screenshots two-pane window. Mirrors the clipboard
+// history layout (list on the left, large preview on the right).
 enum ScreenshotLayout {
-    static let width: CGFloat = 820
-    static let height: CGFloat = 480
-    static let listWidth: CGFloat = 300
-    static let rowHeight: CGFloat = 64
+    static var width: CGFloat { ptWidth(820) }
+    static var height: CGFloat { pt(480) }
+    static var listWidth: CGFloat { pt(300) }
+    static var rowHeight: CGFloat { pt(64) }
 }
 
-// Fixed geometry for the camera peek window: a 16:9 live preview with the
-// action bar underneath.
+// Geometry for the camera peek window: a 16:9 live preview with the action bar
+// underneath. The preview height is derived from the width so the aspect ratio
+// survives scaling and rounding rather than drifting from two rounded constants.
 enum CameraLayout {
-    static let width: CGFloat = 820
-    static let previewHeight: CGFloat = 461
-    static let barHeight: CGFloat = 44
-    static let height: CGFloat = previewHeight + barHeight
+    static var width: CGFloat { ptWidth(820) }
+    static var previewHeight: CGFloat { (width * 461 / 820).rounded() }
+    static var barHeight: CGFloat { pt(44) }
+    static var height: CGFloat { previewHeight + barHeight }
 }
 
-// Fixed geometry for the Find Files window: a launcher-width results list with a
-// fixed visible height, so async Spotlight results stream in without the window
-// resizing under the user's cursor.
+// Geometry for the Find Files window: a launcher-width results list with a fixed
+// visible height, so async Spotlight results stream in without the window resizing
+// under the user's cursor.
 enum FileSearchLayout {
-    static let width: CGFloat = 720
-    static let rowHeight: CGFloat = 46
+    static var width: CGFloat { ptWidth(720) }
+    static var rowHeight: CGFloat { pt(46) }
     static let visibleRows = 8
-    static let headerHeight: CGFloat = 60
+    static var headerHeight: CGFloat { pt(60) }
     static var listHeight: CGFloat { rowHeight * CGFloat(visibleRows) }
 }
 
-// Fixed width for the cheatsheet overlay; height follows the content, capped
-// near the screen edge (see CheatsheetView.maxBodyHeight).
+// Width for the cheatsheet overlay; height follows the content, capped near the
+// screen edge (see CheatsheetView.maxBodyHeight).
 enum CheatsheetLayout {
-    static let width: CGFloat = 1000
-    static let headerHeight: CGFloat = 64
+    static var width: CGFloat { ptWidth(1000) }
+    static var headerHeight: CGFloat { pt(64) }
 }
 
 // User settings, read from ~/.config/pounce/config.json. Parsed leniently via
@@ -192,6 +272,11 @@ struct Settings {
     enum WindowMode: String { case standard = "default", compact }
 
     var windowMode: WindowMode = .standard
+    // Multiplies every size in the UI (see `UIScale`). `windowMode` picks the
+    // launcher's proportions — how tight it reads; `scale` picks how big the whole
+    // thing is drawn, panels included. They compose: a compact launcher at 1.4 is
+    // still the compact layout, just legible from further away.
+    var scale: CGFloat = 1
     var clipboard = ClipboardSettings()
     var appLauncher = AppLauncherSettings()
     var hotkey = HotKeyConfig()
@@ -228,9 +313,20 @@ struct Settings {
 
     var metrics: LayoutMetrics {
         switch windowMode {
-        case .standard: return .standard
-        case .compact: return .compact
+        case .standard: return LayoutMetrics.standard.scaled(by: scale)
+        case .compact: return LayoutMetrics.compact.scaled(by: scale)
         }
+    }
+
+    // Install the parts of the settings that the views read from globals rather
+    // than from `DaemonState`: the palette and the UI scale. Both are re-read per
+    // open, so a config edit shows on the next summon without restarting the
+    // daemon — and doing them together is what keeps `UIScale.factor` from ever
+    // lagging a `state.metrics` that was resolved from the same `Settings`.
+    // Main thread: `UIScale.factor` is read during layout.
+    func apply() {
+        Theme.current = palette
+        UIScale.factor = scale
     }
 
     // Resolved per open (like the rest of Settings), so toggling macOS
@@ -257,6 +353,12 @@ struct Settings {
         else { return s }
         if let wm = obj["windowMode"] as? String, let mode = WindowMode(rawValue: wm) {
             s.windowMode = mode
+        }
+        // Clamped rather than rejected: a config asking for 3.0 wants the biggest
+        // palette pounce can draw, and handing it back 1.0 — the smallest — is the
+        // opposite of what it asked for.
+        if let sc = obj["scale"] as? Double {
+            s.scale = min(max(CGFloat(sc), UIScale.range.lowerBound), UIScale.range.upperBound)
         }
         if let t = obj["theme"] as? String { s.theme = t }
         if let t = obj["themeLight"] as? String { s.themeLight = t }

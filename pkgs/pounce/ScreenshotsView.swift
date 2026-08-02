@@ -24,9 +24,9 @@ struct ScreenshotsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: pt(12)) {
                 Image(systemName: "photo.on.rectangle")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: pt(16), weight: .medium))
                     .foregroundColor(Theme.subtext)
                 CustomTextField(
                     text: $query, selectedIndex: $selectedIndex,
@@ -34,15 +34,15 @@ struct ScreenshotsView: View {
                     fontSize: 18, state: state, onSubmit: { _ in commit() }
                 )
             }
-            .padding(.horizontal, 20)
-            .frame(height: 52)
+            .padding(.horizontal, pt(20))
+            .frame(height: pt(52))
 
             Divider().background(Theme.surface1.opacity(0.3))
 
             if filtered.isEmpty {
                 Text("No screenshots found")
                     .foregroundColor(Theme.subtext0)
-                    .font(.system(size: 13))
+                    .font(.system(size: pt(13)))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
@@ -55,7 +55,7 @@ struct ScreenshotsView: View {
                                         .onTapGesture { selectedIndex = i; commit() }
                                 }
                             }
-                            .padding(.vertical, 6)
+                            .padding(.vertical, pt(6))
                         }
                         .onChange(of: selectedIndex) {
                             if selectedIndex < filtered.count { proxy.scrollTo(filtered[selectedIndex].id) }
@@ -88,31 +88,31 @@ struct ScreenshotRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: pt(12)) {
             Image(nsImage: ThumbResolver.shared.thumb(entry.path))
                 .resizable().aspectRatio(contentMode: .fit)
-                .frame(width: 48, height: 32)
+                .frame(width: pt(48), height: pt(32))
                 .background(Theme.surface0.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .clipShape(RoundedRectangle(cornerRadius: pt(4)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name)
                     .foregroundColor(Theme.text)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: pt(13), weight: .medium))
                     .lineLimit(1).truncationMode(.middle)
                 Text(relativeTime(entry.ts))
                     .foregroundColor(Theme.subtext0)
-                    .font(.system(size: 11))
+                    .font(.system(size: pt(11)))
                     .lineLimit(1)
             }
-            Spacer(minLength: 4)
+            Spacer(minLength: pt(4))
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, pt(12))
         .frame(height: ScreenshotLayout.rowHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: pt(8))
                 .fill(isSelected ? Theme.mauve.opacity(0.20) : Color.clear)
-                .padding(.horizontal, 6)
+                .padding(.horizontal, pt(6))
         )
         .contentShape(Rectangle())
     }
@@ -129,27 +129,27 @@ struct ScreenshotPreview: View {
                         Image(nsImage: img)
                             .resizable().aspectRatio(contentMode: .fit)
                             .frame(maxWidth: .infinity)
-                            .padding(16)
+                            .padding(pt(16))
                     } else {
                         Text("Can't preview \(entry.name)")
                             .foregroundColor(Theme.subtext0)
-                            .padding(16)
+                            .padding(pt(16))
                     }
                 }
                 Divider().background(Theme.surface1.opacity(0.3))
-                HStack(spacing: 8) {
+                HStack(spacing: pt(8)) {
                     Text(entry.name).foregroundColor(Theme.subtext).lineLimit(1).truncationMode(.middle)
                     Spacer()
                     Text(relativeTime(entry.ts)).foregroundColor(Theme.subtext0)
                 }
-                .font(.system(size: 11))
-                .padding(.horizontal, 16)
-                .frame(height: 32)
+                .font(.system(size: pt(11)))
+                .padding(.horizontal, pt(16))
+                .frame(height: pt(32))
             }
         } else {
             Text("No screenshots yet")
                 .foregroundColor(Theme.subtext0)
-                .font(.system(size: 13))
+                .font(.system(size: pt(13)))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

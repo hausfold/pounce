@@ -41,7 +41,7 @@ final class SwitcherPanel {
         hosting = NSHostingView(rootView: SwitcherView(state: state))
 
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: SwitcherLayout.width, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: SwitcherLayout.width, height: pt(200)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
@@ -60,7 +60,7 @@ final class SwitcherPanel {
         blur.layer?.masksToBounds = true
         blur.layer?.borderWidth = 1
         PounceUI.applyChrome(blur)   // material/appearance/border follow the palette
-        blur.maskImage = PounceUI.roundedMask(radius: 16)
+        blur.maskImage = PounceUI.roundedMask(radius: pt(16))
         hosting.autoresizingMask = [.width, .height]
         blur.addSubview(hosting)
         panel.contentView = blur
@@ -120,17 +120,17 @@ struct SwitcherView: View {
             // The filter line appears only once the user types — the resting
             // switcher is just the window list.
             if !state.query.isEmpty {
-                HStack(spacing: 10) {
+                HStack(spacing: pt(10)) {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: pt(13), weight: .medium))
                         .foregroundColor(Theme.subtext)
                     Text(state.query)
-                        .font(.system(size: 15, weight: .regular, design: .rounded))
+                        .font(.system(size: pt(15), weight: .regular, design: .rounded))
                         .foregroundColor(Theme.text)
                         .lineLimit(1)
                     Spacer()
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, pt(20))
                 .frame(height: SwitcherLayout.queryHeight)
 
                 Divider().background(Theme.surface1.opacity(0.3))
@@ -138,11 +138,11 @@ struct SwitcherView: View {
 
             if state.visible.isEmpty {
                 Text("No matching windows")
-                    .font(.system(size: 14, design: .rounded))
+                    .font(.system(size: pt(14), design: .rounded))
                     .foregroundColor(Theme.subtext0)
                     .frame(height: SwitcherLayout.rowHeight)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, pt(6))
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -165,7 +165,7 @@ struct SwitcherView: View {
                                     .onTapGesture { state.onSelect?(i) }
                             }
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, pt(6))
                     }
                     .frame(height: listHeight + 12)
                     .onChange(of: state.selection) {
@@ -179,7 +179,7 @@ struct SwitcherView: View {
         .frame(width: SwitcherLayout.width)
         .fixedSize(horizontal: false, vertical: true)
         .background(Theme.wash())
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: PanelChrome.cornerRadius))
         .onChange(of: state.visible.count) { state.onResize?() }
         .onChange(of: state.query.isEmpty) { state.onResize?() }
     }
@@ -193,37 +193,37 @@ struct SwitcherRow: View {
     let isSelected: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: pt(12)) {
             Group {
                 if let path = window.appPath {
                     Image(nsImage: AppIconCache.shared.icon(for: path))
                         .resizable().aspectRatio(contentMode: .fit)
                 } else {
                     Image(systemName: "macwindow")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: pt(16), weight: .medium))
                         .foregroundColor(isSelected ? Theme.mauve : Theme.subtext)
                 }
             }
-            .frame(width: 26, height: 26)
+            .frame(width: pt(26), height: pt(26))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(window.title)
                     .foregroundColor(Theme.text)
-                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .font(.system(size: pt(15), weight: .medium, design: .rounded))
                     .lineLimit(1)
                 if window.title != window.appName {
                     Text(window.appName)
                         .foregroundColor(Theme.subtext0)
-                        .font(.system(size: 11, design: .rounded))
+                        .font(.system(size: pt(11), design: .rounded))
                         .lineLimit(1)
                 }
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: pt(8))
 
             if window.isMinimized {
                 Image(systemName: "arrow.down.right.square")
-                    .font(.system(size: 12))
+                    .font(.system(size: pt(12)))
                     .foregroundColor(Theme.subtext0)
             }
 
@@ -231,19 +231,19 @@ struct SwitcherRow: View {
             // reach is what the badge is advertising.
             if let ws = workspace {
                 Text(ws)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: pt(11), weight: .semibold, design: .rounded))
                     .foregroundColor(Theme.blue)
-                    .frame(minWidth: 20, minHeight: 20)
+                    .frame(minWidth: pt(20), minHeight: pt(20))
                     .padding(.horizontal, 2)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(Theme.blue.opacity(0.15)))
+                    .background(RoundedRectangle(cornerRadius: pt(5)).fill(Theme.blue.opacity(0.15)))
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, pt(14))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: pt(10))
                 .fill(isSelected ? Theme.mauve.opacity(0.20) : Color.clear)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, pt(8))
         )
         .contentShape(Rectangle())
     }
