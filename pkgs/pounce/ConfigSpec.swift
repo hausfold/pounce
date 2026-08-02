@@ -217,10 +217,11 @@ enum ConfigSpec {
     /// since `load()` falls back to defaults on a parse failure.
     static func render(version: String) throws -> String {
         let text = ConfigTemplate.render(sections(), version: version)
-        let stripped = JSONC.strip(text)
-        guard (try? JSONSerialization.jsonObject(with: Data(stripped.utf8))) != nil else {
-            throw ConfigTemplateError.invalidJSON
-        }
+        // Through the SAME parser `Settings.load()` uses, flag and all — a check
+        // against a stricter or looser one would be checking the wrong thing.
+        guard (try? JSONSerialization.jsonObject(
+            with: Data(text.utf8), options: [.json5Allowed])) != nil
+        else { throw ConfigTemplateError.invalidJSON }
         return text
     }
 }
