@@ -208,6 +208,7 @@ off by default because each assumes a specific tool, service, or app:
 | `caffeinate` | keep the Mac awake (indefinitely or on a timer) | — (system `caffeinate`) |
 | `docker` | start / stop / restart containers, tail logs | a docker engine (Docker Desktop, OrbStack, colima) |
 | `github` | jump to your PRs, review requests, issues, repos | `brew install gh` + `gh auth login` |
+| `perplexity` | type a question → a fresh Perplexity thread in the browser | a browser (and a Perplexity account, for anything beyond the free tier) |
 | `spotify` | play / pause / skip / shuffle, copy song link | Spotify.app |
 | `ssh` | pick a host from `~/.ssh/config`, connects (see `$POUNCE_TERMINAL_LAUNCHER`) | hosts in `~/.ssh/config` |
 | `tailscale` | connect toggle, copy your / any peer's tailnet IP | Tailscale |
