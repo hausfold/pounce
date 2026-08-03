@@ -8,7 +8,7 @@ import ServiceManagement
 // running, ⌘Space works, and it comes back at every login — no Homebrew, no
 // terminal, no Nix.
 //
-// Boundary note (see CLAUDE.md): the launch agent for the RICE lives in
+// Boundary note (see AGENTS.md): the launch agent for the RICE lives in
 // nebelhaus/modules/pounce, and Homebrew's in the formula's service block —
 // those are packager concerns and stay out of this repo. What lives HERE is the
 // app registering ITSELF via SMAppService, the same in-process exception the
