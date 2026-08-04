@@ -188,6 +188,7 @@ struct KeyCap: View {
 final class PounceTextField: NSTextField {
     var wrapsText: Bool = false
     var calculatedHeight: CGFloat?
+    var onSubmit: ((String) -> Void)?
 
     override var intrinsicContentSize: NSSize {
         var size = super.intrinsicContentSize
@@ -195,6 +196,21 @@ final class PounceTextField: NSTextField {
             size.height = h
         }
         return size
+    }
+
+    // Command-key chords are offered to the window as key equivalents before
+    // the field editor gets a chance to interpret them. That is normally how a
+    // menu item such as ⌘Return would work, but Pounce deliberately has no
+    // menu. Catch the chord at the control so it reaches the same submit path
+    // as the text system's ordinary Return action.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isReturn = event.keyCode == 36 || event.keyCode == 76 // Return / keypad Enter
+        if isReturn, flags.contains(.command), !flags.contains(.shift) {
+            onSubmit?("cmd")
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 
@@ -222,6 +238,7 @@ struct CustomTextField: NSViewRepresentable {
         let tf = PounceTextField()
         tf.wrapsText = wraps
         tf.calculatedHeight = calculatedHeight
+        tf.onSubmit = onSubmit
         tf.delegate = context.coordinator
         tf.font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
         tf.textColor = NSColor(Theme.text)
@@ -268,6 +285,7 @@ struct CustomTextField: NSViewRepresentable {
         if let ptf = tf as? PounceTextField {
             ptf.wrapsText = wraps
             ptf.calculatedHeight = calculatedHeight
+            ptf.onSubmit = onSubmit
         }
         if tf.stringValue != text { tf.stringValue = text }
         tf.placeholderString = placeholder
@@ -325,7 +343,12 @@ struct CustomTextField: NSViewRepresentable {
             case #selector(NSResponder.moveLeft(_:)) where cols > 1:
                 if parent.selectedIndex > 0 { parent.selectedIndex -= 1 }
                 return true
-            case #selector(NSResponder.insertNewline(_:)):
+            // Option+Return maps to insertNewlineIgnoringFieldEditor:, rather
+            // than insertNewline:. Both are submission gestures in Pounce; the
+            // special selector only means "don't end the field editor" to a
+            // normal multiline AppKit control.
+            case #selector(NSResponder.insertNewline(_:)),
+                 #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
                 let flags = NSEvent.modifierFlags
                 if flags.contains(.shift) {
                     // NOT textView.insertNewline(nil): an NSTextField is always
