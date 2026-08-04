@@ -236,6 +236,7 @@ struct CustomTextField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSTextField {
         let tf = PounceTextField()
+        context.coordinator.textField = tf
         tf.wrapsText = wraps
         tf.calculatedHeight = calculatedHeight
         tf.onSubmit = onSubmit
@@ -301,17 +302,70 @@ struct CustomTextField: NSViewRepresentable {
         }
         context.coordinator.itemCount = itemCount
         context.coordinator.parent = self
+        context.coordinator.textField = tf
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    static func dismantleNSView(_ tf: NSTextField, coordinator: Coordinator) {
+        coordinator.stopMonitoringKeys()
+    }
+
     class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: CustomTextField
         var itemCount: Int
+        weak var textField: NSTextField?
+        private var keyMonitor: Any?
 
         init(_ parent: CustomTextField) {
             self.parent = parent
             self.itemCount = parent.itemCount
+            super.init()
+            // `doCommandBy` reports the selector after AppKit has interpreted
+            // the event, but NSEvent.modifierFlags is global keyboard state —
+            // by then ⌥ may already read as up. Read the key event itself so a
+            // modified Return cannot degrade into a plain Return and submit the
+            // prompt by accident.
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                self?.handleModifiedReturn(event) ?? event
+            }
+        }
+
+        deinit { stopMonitoringKeys() }
+
+        func stopMonitoringKeys() {
+            if let keyMonitor {
+                NSEvent.removeMonitor(keyMonitor)
+                self.keyMonitor = nil
+            }
+        }
+
+        private func handleModifiedReturn(_ event: NSEvent) -> NSEvent? {
+            guard let textField,
+                  event.window === textField.window,
+                  textField.currentEditor() != nil,
+                  event.keyCode == 36 || event.keyCode == 76 else { return event }
+
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            // Match the existing Shift+Return contract: a shift held with any
+            // other modifier still writes a line break, never an action. It has
+            // to happen here, not in doCommandBy, for the same reason as the
+            // action keys: the global modifier state can clear before AppKit
+            // asks the field editor to interpret this event.
+            if flags.contains(.shift), let editor = textField.currentEditor() as? NSTextView {
+                editor.insertText("\n", replacementRange: editor.selectedRange())
+                return nil
+            }
+
+            let action: String?
+            if flags.contains(.command) { action = "cmd" }
+            else if flags.contains(.option) { action = "opt" }
+            else if flags.contains(.control) { action = "ctrl" }
+            else { action = nil }
+            guard let action else { return event }
+
+            parent.onSubmit(action)
+            return nil
         }
 
         func controlTextDidChange(_ n: Notification) {
