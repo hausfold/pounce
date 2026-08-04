@@ -600,11 +600,36 @@ With `"windows": { "enabled": true }` the daemon replaces the stock ⌘Tab app
 switcher with an MRU **window** switcher:
 
 - **⌘⇥, release** — toggle straight to the last window you were in, even on
-  another workspace. No HUD, no ceremony.
+  another workspace. No HUD, no ceremony. (Under AeroSpace this means the last
+  window on a *different* workspace — see below.)
 - **hold ⌘, keep tapping ⇥** — walk every window, most-recently-used first
   (⌘⇧⇥ walks backwards; ↑/↓ also move).
 - **hold ⌘ and type** — fuzzy-filter the list, ranked by frecency. ↵ commits, ⎋
   cancels, releasing ⌘ always lands on the selection.
+
+**Running AeroSpace, a bare tap looks past the workspace you're on.** With two
+windows tiled side by side, the most recent one is a window you are *looking
+at* — landing there isn't a switch, and nudging focus between visible tiles is
+the window manager's job (AeroSpace's own focus keys), not the switcher's. So a
+tap-and-release takes the most recent window on a *different* workspace, which
+is what makes ⌘⇥ mean "get me back to where I was" again.
+
+Two details worth knowing. The candidate's workspace has to be *known* and
+different, not merely "somewhere else" — a window AeroSpace hasn't placed is
+never the default, so the rule can only ever land you somewhere `aerospace focus
+--window-id` can actually reach. And it prefers not to un-minimize: a minimized
+window becomes the default only if every other window is minimized too.
+
+Nothing is hidden from the list — the skipped same-workspace siblings are the
+rows immediately below you. To get one, hold ⌘ and step *back* with ⇧⇥ from
+where the default put you. (A ⌘⇧⇥ tap-and-release is the other gesture
+entirely: it starts from the far end of the list and walks forwards.)
+
+None of this engages without AeroSpace, and it also stands down when every
+window happens to be on one workspace: the default falls back to plain MRU. The
+one thing a machine with no AeroSpace does feel is the HUD delay — the list
+appears after a quarter second of holding ⌘ rather than a tenth, so a quick
+bounce between two windows never flashes it.
 
 macOS doesn't let ⌘Tab be rebound — the daemon takes it with an event tap, which
 the system gates behind the **Accessibility** grant. Without the grant (or during
@@ -614,10 +639,17 @@ Accessibility while the daemon is running and the switcher arms itself within a
 couple of seconds — no restart; revoke it and the tap drops live. Flipping
 `windows.enabled` itself does need a daemon restart.
 
-Running [AeroSpace](https://github.com/nikitabobko/AeroSpace)? Each row gets a
-workspace badge, and focusing goes through `aerospace focus --window-id` so a
-window parked on another workspace surfaces correctly — that's the pairing the
+Running [AeroSpace](https://github.com/nikitabobko/AeroSpace)? The list gathers
+windows by workspace, each group under its own header — workspace order is
+itself MRU, so it reads as "here, then where I was before, then before that" —
+and focusing goes through `aerospace focus --window-id` so a window parked on
+another workspace surfaces correctly. That's the pairing the
 [nebelhaus](https://nebelhaus.com) rice ships enabled.
+
+Headers appear only when there are two or more groups to tell apart; with
+everything on one workspace the list is plain. Filtered results are ranked by
+score rather than gathered, so they drop the headers and carry a per-row
+workspace badge instead.
 
 ## Building from source
 

@@ -18,9 +18,10 @@ import SwiftUI
 //
 // The tap callback runs on the main run loop and must return fast — macOS
 // disables taps that stall (~1s). Everything here is O(cached list); the AX
-// walking lives in WindowTracker, off this path. During Secure Input (password
-// fields) keyboard taps go deaf and events flow to the stock switcher — an
-// acceptable, self-healing fallback.
+// walking and the `aerospace` subprocess both live in WindowTracker, off this
+// path, and this side only ever reads their cached results. During Secure Input
+// (password fields) keyboard taps go deaf and events flow to the stock switcher
+// — an acceptable, self-healing fallback.
 final class WindowSwitcher {
     private let tracker = WindowTracker()
     // Separate store from the launcher's frecency.json: two live Frecency
@@ -45,8 +46,11 @@ final class WindowSwitcher {
     private var hudTimer: DispatchWorkItem?
     // A quick tap-release toggle shouldn't flash a window; the HUD appears
     // only if the modifier is still held after this delay (or on any explicit
-    // cycle/typing, immediately).
-    private static let hudDelay: TimeInterval = 0.1
+    // cycle/typing, immediately). Tuned to sit above a deliberate back-and-forth
+    // round trip — at 0.1s an ordinary bounce between two windows outran it and
+    // strobed the panel for a few frames on the way past. Raising it costs
+    // nothing when you DO want the list: walking with ⇥ shows it instantly.
+    private static let hudDelay: TimeInterval = 0.25
 
     init?(settings: WindowSwitcherSettings) {
         guard let code = HotKeyParser.keyCode(for: settings.key) else {
@@ -167,11 +171,12 @@ final class WindowSwitcher {
         active = true
         sessionWindows = windows
         state.query = ""
-        state.workspaces = [:]
+        // Read synchronously and frozen for the session: the grouping and the
+        // row badges must agree with the order `windows` already came in, and a
+        // map arriving mid-cycle would relabel rows under the selection.
+        state.workspaces = tracker.workspaceMap
         state.visible = windows
-        // Index 1 — "the window before this one" — is the whole point of MRU:
-        // tap-release lands there without ever seeing the HUD.
-        state.selection = windows.count > 1 ? (reverse ? windows.count - 1 : 1) : 0
+        state.selection = defaultSelection(windows, reverse: reverse)
 
         tracker.refreshSoon()   // freshen the snapshot for the NEXT activation
 
@@ -179,6 +184,43 @@ final class WindowSwitcher {
         hudTimer = show
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.hudDelay, execute: show)
         return true
+    }
+
+    // Where a tap-and-release lands. "The window before this one" is the whole
+    // point of MRU — but when two windows are tiled side by side, the one before
+    // this one is right there on screen, so landing on it isn't a switch at all;
+    // it's the focus nudge windowNav's ⌥hjkl exists for. Under a tiling WM the
+    // default therefore looks past the current workspace entirely and takes the
+    // most recent window on a DIFFERENT one.
+    //
+    // Deliberately "different workspace" rather than "not currently visible":
+    // same-workspace-but-off-screen is the ambiguous middle (a ⌘H-hidden app, a
+    // window on its own native Space) where landing there fires a Space-switch
+    // animation instead of a switch. Requiring the candidate's workspace to be
+    // *known and different* keeps the default on windows AeroSpace can actually
+    // reach with `focus --window-id`.
+    //
+    // Nothing is removed from the list: the skipped siblings are still rows
+    // 1..n, still reachable with ⇧⇥ or by keeping ⇥ held down.
+    private func defaultSelection(_ windows: [WindowInfo], reverse: Bool) -> Int {
+        guard windows.count > 1 else { return 0 }
+        if reverse { return windows.count - 1 }
+        // Plain MRU, but still preferring not to un-minimize on a bare tap.
+        // Reached when there's no tiling to reason about at all, when one
+        // workspace holds everything, and when the map hasn't placed a
+        // candidate — walking with ⇥ reaches minimized windows either way, so
+        // only an all-minimized list makes one the default.
+        func mru() -> Int { windows.dropFirst().firstIndex { !$0.isMinimized } ?? 1 }
+
+        // No AeroSpace, or it hasn't placed the window we're standing on (the
+        // map is briefly empty at daemon start) → the unmodified rule.
+        guard let here = tracker.workspace(of: windows[0]) else { return mru() }
+
+        let elsewhere = windows.dropFirst().firstIndex {
+            guard !$0.isMinimized, let ws = tracker.workspace(of: $0) else { return false }
+            return ws != here
+        }
+        return elsewhere ?? mru()
     }
 
     private func cycle(_ delta: Int) {
@@ -216,11 +258,9 @@ final class WindowSwitcher {
         hudShown = true
         Settings.load().apply()   // config + scale edits apply on next show
         panel.show()
-        // Badges arrive async — the HUD is already up and usable without them.
-        Aerospace.workspaces { [weak self] map in
-            guard let self, self.active else { return }
-            self.state.workspaces = map
-        }
+        // No workspace fetch here any more: the map is cached on the tracker and
+        // was read at activation, so the headers are correct on the first frame
+        // instead of popping in a subprocess later.
     }
 
     private func commit() {

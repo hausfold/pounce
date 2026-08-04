@@ -54,9 +54,23 @@ struct WindowInfo: Identifiable {
 // the AX walk, publishing its result back on main.
 final class WindowTracker {
     private(set) var cached: [WindowInfo] = []
+    // window-id → AeroSpace workspace, refreshed on the same background pass as
+    // the AX snapshot. Cached rather than fetched per-show because the switcher
+    // needs it *synchronously* at activation — it decides both the row grouping
+    // and which row starts selected, and neither may shuffle mid-session.
+    private(set) var workspaceMap: [CGWindowID: String] = [:]
     private var stamps: [CGWindowID: Double] = [:]
     private var observers: [pid_t: AXObserver] = [:]
     private var refreshScheduled = false
+    private var refreshGeneration = 0
+    // Throttle state for the workspace map — see refresh(). The max age is the
+    // window in which a window MOVED between workspaces (same id, so the id-set
+    // check can't see it) is still filed under the old one; short enough that
+    // it self-heals before you notice, long enough not to be a fork per click.
+    private var workspaceFetchIDs = Set<CGWindowID>()
+    private var workspaceFetchedAt: TimeInterval = 0
+    private var workspaceFetchInFlight = false
+    private static let workspaceMaxAge: TimeInterval = 3
 
     init() {
         seedFromZOrder()
@@ -67,9 +81,10 @@ final class WindowTracker {
         refreshSoon()
     }
 
-    // The switcher's list: most-recently-focused first. Windows never focused
-    // since the daemon started sink to the bottom (stable by title so the tail
-    // doesn't shuffle between opens).
+    // The switcher's list: most-recently-focused first, then gathered so windows
+    // sharing an AeroSpace workspace sit together. Windows never focused since
+    // the daemon started sink to the bottom (stable by title so the tail doesn't
+    // shuffle between opens).
     func orderedWindows() -> [WindowInfo] {
         let sorted = cached.sorted { a, b in
             let sa = stamps[a.id] ?? 0, sb = stamps[b.id] ?? 0
@@ -82,7 +97,32 @@ final class WindowTracker {
         // so a duplicate would collide SwiftUI's identity and smear the
         // selection highlight onto the wrong row.
         var seen = Set<CGWindowID>()
-        return sorted.filter { seen.insert($0.id).inserted }
+        return groupByWorkspace(sorted.filter { seen.insert($0.id).inserted })
+    }
+
+    // Stable group-by: a workspace takes its rank from its most recent window,
+    // and every other window of that workspace follows it. So the list reads
+    // current-workspace-first, then the workspace you were on before that, and
+    // so on — workspace MRU, with window MRU inside each group. Without
+    // AeroSpace every window maps to nil, which is one group, which is the
+    // plain MRU list this replaced.
+    private func groupByWorkspace(_ windows: [WindowInfo]) -> [WindowInfo] {
+        var order: [String] = []          // workspace names by first appearance
+        var groups: [String: [WindowInfo]] = [:]
+        for w in windows {
+            let key = workspaceMap[w.id] ?? ""
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(w)
+        }
+        return order.flatMap { groups[$0] ?? [] }
+    }
+
+    // The AeroSpace workspace a window sits on, or nil when there's no tiling to
+    // reason about — no AeroSpace, or it doesn't place this window. Cheap: a
+    // dictionary read against the cached map, safe from inside the event tap.
+    func workspace(of w: WindowInfo) -> String? {
+        guard Aerospace.binPath != nil else { return nil }
+        return workspaceMap[w.id]
     }
 
     // Force the currently-frontmost app's focused window to the top of the MRU
@@ -256,9 +296,60 @@ final class WindowTracker {
                 .map { ($0.processIdentifier, $0.localizedName ?? "App",
                         $0.bundleIdentifier, $0.bundleURL?.path) }
 
+        // refresh() fires on every app activation and AX window notification, so
+        // the workspace map does NOT ride every pass — that would be an
+        // `aerospace` subprocess per click. Re-ask only when the window
+        // population changed (new/closed window ⇒ the map can't be complete) or
+        // when the answer has simply aged out, which is what catches a window
+        // thrown to another workspace without any id changing.
+        let ids = Set(cached.map(\.id))
+        let now = ProcessInfo.processInfo.systemUptime
+        let wantSpaces = !workspaceFetchInFlight
+            && (ids != workspaceFetchIDs || now - workspaceFetchedAt >= Self.workspaceMaxAge)
+        if wantSpaces { workspaceFetchInFlight = true }
+
+        // Passes can overlap (refreshScheduled clears before the work starts) and
+        // a pass that shells out to `aerospace` runs a lot longer than one that
+        // doesn't — so an older snapshot could land after a newer one and
+        // resurrect a window you just closed. Only the newest pass may publish.
+        refreshGeneration += 1
+        let generation = refreshGeneration
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let snapshot = Self.enumerate(apps: apps)
-            DispatchQueue.main.async { self?.cached = snapshot }
+            // Blocking, hence out here rather than on the main thread: the
+            // switcher reads the cached map synchronously and can't spawn
+            // anything from inside the event tap.
+            let spaces = wantSpaces ? Aerospace.workspacesSync() : nil
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if wantSpaces {
+                    self.workspaceFetchInFlight = false
+                    // A failure keeps the previous map rather than dropping every
+                    // window into one unnamed group. BOTH throttle keys are
+                    // stamped either way: the gate is an OR, so leaving the id
+                    // set unstamped on failure keeps `ids != workspaceFetchIDs`
+                    // permanently true and re-forks on every refresh forever —
+                    // and "AeroSpace installed but not running" is an ordinary
+                    // state, not an exceptional one. Retry is one
+                    // workspaceMaxAge away.
+                    if let spaces { self.workspaceMap = spaces }
+                    // Stamped with the ids this pass GATED on, not the snapshot's
+                    // — the two differ exactly when this pass discovered a window,
+                    // and the next refresh then re-asks for it instead of
+                    // concluding nothing changed.
+                    self.workspaceFetchIDs = ids
+                    self.workspaceFetchedAt = ProcessInfo.processInfo.systemUptime
+                }
+                // The map is keyed by window id and doesn't depend on snapshot
+                // ordering, so it lands even from a superseded pass; only the
+                // snapshot itself is generation-gated.
+                guard generation == self.refreshGeneration else { return }
+                self.cached = snapshot
+                // A pass that changed the population leaves the map one window
+                // short. Coalesced, so this costs nothing when nothing changed.
+                if Set(snapshot.map(\.id)) != ids { self.refreshSoon() }
+            }
         }
     }
 
@@ -331,20 +422,72 @@ enum Aerospace {
         }
     }
 
-    // window-id → workspace name, for the HUD badges. Fetched fresh per show —
-    // it's one short-lived subprocess, and the result is stale the moment a
-    // window moves anyway.
-    static func workspaces(completion: @escaping ([CGWindowID: String]) -> Void) {
-        run(["list-windows", "--all", "--format", "%{window-id}\t%{workspace}"]) { status, output in
-            guard status == 0 else { completion([:]); return }
-            var map: [CGWindowID: String] = [:]
-            for line in output.split(separator: "\n") {
-                let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
-                guard parts.count >= 2, let id = UInt32(parts[0].trimmingCharacters(in: .whitespaces)) else { continue }
-                map[CGWindowID(id)] = parts[1].trimmingCharacters(in: .whitespaces)
-            }
-            completion(map)
+    // window-id → workspace name, for the switcher's grouping. Blocking, so it
+    // may ONLY be called off the main thread — WindowTracker.refresh()'s
+    // background pass is the single caller. nil means "no answer this pass"
+    // (AeroSpace absent, erroring, or wedged): the caller keeps the map it had
+    // rather than dropping every window into one unnamed group.
+    static func workspacesSync() -> [CGWindowID: String]? {
+        guard let (status, output) =
+                runSync(["list-windows", "--all", "--format", "%{window-id}\t%{workspace}"]),
+              status == 0 else { return nil }
+        var map: [CGWindowID: String] = [:]
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard parts.count >= 2, let id = UInt32(parts[0].trimmingCharacters(in: .whitespaces)) else { continue }
+            map[CGWindowID(id)] = parts[1].trimmingCharacters(in: .whitespaces)
         }
+        return map
+    }
+
+    // Blocking sibling of run(), for callers already on a background queue.
+    // nil on any failure. The watchdog is what keeps a wedged AeroSpace from
+    // pinning a worker thread for every refresh that follows it.
+    private static func runSync(_ args: [String]) -> (Int32, String)? {
+        guard let bin = binPath else { return nil }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: bin)
+        proc.arguments = args
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+
+        // Exit is observed through terminationHandler rather than
+        // waitUntilExit(): the timeout has to be able to fire while we're
+        // waiting, and polling isRunning to decide whether to terminate races
+        // the reap (the pid can be reused between the check and the signal).
+        let exited = DispatchSemaphore(value: 0)
+        proc.terminationHandler = { _ in exited.signal() }
+        do { try proc.run() } catch { return nil }
+
+        // Drained on its own thread so a child that inherited the pipe's write
+        // end can't wedge this one past the timeout, and so the read can't
+        // deadlock against a process still filling a full pipe buffer.
+        var data = Data()
+        let drained = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
+            drained.signal()
+        }
+
+        var reaped = exited.wait(timeout: .now() + 1.0) == .success
+        if !reaped {
+            proc.terminate()                       // SIGTERM
+            reaped = exited.wait(timeout: .now() + 0.5) == .success
+        }
+        if !reaped {
+            // SIGKILL, because a survivor still holds the pipe's write end — the
+            // drain thread would otherwise block on it for the daemon's whole
+            // life, and one leaked GCD worker per wedged call eventually starves
+            // the pool that the AX walk itself runs on.
+            kill(proc.processIdentifier, SIGKILL)
+            reaped = exited.wait(timeout: .now() + 0.5) == .success
+        }
+        // terminationStatus RAISES an ObjC exception if the process is still
+        // running — uncatchable from Swift, so it aborts the whole daemon and
+        // takes ⌘Space down with it. Never fall through to it unreaped.
+        guard reaped, drained.wait(timeout: .now() + 0.5) == .success else { return nil }
+        return (proc.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
     // Fire-and-callback subprocess, never blocking the caller; completion runs
