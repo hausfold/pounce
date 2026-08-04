@@ -62,6 +62,11 @@ final class WindowTracker {
     private var stamps: [CGWindowID: Double] = [:]
     private var observers: [pid_t: AXObserver] = [:]
     private var refreshScheduled = false
+    // Throttle state for the workspace map — see refresh().
+    private var workspaceFetchIDs = Set<CGWindowID>()
+    private var workspaceFetchedAt: TimeInterval = 0
+    private var workspaceFetchInFlight = false
+    private static let workspaceMaxAge: TimeInterval = 5
 
     init() {
         seedFromZOrder()
@@ -108,49 +113,38 @@ final class WindowTracker {
         return order.flatMap { groups[$0] ?? [] }
     }
 
-    // The windows already drawn on screen beside `anchor` — same display, both
-    // visible right now. Switching to one of these isn't a switch: you are
-    // looking at it already, and nudging focus between tiles is what windowNav's
-    // ⌥hjkl is for. The switcher uses this only to pick which row starts
-    // selected; nothing is ever filtered out of the list.
+    // The windows tiled beside `anchor` right now: same AeroSpace workspace, and
+    // actually drawn on screen. Switching to one of those isn't a switch — you're
+    // looking at it already, and nudging focus between visible tiles is what
+    // windowNav's ⌥hjkl is for. Used only to pick which row starts selected;
+    // nothing is ever filtered out of the list.
     //
-    // Deliberately "on screen", not "same workspace": a sibling hidden behind an
-    // accordion IS a real switch target, and a window on the second monitor sits
-    // on its own display so it survives too.
-    func windowsVisibleBeside(_ anchor: CGWindowID) -> Set<CGWindowID> {
+    // nil means "no tiling to reason about" — no AeroSpace, or it doesn't place
+    // the anchor — and the switcher then keeps the plain "row 1 is the last
+    // window" rule. That gate matters: without a tiling WM, a window merely
+    // sitting on screen *behind* the current one is an ordinary switch target,
+    // not a tile, and skipping it would walk the default onto something worse.
+    //
+    // Both halves are load-bearing. Same-workspace alone would skip a minimized
+    // or otherwise hidden sibling that IS a real target; on-screen alone would
+    // skip the other monitor's window (AeroSpace binds each workspace to one
+    // monitor, so a different display is already a different workspace).
+    func windowsTiledBeside(_ anchor: WindowInfo) -> Set<CGWindowID>? {
+        guard Aerospace.binPath != nil, let home = workspaceMap[anchor.id] else { return nil }
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
-                                                    kCGNullWindowID) as? [[String: Any]] else { return [] }
-        var bounds: [CGWindowID: CGRect] = [:]
+                                                    kCGNullWindowID) as? [[String: Any]] else { return nil }
+        var onScreen = Set<CGWindowID>()
         for info in list {
             guard (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
-                  let num = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
-                  let dict = info[kCGWindowBounds as String] as? NSDictionary,
-                  let rect = CGRect(dictionaryRepresentation: dict as CFDictionary) else { continue }
-            bounds[CGWindowID(num)] = rect
+                  let num = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value else { continue }
+            onScreen.insert(CGWindowID(num))
         }
-        // Can't place the anchor on a display → skip nothing, keep plain MRU.
-        guard let anchorRect = bounds[anchor],
-              let home = Self.displayBounds().first(where: { $0.contains(Self.center(anchorRect)) })
-        else { return [] }
-
-        var beside: Set<CGWindowID> = []
-        for (id, rect) in bounds where id != anchor && home.contains(Self.center(rect)) {
-            beside.insert(id)
+        var beside = Set<CGWindowID>()
+        for w in cached where w.id != anchor.id
+            && workspaceMap[w.id] == home && onScreen.contains(w.id) {
+            beside.insert(w.id)
         }
         return beside
-    }
-
-    private static func center(_ r: CGRect) -> CGPoint { CGPoint(x: r.midX, y: r.midY) }
-
-    // Active displays in the same top-left-origin global space as
-    // kCGWindowBounds — NSScreen's frames are bottom-left, so mixing the two
-    // would misplace every window on a multi-monitor setup.
-    private static func displayBounds() -> [CGRect] {
-        var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
-        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return [] }
-        return ids.prefix(Int(count)).map { CGDisplayBounds($0) }
     }
 
     // Force the currently-frontmost app's focused window to the top of the MRU
@@ -324,15 +318,37 @@ final class WindowTracker {
                 .map { ($0.processIdentifier, $0.localizedName ?? "App",
                         $0.bundleIdentifier, $0.bundleURL?.path) }
 
+        // refresh() fires on every app activation and AX window notification, so
+        // the workspace map does NOT ride every pass — that would be an
+        // `aerospace` subprocess per click. Re-ask only when the window
+        // population changed (new/closed window ⇒ the map can't be complete) or
+        // when the answer has simply aged out, which is what catches a window
+        // thrown to another workspace without any id changing.
+        let ids = Set(cached.map(\.id))
+        let now = ProcessInfo.processInfo.systemUptime
+        let wantSpaces = !workspaceFetchInFlight
+            && (ids != workspaceFetchIDs || now - workspaceFetchedAt >= Self.workspaceMaxAge)
+        if wantSpaces { workspaceFetchInFlight = true }
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let snapshot = Self.enumerate(apps: apps)
-            // One short-lived subprocess next to a full AX walk — and it has to
-            // ride this pass, because the switcher reads the map synchronously
-            // and can't spawn anything from the event tap.
-            let spaces = Aerospace.workspacesSync()
+            // Blocking, hence out here rather than on the main thread: the
+            // switcher reads the cached map synchronously and can't spawn
+            // anything from inside the event tap.
+            let spaces = wantSpaces ? Aerospace.workspacesSync() : nil
             DispatchQueue.main.async {
-                self?.cached = snapshot
-                if let spaces { self?.workspaceMap = spaces }
+                guard let self else { return }
+                self.cached = snapshot
+                guard wantSpaces else { return }
+                self.workspaceFetchInFlight = false
+                // A failed pass keeps the previous map rather than dropping
+                // every window into one unnamed group, and doesn't stamp the
+                // clock — so the next refresh retries instead of waiting it out.
+                if let spaces {
+                    self.workspaceMap = spaces
+                    self.workspaceFetchIDs = Set(snapshot.map(\.id))
+                    self.workspaceFetchedAt = ProcessInfo.processInfo.systemUptime
+                }
             }
         }
     }
@@ -435,15 +451,30 @@ enum Aerospace {
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
+
+        // Exit is observed through terminationHandler rather than
+        // waitUntilExit(): the timeout has to be able to fire while we're
+        // waiting, and polling isRunning to decide whether to terminate races
+        // the reap (the pid can be reused between the check and the signal).
+        let exited = DispatchSemaphore(value: 0)
+        proc.terminationHandler = { _ in exited.signal() }
         do { try proc.run() } catch { return nil }
 
-        let watchdog = DispatchWorkItem { if proc.isRunning { proc.terminate() } }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0, execute: watchdog)
-        // Drain before waiting: the other order deadlocks the moment the output
-        // outgrows the pipe buffer.
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        proc.waitUntilExit()
-        watchdog.cancel()
+        // Drained on its own thread so a child that inherited the pipe's write
+        // end can't wedge this one past the timeout, and so the read can't
+        // deadlock against a process still filling a full pipe buffer.
+        var data = Data()
+        let drained = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
+            drained.signal()
+        }
+
+        if exited.wait(timeout: .now() + 1.0) == .timedOut {
+            proc.terminate()
+            _ = exited.wait(timeout: .now() + 0.5)
+        }
+        guard drained.wait(timeout: .now() + 0.5) == .success else { return nil }
         return (proc.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 

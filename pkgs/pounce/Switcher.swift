@@ -17,10 +17,12 @@ import SwiftUI
 // tap → stock ⌘Tab keeps working; the daemon just logs and moves on.
 //
 // The tap callback runs on the main run loop and must return fast — macOS
-// disables taps that stall (~1s). Everything here is O(cached list); the AX
-// walking lives in WindowTracker, off this path. During Secure Input (password
-// fields) keyboard taps go deaf and events flow to the stock switcher — an
-// acceptable, self-healing fallback.
+// disables taps that stall (~1s). Everything here is O(cached list) plus one
+// CGWindowList read to see what's already on screen; the AX walking and the
+// `aerospace` subprocess both live in WindowTracker, off this path, and their
+// results are read from cache. During Secure Input (password fields) keyboard
+// taps go deaf and events flow to the stock switcher — an acceptable,
+// self-healing fallback.
 final class WindowSwitcher {
     private let tracker = WindowTracker()
     // Separate store from the launcher's frecency.json: two live Frecency
@@ -188,19 +190,26 @@ final class WindowSwitcher {
     // Where a tap-and-release lands. "The window before this one" is the whole
     // point of MRU — but when two windows are tiled side by side, the one before
     // this one is already on screen, so landing there isn't a switch at all;
-    // it's the focus nudge ⌥hjkl exists for. So the default skips past anything
-    // visible beside you and settles on the most recent window you actually
-    // can't see — in practice, the top of the previous workspace's group.
+    // it's the focus nudge ⌥hjkl exists for. So under a tiling WM the default
+    // skips past whatever is tiled beside you and settles on the most recent
+    // window you actually can't see — in practice, the top of the previous
+    // workspace's group.
     //
     // Nothing is removed from the list: the skipped siblings are still rows
     // 1..n, still reachable with ⇧⇥ or by keeping ⇥ held down.
     private func defaultSelection(_ windows: [WindowInfo], reverse: Bool) -> Int {
         guard windows.count > 1 else { return 0 }
         if reverse { return windows.count - 1 }
-        let beside = tracker.windowsVisibleBeside(windows[0].id)
-        // All of them visible beside you (one workspace, everything tiled) —
+        // No tiling to reason about → the unmodified rule. Row 1 it is.
+        guard let beside = tracker.windowsTiledBeside(windows[0]), !beside.isEmpty else { return 1 }
+        // Minimized windows are never "beside" you, which would make them the
+        // preferred landing spot the moment a sibling gets skipped — and
+        // un-minimizing something on a bare tap is a nasty surprise. Walking
+        // with ⇥ still reaches them; the default won't choose one.
+        let target = windows.dropFirst().firstIndex { !$0.isMinimized && !beside.contains($0.id) }
+        // Everything else is tiled beside you (one workspace, all visible) —
         // fall back to plain row 1 rather than refusing to switch anywhere.
-        return windows.dropFirst().firstIndex { !beside.contains($0.id) } ?? 1
+        return target ?? 1
     }
 
     private func cycle(_ delta: Int) {

@@ -119,13 +119,16 @@ struct SwitcherView: View {
     // headers would slice the ranking into meaningless bands. The per-row badge
     // takes over there. Also empty when everything is on one workspace — a
     // single header states the obvious and costs a row of screen.
+    // Windows AeroSpace doesn't place get their own run under an unnamed
+    // header rather than inheriting the header above them, which would read as
+    // a lie about which workspace they're on.
     var groupHeaders: [Int: String] {
         guard state.query.isEmpty else { return [:] }
         var out: [Int: String] = [:]
         var previous: String?
         for (i, w) in state.visible.enumerated() {
-            let ws = state.workspaces[w.id]
-            if let ws, ws != previous { out[i] = ws }
+            let ws = state.workspaces[w.id] ?? ""
+            if i == 0 || ws != previous { out[i] = ws }
             previous = ws
         }
         return out.count > 1 ? out : [:]
@@ -134,10 +137,11 @@ struct SwitcherView: View {
     func listHeight(headers: Int) -> CGFloat {
         let content = CGFloat(max(state.visible.count, 1)) * SwitcherLayout.rowHeight
                     + CGFloat(headers) * SwitcherLayout.headerHeight
-        // Headers buy a little extra height rather than eating into the nine
-        // rows they annotate.
+        // Headers buy their own height rather than eating into the nine rows
+        // they annotate — and the row part stays an exact multiple of
+        // rowHeight, so the cap never slices a row in half at the bottom edge.
         let cap = CGFloat(SwitcherLayout.maxVisibleRows) * SwitcherLayout.rowHeight
-                + 2 * SwitcherLayout.headerHeight
+                + CGFloat(min(headers, 2)) * SwitcherLayout.headerHeight
         return min(content, cap)
     }
 
@@ -225,17 +229,20 @@ struct SwitcherView: View {
 // than as one undifferentiated pile is the point: it makes "where was I before
 // this" a visible boundary instead of something you infer from badges.
 struct SwitcherGroupHeader: View {
-    let name: String
+    let name: String            // empty = windows AeroSpace doesn't place
+
+    private var isPlaced: Bool { !name.isEmpty }
+    private var tint: Color { isPlaced ? Theme.blue : Theme.subtext0 }
 
     var body: some View {
         HStack(spacing: pt(8)) {
-            Text(name)
+            Text(isPlaced ? name : "—")
                 .font(.system(size: pt(10), weight: .bold, design: .rounded))
-                .foregroundColor(Theme.blue)
+                .foregroundColor(tint)
                 .frame(minWidth: pt(18))
                 .padding(.horizontal, pt(6))
                 .padding(.vertical, pt(2))
-                .background(RoundedRectangle(cornerRadius: pt(5)).fill(Theme.blue.opacity(0.15)))
+                .background(RoundedRectangle(cornerRadius: pt(5)).fill(tint.opacity(0.15)))
             Rectangle()
                 .fill(Theme.surface1.opacity(0.35))
                 .frame(height: 1)

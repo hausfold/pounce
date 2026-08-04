@@ -606,16 +606,20 @@ switcher with an MRU **window** switcher:
 - **hold ⌘ and type** — fuzzy-filter the list, ranked by frecency. ↵ commits, ⎋
   cancels, releasing ⌘ always lands on the selection.
 
-"The last window you were in" deliberately skips windows already on screen
-beside you. With two windows tiled side by side the most recent one is one
-you're *looking at*, so landing there isn't a switch — nudging focus between
-visible tiles is the window manager's job (AeroSpace's own focus keys), not the
-switcher's. A tap-and-release therefore lands on the most recent window you
-genuinely can't see, which with a tiling WM is the top of the workspace you were
-on before this one. Nothing is hidden from the list: those skipped siblings are
-the rows immediately below you, reachable with ⌘⇧⇥ or by keeping ⇥ held down. A
-window hidden behind an accordion, or sitting on a second monitor, isn't "beside
-you" and stays an ordinary toggle target.
+**Running AeroSpace, "the last window you were in" skips the tiles beside you.**
+With two windows tiled side by side, the most recent one is a window you are
+*looking at* — landing there isn't a switch, and nudging focus between visible
+tiles is the window manager's job (AeroSpace's own focus keys), not the
+switcher's. So a tap-and-release lands on the most recent window you genuinely
+can't see, which in practice is the top of the workspace you were on before this
+one. A window on the second monitor lives on its own workspace, so it isn't
+"beside you" and stays an ordinary toggle target; minimized windows are never
+chosen by a bare tap either.
+
+Nothing is hidden from the list — those skipped siblings are the rows
+immediately below you, reachable with ⌘⇧⇥ or by keeping ⇥ held down. And with no
+AeroSpace running there's no tiling to reason about, so none of this applies:
+the default stays the plain most-recent window.
 
 macOS doesn't let ⌘Tab be rebound — the daemon takes it with an event tap, which
 the system gates behind the **Accessibility** grant. Without the grant (or during
