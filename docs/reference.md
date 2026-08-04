@@ -14,6 +14,7 @@ authoritative flag list; this is the prose version.
 | `--chain [keys]` | these free-text commits feed another `pounce` step — hold the window up with the loading skeleton instead of fading out. Comma-separated actions, default `enter`. See [Submenus](#submenus-two-step-commands) |
 | `--actions <spec>` | label the action bar for a step that shows no rows: `"Spawn\|shift:New line\|cmd:Screenshot\|opt:Drafts"`. See [A step that asks for a paragraph](#a-step-that-asks-for-a-paragraph) |
 | `--draft <key>` | keep the typed text on Esc / click-away, filed under `<key>`. See [A step that asks for a paragraph](#a-step-that-asks-for-a-paragraph) |
+| `--query <text>` | open with the box already holding `<text>`, caret at the end — a draft handed back for editing, not a filter |
 | `drafts <key> <op>` | read back what `--draft` kept: `save` (stdin) / `list` / `get <i>` / `rm <i>` / `clear` |
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
 | `--transform '<filter>'` | act on the current selection: copy it (⌘C), pipe the text through the shell `<filter>`, paste back (⌘V) — e.g. `--transform 'tr "[:lower:]" "[:upper:]"'`. Forwarded to the daemon, which holds the grant. |
@@ -232,6 +233,15 @@ pounce drafts my-prompt clear
 `while read` loop over it is safe; `get` is what hands back the real multi-line
 text. Drafts live in `~/.local/state/pounce/drafts/<key>.tsv`, newest first,
 capped at 20.
+
+`--query <text>` closes the loop: hand a chosen draft straight back to the same
+prompt, box pre-filled and caret at the end, so it can be edited rather than
+just re-run.
+
+```sh
+text=$(pounce drafts my-prompt get "$i")
+printf '' | pounce --draft my-prompt --query "$text" -p "What should it do?"
+```
 
 The batteries-included set (clipboard, emoji, screenshots, brew-services,
 lock, force-quit, …) all live in `commands/` as worked examples — copy one and

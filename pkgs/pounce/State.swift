@@ -343,12 +343,15 @@ final class DaemonState: ObservableObject {
 
     func load(lines: [String], placeholder: String?, icon: String?, launcher: Bool, maxEmpty: Int?,
               chainActions: Set<String> = [], freeTextActions: [ItemAction] = [],
-              draftKey: String? = nil) {
+              draftKey: String? = nil, seedQuery: String = "") {
         globalIcon = icon
         isLauncher = launcher
         self.chainActions = chainActions
         self.freeTextActions = freeTextActions
         self.draftKey = draftKey
+        // reset() cleared this a moment ago; --query is the caller putting text
+        // BACK (a draft handed over for editing), so it has to land after.
+        self.query = seedQuery
         self.maxEmpty = maxEmpty ?? (launcher ? 7 : Int.max)
 
         var built: [PounceItem] = []

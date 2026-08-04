@@ -30,6 +30,8 @@ enum Main {
         --draft <key>    keep the typed text on Esc / click-away, filed under
                          <key> (see `drafts` below). For a step that asks for a
                          paragraph, where a stray click would otherwise take it.
+        --query <text>   open with the box already holding <text>, caret at the
+                         end — a draft handed back for editing, not a filter.
 
     modes:
       --launcher             apps + commands palette (what the hotkey opens)
@@ -321,6 +323,9 @@ struct Invocation {
     // Where to file the typed text if this step is dismissed rather than
     // committed (Drafts.swift). nil → keep nothing.
     var draftKey: String?
+    // Text the box opens with, caret at the end — a draft handed back for
+    // editing. Not a filter: it is the user's own text returning.
+    var query: String?
 }
 
 // MARK: - Daemon Mode
@@ -929,6 +934,11 @@ enum DaemonMode {
             }
             if p.count > 7 && !p[7].isEmpty { inv.actionSpec = p[7] }
             if p.count > 8 && !p[8].isEmpty { inv.draftKey = p[8] }
+            // Field 10 is the seed query, which is USER TEXT and so the one
+            // field that can legitimately contain newlines and tabs — the very
+            // characters this line-and-tab protocol is built out of. The client
+            // escapes it (Drafts.encode) and it is decoded back here.
+            if p.count > 9 && !p[9].isEmpty { inv.query = Drafts.decode(p[9]) }
             itemLines = Array(lines.dropFirst())
         }
 
@@ -969,7 +979,7 @@ enum DaemonMode {
                            launcher: inv.launcher, maxEmpty: inv.maxEmpty,
                            chainActions: inv.chainActions,
                            freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
-                           draftKey: inv.draftKey)
+                           draftKey: inv.draftKey, seedQuery: inv.query ?? "")
             }
             ui.resultSink = { r in result = r; semaphore.signal() }
             ui.present()
@@ -1005,6 +1015,7 @@ enum ClientMode {
             case "--max-empty":         if !args.isEmpty { inv.maxEmpty = Int(args.removeFirst()) }
             case "--actions":           if !args.isEmpty { inv.actionSpec = args.removeFirst() }
             case "--draft":             if !args.isEmpty { inv.draftKey = args.removeFirst() }
+            case "--query":             if !args.isEmpty { inv.query = args.removeFirst() }
             case "--chain":
                 // The action list is optional and bare `--chain` still means
                 // "chain the plain Return", which is what every existing caller
@@ -1075,7 +1086,7 @@ enum ClientMode {
         // meeting a newer client just ignores the tail rather than mis-reading a
         // field (see the reader in handleClient).
         let chain = inv.chainActions.sorted().joined(separator: ",")
-        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\n"
+        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\t\(Drafts.encode(inv.query ?? ""))\n"
         for line in stdinLines { payload += line + "\n" }
 
         if let data = payload.data(using: .utf8) {
@@ -1117,7 +1128,7 @@ enum ClientMode {
                        launcher: inv.launcher, maxEmpty: inv.maxEmpty,
                        chainActions: inv.chainActions,
                        freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
-                       draftKey: inv.draftKey)
+                       draftKey: inv.draftKey, seedQuery: inv.query ?? "")
         }
 
         ui.resultSink = { result in

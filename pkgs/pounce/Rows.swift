@@ -251,6 +251,15 @@ struct CustomTextField: NSViewRepresentable {
         DispatchQueue.main.async {
             state.textField = tf
             tf.window?.makeFirstResponder(tf)
+            // A pre-seeded box (--query, e.g. a draft handed back for editing)
+            // puts the caret at the END. Becoming first responder selects all,
+            // which is right for a filter you're about to replace and exactly
+            // wrong for a paragraph you asked to keep — the first keystroke
+            // would delete it.
+            if !tf.stringValue.isEmpty,
+               let editor = tf.currentEditor() {
+                editor.selectedRange = NSRange(location: tf.stringValue.count, length: 0)
+            }
         }
         return tf
     }
