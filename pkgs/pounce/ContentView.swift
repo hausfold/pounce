@@ -215,11 +215,18 @@ struct ContentView: View {
     // padding), then — when a row is selected — a divider + the action bar. The
     // divider and action-bar frames below are pinned to these same constants;
     // keep the two in lockstep.
+    // A free-text step (`--actions`) has no rows and so no selected item, which is
+    // exactly why it needs the bar: ⌘↵/⌥↵/⇧↵ on typed text are otherwise invisible
+    // — nothing on screen says the step can do more than one thing.
+    var showFreeTextBar: Bool { visible.isEmpty && !state.freeTextActions.isEmpty }
+
     var contentHeight: CGFloat {
         var h = headerHeight
         if !visible.isEmpty {
             h += Self.dividerHeight + listHeight + Self.listVPadding * 2
             if selectedItem != nil { h += Self.dividerHeight + Self.actionBarHeight }
+        } else if showFreeTextBar {
+            h += Self.dividerHeight + Self.actionBarHeight
         }
         return h
     }
@@ -341,6 +348,13 @@ struct ContentView: View {
                     ActionBar(actions: item.actions)
                         .frame(height: Self.actionBarHeight)
                 }
+            } else if showFreeTextBar {
+                // Same widget, same height, same place as a row's action bar —
+                // this one just describes what the modifiers do to the text you
+                // typed rather than to a selection.
+                Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
+                ActionBar(actions: state.freeTextActions)
+                    .frame(height: Self.actionBarHeight)
             }
         }
         .frame(width: state.targetWidth)
@@ -365,7 +379,12 @@ struct ContentView: View {
 
     func select(action: String) {
         if visible.isEmpty {
-            if !state.query.isEmpty { state.commitText(state.query) } else { state.cancel() }
+            // Carry the modifier through. A free-text step is the ONE place the
+            // palette has no row to hang actions on, so dropping the action here
+            // (as this did) capped every typed-text step at exactly one thing it
+            // could do with what you wrote.
+            if !state.query.isEmpty { state.commitText(state.query, action: action) }
+            else { state.cancel() }
             return
         }
         guard selectedIndex < visible.count else { state.cancel(); return }

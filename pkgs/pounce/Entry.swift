@@ -11,10 +11,25 @@ enum Main {
     pounce — summon, aim, pounce. A scriptable command palette for macOS.
 
     usage:
-      pounce [-p <prompt>] [-i <sf-symbol>] [--max-empty <n>] [--chain]
+      pounce [-p <prompt>] [-i <sf-symbol>] [--max-empty <n>] [--chain [keys]]
+             [--actions <spec>] [--draft <key>]
         generic picker: reads lines from stdin, prints the chosen one
-        --chain: Enter on typed text feeds another pounce step — hold the
-        window up with the loading skeleton instead of fading out
+
+        Return on text that matched no row prints "<action>\\t<text>", where
+        action is enter / cmd / opt / ctrl — the same shape a row commit uses,
+        so one step can offer several verbs. Shift+Return inserts a newline;
+        Esc clears the box before a second Esc dismisses it.
+
+        --chain [keys]   these commits feed another pounce step — hold the
+                         window up with the loading skeleton instead of fading
+                         out. Comma-separated (default "enter"); name only the
+                         actions whose follow-up is another palette, so one
+                         that needs the screen (⌘↵ → screencapture) still fades.
+        --actions <spec> label the action bar for a step with no rows:
+                         "Spawn|shift:New line|cmd:Screenshot|opt:Drafts"
+        --draft <key>    keep the typed text on Esc / click-away, filed under
+                         <key> (see `drafts` below). For a step that asks for a
+                         paragraph, where a stray click would otherwise take it.
 
     modes:
       --launcher             apps + commands palette (what the hotkey opens)
@@ -35,6 +50,17 @@ enum Main {
                                   mode:camera         camera preview
                                   mode:filesearch     file/folder search
                                   mode:launcher       the palette itself
+
+    drafts (what --draft kept):
+      drafts <key> save         file stdin as a draft under <key> — for a step
+                                that LEAVES the box deliberately (⌥↵ "show my
+                                drafts"), which is a commit, not a dismissal
+      drafts <key> list         one line per draft, newest first:
+                                "<index>\\t<one-line preview>\\t<age>" — ready to
+                                turn into picker rows
+      drafts <key> get <index>  print that draft's full text (newlines intact)
+      drafts <key> rm <index>   forget one
+      drafts <key> clear        forget all of them
 
     diagnostics:
       doctor                    check the hotkey path — is the daemon up, is the
@@ -107,6 +133,11 @@ enum Main {
             // an external binder — AeroSpace binding modes, skhd, a Shortcut —
             // so a two-step there can drive pounce without pounce owning a key.
             RunMode.run(target: args.count >= 3 ? args[2] : nil)
+        } else if args.count >= 2 && args[1] == "drafts" {
+            // Positional, like `focus`/`doctor`/`config`. Pure file I/O — never
+            // opens a window and never touches the daemon, so a command script
+            // can list/prune drafts without a palette flashing up.
+            DraftsMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "focus" {
             // Positional on purpose: scripts probe `pounce --help` for
             // "focus" before calling, so an older binary never falls through
@@ -199,6 +230,62 @@ enum RunMode {
     }
 }
 
+// `pounce drafts <key> …`: read back what `--draft <key>` kept.
+//
+// Deliberately four dumb verbs over a file rather than a built-in drafts WINDOW.
+// The caller is a shell script that already knows how to build picker rows, and
+// keeping it that way means the drafts list gets the caller's own actions and
+// wording for free — a "Spawn Agent" drafts list can say Use / Delete / Clear
+// all, which a generic mode baked into the daemon could not.
+//
+// The split between `list` and `get` is the point: `list` is guaranteed
+// one-line-per-draft (previews are whitespace-folded) so `while read` in bash is
+// safe, and `get` hands back the real text with its newlines intact. A single
+// command doing both would have forced the shell to un-escape.
+enum DraftsMode {
+    static func run(args: [String]) {
+        func fail(_ message: String) -> Never {
+            FileHandle.standardError.write(Data("pounce drafts: \(message)\n".utf8))
+            exit(2)
+        }
+        guard let key = args.first, !key.isEmpty else {
+            fail("needs a key — `pounce drafts <key> save|list|get <i>|rm <i>|clear`")
+        }
+        let op = args.count > 1 ? args[1] : "list"
+        switch op {
+        case "list":
+            let now = Int(Date().timeIntervalSince1970)
+            for (i, d) in Drafts.load(key: key).enumerated() {
+                print("\(i)\t\(Drafts.preview(d.text))\t\(Drafts.ago(d.stamp, now: now))")
+            }
+        case "get":
+            guard args.count > 2, let i = Int(args[2]) else { fail("`get` needs an index") }
+            let drafts = Drafts.load(key: key)
+            guard i >= 0 && i < drafts.count else { exit(1) }
+            // No trailing newline of our own: the draft IS the output, and
+            // `$(...)` strips one anyway — printing it raw keeps a prompt that
+            // deliberately ends in a blank line from silently losing it.
+            FileHandle.standardOutput.write(Data(drafts[i].text.utf8))
+        case "save":
+            // Text on stdin. The daemon files a draft on DISMISSAL, but a caller
+            // that deliberately leaves the box (⌥↵ "show me my drafts") has
+            // committed, not dismissed — without this the in-progress text would
+            // be the one thing the drafts list can't offer you back.
+            let text = String(data: FileHandle.standardInput.readDataToEndOfFile(),
+                              encoding: .utf8) ?? ""
+            exit(Drafts.save(key: key, text: text) ? 0 : 1)
+        case "rm":
+            guard args.count > 2, let i = Int(args[2]) else { fail("`rm` needs an index") }
+            exit(Drafts.remove(key: key, index: i) ? 0 : 1)
+        case "clear":
+            Drafts.clear(key: key)
+        default:
+            fail("unknown op \(op) — expected save, list, get, rm or clear")
+        }
+        exit(0)
+    }
+}
+
 // `pounce --copy-file <path>`: copy a file to the clipboard as both image and
 // file reference (see Pasteboard.copyFile) and exit. Synchronous — no run loop.
 enum CopyFileMode {
@@ -224,11 +311,16 @@ struct Invocation {
     var cheatsheet = false
     var cheatsheetPath = "~/.config/pounce/cheatsheet.json"
     var maxEmpty: Int?
-    // The caller's next act, after Enter on typed text, is another `pounce`
-    // invocation — so the window should hold the loading skeleton rather than
-    // fade out and re-open. Only the free-text commit is affected: picking a
-    // row still lingers, because a row's follow-up may be a terminal action.
-    var chain = false
+    // Which free-text commits the caller answers with ANOTHER `pounce`
+    // invocation — so the window holds the loading skeleton rather than fading
+    // out and re-opening. Only free-text commits are affected: picking a row
+    // still lingers, because a row's follow-up may be a terminal action.
+    var chainActions: Set<String> = []
+    // Action-bar labels for a step that shows no rows ("Spawn|opt:Drafts").
+    var actionSpec: String?
+    // Where to file the typed text if this step is dismissed rather than
+    // committed (Drafts.swift). nil → keep nothing.
+    var draftKey: String?
 }
 
 // MARK: - Daemon Mode
@@ -826,7 +918,17 @@ enum DaemonMode {
             if p.count > 3 && p[3] == "cheatsheet" { inv.cheatsheet = true }
             if p.count > 4, let m = Int(p[4]) { inv.maxEmpty = m }
             if p.count > 5 && !p[5].isEmpty { inv.cheatsheetPath = p[5] }
-            if p.count > 6 && p[6] == "1" { inv.chain = true }
+            // Field 7 used to be the flag "1" for --chain; it carries the action
+            // list now. Still read the old spelling: a client and a daemon from
+            // different builds meet over this socket every time the app updates
+            // while a daemon is resident, and "chain silently stopped working"
+            // would show up as a fade-out mid two-step command.
+            if p.count > 6 && !p[6].isEmpty {
+                inv.chainActions = p[6] == "1" ? ["enter"]
+                    : Set(p[6].split(separator: ",").map(String.init))
+            }
+            if p.count > 7 && !p[7].isEmpty { inv.actionSpec = p[7] }
+            if p.count > 8 && !p[8].isEmpty { inv.draftKey = p[8] }
             itemLines = Array(lines.dropFirst())
         }
 
@@ -864,7 +966,10 @@ enum DaemonMode {
                 state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
             } else {
                 state.load(lines: itemLines, placeholder: inv.placeholder, icon: inv.icon,
-                           launcher: inv.launcher, maxEmpty: inv.maxEmpty, chain: inv.chain)
+                           launcher: inv.launcher, maxEmpty: inv.maxEmpty,
+                           chainActions: inv.chainActions,
+                           freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
+                           draftKey: inv.draftKey)
             }
             ui.resultSink = { r in result = r; semaphore.signal() }
             ui.present()
@@ -898,7 +1003,18 @@ enum ClientMode {
                 // swallow a following flag as the path.
                 if let next = args.first, !next.hasPrefix("--") { inv.cheatsheetPath = args.removeFirst() }
             case "--max-empty":         if !args.isEmpty { inv.maxEmpty = Int(args.removeFirst()) }
-            case "--chain":             inv.chain = true
+            case "--actions":           if !args.isEmpty { inv.actionSpec = args.removeFirst() }
+            case "--draft":             if !args.isEmpty { inv.draftKey = args.removeFirst() }
+            case "--chain":
+                // The action list is optional and bare `--chain` still means
+                // "chain the plain Return", which is what every existing caller
+                // wrote. Same guard as --cheatsheet: don't swallow a following
+                // flag as the value.
+                if let next = args.first, !next.hasPrefix("-") {
+                    inv.chainActions = Set(args.removeFirst().split(separator: ",").map(String.init))
+                } else {
+                    inv.chainActions = ["enter"]
+                }
             // An unrecognised flag used to be ignored, which is the worst possible
             // handling for the five mode flags this release removed: with no stdin
             // to show, `pounce --clipboard` would have opened an EMPTY generic
@@ -955,7 +1071,11 @@ enum ClientMode {
         // Two client-side modes left; the built-in windows arrive as RUN instead.
         let mode = inv.launcher ? "launcher" : (inv.cheatsheet ? "cheatsheet" : "")
         let maxEmpty = inv.maxEmpty.map(String.init) ?? ""
-        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(inv.chain ? "1" : "")\n"
+        // Positional TSV; new fields only ever get APPENDED, so an older daemon
+        // meeting a newer client just ignores the tail rather than mis-reading a
+        // field (see the reader in handleClient).
+        let chain = inv.chainActions.sorted().joined(separator: ",")
+        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\n"
         for line in stdinLines { payload += line + "\n" }
 
         if let data = payload.data(using: .utf8) {
@@ -994,7 +1114,10 @@ enum ClientMode {
             state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
         } else {
             state.load(lines: lines, placeholder: inv.placeholder, icon: inv.icon,
-                       launcher: inv.launcher, maxEmpty: inv.maxEmpty, chain: inv.chain)
+                       launcher: inv.launcher, maxEmpty: inv.maxEmpty,
+                       chainActions: inv.chainActions,
+                       freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
+                       draftKey: inv.draftKey)
         }
 
         ui.resultSink = { result in

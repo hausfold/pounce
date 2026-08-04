@@ -235,8 +235,8 @@ struct CustomTextField: NSViewRepresentable {
         // this produces (LauncherView.queryLineCount) and grows the header and
         // the window to match, up to a cap; past the cap the field editor keeps
         // the caret visible by scrolling, which is the only part AppKit does for
-        // us. Enter cannot insert a newline even in this multi-line mode —
-        // insertNewline is intercepted below and submits.
+        // us. Plain Return still submits (insertNewline is intercepted below);
+        // Shift+Return is what inserts a line break in this multi-line mode.
         if wraps {
             tf.cell?.usesSingleLineMode = false
             tf.cell?.wraps = true
@@ -319,7 +319,13 @@ struct CustomTextField: NSViewRepresentable {
             case #selector(NSResponder.insertNewline(_:)):
                 let flags = NSEvent.modifierFlags
                 if flags.contains(.shift) {
-                    textView.insertNewline(nil)
+                    // NOT textView.insertNewline(nil): an NSTextField is always
+                    // edited through a FIELD EDITOR (isFieldEditor == true), and a
+                    // field editor answers that selector by ending editing rather
+                    // than inserting anything — so it silently did nothing, which
+                    // is how Shift+Return looked implemented but wasn't. insertText
+                    // goes through the ordinary text-storage path and does insert.
+                    textView.insertText("\n", replacementRange: textView.selectedRange())
                     return true
                 } else if flags.contains(.command) { parent.onSubmit("cmd") }
                 else if flags.contains(.option) { parent.onSubmit("opt") }
@@ -327,6 +333,19 @@ struct CustomTextField: NSViewRepresentable {
                 else { parent.onSubmit("enter") }
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
+                // Esc-to-clear, then Esc-to-dismiss — the standard palette idiom,
+                // and here also a guard on the one field that can hold something
+                // you'd mind losing. Scoped to `wraps`, which is exactly the
+                // free-text query box: the filter-style modes (clipboard, emoji,
+                // screenshots, file search, cheatsheet) are single-line and keep
+                // their one-press Esc. The draft is filed BEFORE the text goes, so
+                // the clear is recoverable too, not just the dismissal.
+                if parent.wraps && !parent.state.query.isEmpty {
+                    parent.state.stashDraft()
+                    parent.state.query = ""
+                    textView.string = ""
+                    return true
+                }
                 parent.state.cancel()
                 return true
             default:

@@ -57,6 +57,7 @@ failures += runCommandRegistryTests()
 failures += runUpdateNudgeTests()
 failures += runSymbolsTests()
 failures += runConfigTemplateTests()
+failures += runDraftsTests()
 
 if failures == 0 {
     exit(0)
