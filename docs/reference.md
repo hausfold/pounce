@@ -11,7 +11,11 @@ authoritative flag list; this is the prose version.
 | `-i <sf-symbol>` | prompt icon (an SF Symbol name) |
 | `--launcher` | also enumerate & rank installed apps, and launch them natively |
 | `--max-empty <n>` | how many rows to show before the user types |
-| `--chain` | Enter on typed text (nothing matched) feeds another `pounce` step — hold the window up with the loading skeleton instead of fading out. See [Submenus](#submenus-two-step-commands) |
+| `--chain [keys]` | these free-text commits feed another `pounce` step — hold the window up with the loading skeleton instead of fading out. Comma-separated actions, default `enter`. See [Submenus](#submenus-two-step-commands) |
+| `--actions <spec>` | label the action bar for a step that shows no rows: `"Spawn\|shift:New line\|cmd:Screenshot\|opt:Drafts"`. See [A step that asks for a paragraph](#a-step-that-asks-for-a-paragraph) |
+| `--draft <key>` | keep the typed text on Esc / click-away, filed under `<key>`. See [A step that asks for a paragraph](#a-step-that-asks-for-a-paragraph) |
+| `--query <text>` | open with the box already holding `<text>`, caret at the end — a draft handed back for editing, not a filter |
+| `drafts <key> <op>` | read back what `--draft` kept: `save` (stdin) / `list` / `get <i>` / `rm <i>` / `clear` |
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
 | `--transform '<filter>'` | act on the current selection: copy it (⌘C), pipe the text through the shell `<filter>`, paste back (⌘V) — e.g. `--transform 'tr "[:lower:]" "[:upper:]"'`. Forwarded to the daemon, which holds the grant. |
 | `focus <op>` | Focus/DND (hush): `focus status\|toggle\|on\|off`, forwarded to the daemon |
@@ -174,9 +178,70 @@ query=$(printf '' | pounce --chain -p "App Store — type a search, then Enter" 
 search_the_store "$query" | pounce -p "App Store — results"
 ```
 
-Only the free-text commit changes; picking a row still lingers, since a row's
+Only free-text commits change; picking a row still lingers, since a row's
 follow-up is just as often a terminal action. If step 2 never arrives the window
 fades out on its own after a few seconds, so a `--chain` prompt can't wedge it.
+
+`--chain` takes an optional comma-separated action list (`--chain enter,opt`),
+because a step can chain on one Return and not another: `⌥↵ "show my drafts"` is
+another palette and should hold the window, while `⌘↵ "let me drag out a
+screenshot"` needs the palette *off* the screen first. Bare `--chain` means
+`enter`, which is what it always meant.
+
+### A step that asks for a paragraph
+
+A picker step whose answer is a sentence — "what should the agent do?" — is a
+different animal from one that filters a list, and three flags exist for it.
+
+**Several verbs on one box.** Return on text that matched no row hands it back as
+`<action>\t<text>`, where the action is `enter` / `cmd` / `opt` / `ctrl` — the
+same shape a row commit uses. So one prompt can offer more than one thing to do
+with what was typed. `--actions` labels them in the action bar, which is
+otherwise drawn only for a selected row, i.e. never on a step with no rows:
+
+```sh
+sel=$(printf '' | pounce --chain enter,opt --draft my-prompt \
+        --actions "Go|shift:New line|cmd:With a screenshot|opt:Drafts" \
+        -p "What should it do?")
+case "$(printf '%s' "$sel" | cut -f1)" in
+  enter) go   "$(printf '%s' "$sel" | cut -f2-)" ;;
+  cmd)   shot "$(printf '%s' "$sel" | cut -f2-)" ;;
+  opt)   show_drafts ;;
+esac
+```
+
+**Writing more than one line.** ⇧↵ inserts a newline (plain ↵ still commits), and
+the box grows with the text up to half the screen. `shift:` in an `--actions`
+spec is a label only — it renders `⇧↵` in the bar and is never delivered as an
+action.
+
+**Not losing it.** The palette dismisses on Esc and on a click into any other
+app, which is right for "pick a row" and unforgiving for "type a paragraph".
+`--draft <key>` files the query under `<key>` on every dismissal that isn't a
+commit, and Esc clears the box before a second Esc dismisses it. Read them back
+with `pounce drafts`:
+
+```sh
+pounce drafts my-prompt list          # 0<TAB>one-line preview<TAB>4m ago
+pounce drafts my-prompt get 0         # the full text, newlines intact
+printf '%s' "$text" | pounce drafts my-prompt save
+pounce drafts my-prompt rm 0
+pounce drafts my-prompt clear
+```
+
+`list` is guaranteed one line per draft (previews are whitespace-folded), so a
+`while read` loop over it is safe; `get` is what hands back the real multi-line
+text. Drafts live in `~/.local/state/pounce/drafts/<key>.tsv`, newest first,
+capped at 20.
+
+`--query <text>` closes the loop: hand a chosen draft straight back to the same
+prompt, box pre-filled and caret at the end, so it can be edited rather than
+just re-run.
+
+```sh
+text=$(pounce drafts my-prompt get "$i")
+printf '' | pounce --draft my-prompt --query "$text" -p "What should it do?"
+```
 
 The batteries-included set (clipboard, emoji, screenshots, brew-services,
 lock, force-quit, …) all live in `commands/` as worked examples — copy one and

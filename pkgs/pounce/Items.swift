@@ -10,7 +10,7 @@ enum ItemKind {
 }
 
 struct ItemAction {
-    let key: String      // "enter", "cmd", "opt", "ctrl"
+    let key: String      // "enter", "cmd", "opt", "ctrl" — plus "shift", hint-only
     let label: String
 
     var displayKey: String {
@@ -19,8 +19,29 @@ struct ItemAction {
         case "cmd": return "⌘↵"
         case "opt": return "⌥↵"
         case "ctrl": return "⌃↵"
+        // Shift+Return inserts a newline in the wrapping query field, so it never
+        // commits and is never a real action — but a free-text step that WANTS a
+        // paragraph has to advertise that somewhere, and the action bar is the one
+        // place a user already looks to learn what the modifiers do.
+        case "shift": return "⇧↵"
         default: return key
         }
+    }
+
+    // "Select|cmd:Reveal|opt:Copy" — the grammar a plain stdin row uses in its
+    // fourth field, and the one `--actions` takes to label a free-text step. The
+    // first segment is the unmodified Return; the rest are `key:label`.
+    static func parseSpec(_ spec: String) -> [ItemAction] {
+        var actions: [ItemAction] = []
+        for (index, part) in spec.split(separator: "|").map(String.init).enumerated() {
+            if index == 0 {
+                actions.append(ItemAction(key: "enter", label: part))
+            } else if part.contains(":") {
+                let kv = part.split(separator: ":", maxSplits: 1).map(String.init)
+                if kv.count == 2 { actions.append(ItemAction(key: kv[0], label: kv[1])) }
+            }
+        }
+        return actions
     }
 }
 
@@ -60,15 +81,7 @@ struct PounceItem: Identifiable {
 
         var actions: [ItemAction] = []
         if parts.count > 3 && !parts[3].isEmpty {
-            let actionParts = parts[3].split(separator: "|").map(String.init)
-            for (index, part) in actionParts.enumerated() {
-                if index == 0 {
-                    actions.append(ItemAction(key: "enter", label: part))
-                } else if part.contains(":") {
-                    let kv = part.split(separator: ":", maxSplits: 1).map(String.init)
-                    if kv.count == 2 { actions.append(ItemAction(key: kv[0], label: kv[1])) }
-                }
-            }
+            actions = ItemAction.parseSpec(parts[3])
         }
         if actions.isEmpty { actions.append(ItemAction(key: "enter", label: "Select")) }
 

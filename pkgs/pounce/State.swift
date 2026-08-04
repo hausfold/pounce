@@ -55,10 +55,22 @@ final class DaemonState: ObservableObject {
 
     var isLauncher = false
     var maxEmpty = Int.max
-    // --chain: the caller answers a free-text Enter by running another `pounce`,
-    // so that commit holds the window in the loading state instead of fading
-    // out and re-opening. Row picks are unaffected (see buildCommit).
-    var chain = false
+    // --chain: which free-text commits the caller answers by running another
+    // `pounce`, so those commits hold the window in the loading state instead of
+    // fading out and re-opening. Keyed by action ("enter", "cmd", "opt", "ctrl")
+    // because one step can chain on one modifier and not another: ⌥↵ "show my
+    // drafts" is a second picker and should hold the window, while ⌘↵ "let me
+    // drag out a screenshot" needs the palette off the screen first. Empty →
+    // nothing chains. Row picks are unaffected (see buildCommit).
+    var chainActions: Set<String> = []
+    // --actions: the label spec for a free-text step's action bar. That bar is
+    // otherwise drawn only for a selected ROW, which leaves a step that asks for
+    // typed text with nowhere to say what ⌘↵ / ⌥↵ / ⇧↵ do.
+    var freeTextActions: [ItemAction] = []
+    // --draft <key>: file the query under this key on any dismissal that isn't a
+    // commit, so a stray click into another app can't take a typed paragraph with
+    // it. nil → this invocation keeps nothing. See Drafts.swift.
+    var draftKey: String? = nil
 
     // The clipboard and emoji views are fixed-size windows; everything else
     // follows the launcher's windowMode width.
@@ -117,7 +129,9 @@ final class DaemonState: ObservableObject {
         globalIcon = nil
         isLauncher = false
         maxEmpty = Int.max
-        chain = false
+        chainActions = []
+        freeTextActions = []
+        draftKey = nil
         requestID = UUID()
         displayMode = .list
         clipEntries = []
@@ -328,10 +342,16 @@ final class DaemonState: ObservableObject {
     }
 
     func load(lines: [String], placeholder: String?, icon: String?, launcher: Bool, maxEmpty: Int?,
-              chain: Bool = false) {
+              chainActions: Set<String> = [], freeTextActions: [ItemAction] = [],
+              draftKey: String? = nil, seedQuery: String = "") {
         globalIcon = icon
         isLauncher = launcher
-        self.chain = chain
+        self.chainActions = chainActions
+        self.freeTextActions = freeTextActions
+        self.draftKey = draftKey
+        // reset() cleared this a moment ago; --query is the caller putting text
+        // BACK (a draft handed over for editing), so it has to land after.
+        self.query = seedQuery
         self.maxEmpty = maxEmpty ?? (launcher ? 7 : Int.max)
 
         var built: [PounceItem] = []
@@ -441,20 +461,40 @@ final class DaemonState: ObservableObject {
                          appLaunch: nil, pasteAfter: paste))
     }
 
-    // Enter with nothing matching: hand the raw text back. Under --chain the
-    // caller turns that text into another pounce step (a search), which can take
-    // a network round-trip — hold the window with the loading skeleton, seeded
-    // from this step's own prompt, so there's no fade-out/fade-in gap.
-    func commitText(_ text: String) {
-        if chain {
+    // Return with nothing matching: hand the raw text back, prefixed with which
+    // Return it was — the same "<action>\t<payload>" shape a row commit uses, so
+    // a caller reads ⌘↵/⌥↵/⌃↵ on typed text exactly the way it already reads them
+    // on a row. (It used to hardcode "enter", which made every modifier
+    // indistinguishable from a plain Return and left a free-text step with no way
+    // to offer a second verb at all.)
+    //
+    // When the caller has declared this action as chaining (--chain), its next
+    // act is another pounce step, which can take a moment — hold the window with
+    // the loading skeleton, seeded from this step's own prompt, so there's no
+    // fade-out/fade-in gap. An action that ISN'T chained lingers out normally,
+    // which is what a caller wants when its next act needs the screen (⌘↵ →
+    // `screencapture -i`).
+    func commitText(_ text: String, action: String = "enter") {
+        let chains = chainActions.contains(action)
+        if chains {
             loadingTitle = placeholderText
             loadingIcon = globalIcon ?? "magnifyingglass"
         }
-        onCommit?(Commit(clientString: "enter\t\(text)",
-                         disposition: chain ? .loading : .linger, appLaunch: nil))
+        onCommit?(Commit(clientString: "\(action)\t\(text)",
+                         disposition: chains ? .loading : .linger, appLaunch: nil))
+    }
+
+    // File the current query as a draft, if this invocation asked for one
+    // (--draft <key>). Called on every non-commit exit from the query box — Esc,
+    // click-away — because that text exists nowhere else and the palette is a
+    // surface you can dismiss by accident. See Drafts.swift.
+    func stashDraft() {
+        guard let key = draftKey else { return }
+        Drafts.save(key: key, text: query)
     }
 
     func cancel() {
+        stashDraft()
         onCommit?(Commit(clientString: "", disposition: .hideNow, appLaunch: nil))
     }
 
