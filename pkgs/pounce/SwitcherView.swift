@@ -196,10 +196,13 @@ struct SwitcherView: View {
                                 }
                                 let w = state.visible[i]
                                 SwitcherRow(window: w,
-                                            // The header already names it; a
-                                            // badge on every row under it would
-                                            // just repeat itself.
-                                            workspace: headers.isEmpty ? state.workspaces[w.id] : nil,
+                                            // Badges are the filtered view's
+                                            // job only. Unfiltered, the header
+                                            // above already names the workspace
+                                            // — and when there's just one, a
+                                            // badge repeated down every row
+                                            // says nothing either.
+                                            workspace: state.query.isEmpty ? nil : state.workspaces[w.id],
                                             isSelected: i == state.selection)
                                     .frame(height: SwitcherLayout.rowHeight)
                                     .onTapGesture { state.onSelect?(i) }

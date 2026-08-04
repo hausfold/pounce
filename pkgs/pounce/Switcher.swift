@@ -205,18 +205,22 @@ final class WindowSwitcher {
     private func defaultSelection(_ windows: [WindowInfo], reverse: Bool) -> Int {
         guard windows.count > 1 else { return 0 }
         if reverse { return windows.count - 1 }
-        // No tiling to reason about → the unmodified rule. Row 1 it is.
-        guard let here = tracker.workspace(of: windows[0]) else { return 1 }
+        // Plain MRU, but still preferring not to un-minimize on a bare tap.
+        // Reached when there's no tiling to reason about at all, when one
+        // workspace holds everything, and when the map hasn't placed a
+        // candidate — walking with ⇥ reaches minimized windows either way, so
+        // only an all-minimized list makes one the default.
+        func mru() -> Int { windows.dropFirst().firstIndex { !$0.isMinimized } ?? 1 }
+
+        // No AeroSpace, or it hasn't placed the window we're standing on (the
+        // map is briefly empty at daemon start) → the unmodified rule.
+        guard let here = tracker.workspace(of: windows[0]) else { return mru() }
 
         let elsewhere = windows.dropFirst().firstIndex {
             guard !$0.isMinimized, let ws = tracker.workspace(of: $0) else { return false }
             return ws != here
         }
-        // One workspace holds everything (or nothing else is placed) — fall back
-        // to plain MRU rather than refusing to switch anywhere, but still prefer
-        // not to un-minimize something on a bare tap. Walking with ⇥ reaches
-        // minimized windows; only an all-minimized list makes one the default.
-        return elsewhere ?? windows.dropFirst().firstIndex { !$0.isMinimized } ?? 1
+        return elsewhere ?? mru()
     }
 
     private func cycle(_ delta: Int) {

@@ -326,15 +326,19 @@ final class WindowTracker {
                 if wantSpaces {
                     self.workspaceFetchInFlight = false
                     // A failure keeps the previous map rather than dropping every
-                    // window into one unnamed group — but it still stamps the
-                    // clock, because "installed but not running" is an ordinary
-                    // state and an unstamped failure re-forks on every refresh
-                    // forever, which is the exact cost this throttle exists to
-                    // avoid. Retry is one workspaceMaxAge away.
-                    if let spaces {
-                        self.workspaceMap = spaces
-                        self.workspaceFetchIDs = Set(snapshot.map(\.id))
-                    }
+                    // window into one unnamed group. BOTH throttle keys are
+                    // stamped either way: the gate is an OR, so leaving the id
+                    // set unstamped on failure keeps `ids != workspaceFetchIDs`
+                    // permanently true and re-forks on every refresh forever —
+                    // and "AeroSpace installed but not running" is an ordinary
+                    // state, not an exceptional one. Retry is one
+                    // workspaceMaxAge away.
+                    if let spaces { self.workspaceMap = spaces }
+                    // Stamped with the ids this pass GATED on, not the snapshot's
+                    // — the two differ exactly when this pass discovered a window,
+                    // and the next refresh then re-asks for it instead of
+                    // concluding nothing changed.
+                    self.workspaceFetchIDs = ids
                     self.workspaceFetchedAt = ProcessInfo.processInfo.systemUptime
                 }
                 // The map is keyed by window id and doesn't depend on snapshot
@@ -342,6 +346,9 @@ final class WindowTracker {
                 // snapshot itself is generation-gated.
                 guard generation == self.refreshGeneration else { return }
                 self.cached = snapshot
+                // A pass that changed the population leaves the map one window
+                // short. Coalesced, so this costs nothing when nothing changed.
+                if Set(snapshot.map(\.id)) != ids { self.refreshSoon() }
             }
         }
     }
@@ -465,13 +472,20 @@ enum Aerospace {
 
         var reaped = exited.wait(timeout: .now() + 1.0) == .success
         if !reaped {
-            proc.terminate()
+            proc.terminate()                       // SIGTERM
+            reaped = exited.wait(timeout: .now() + 0.5) == .success
+        }
+        if !reaped {
+            // SIGKILL, because a survivor still holds the pipe's write end — the
+            // drain thread would otherwise block on it for the daemon's whole
+            // life, and one leaked GCD worker per wedged call eventually starves
+            // the pool that the AX walk itself runs on.
+            kill(proc.processIdentifier, SIGKILL)
             reaped = exited.wait(timeout: .now() + 0.5) == .success
         }
         // terminationStatus RAISES an ObjC exception if the process is still
         // running — uncatchable from Swift, so it aborts the whole daemon and
-        // takes ⌘Space down with it. A wedge that survives SIGTERM must return
-        // nil here, never fall through to the read.
+        // takes ⌘Space down with it. Never fall through to it unreaped.
         guard reaped, drained.wait(timeout: .now() + 0.5) == .success else { return nil }
         return (proc.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
