@@ -606,20 +606,23 @@ switcher with an MRU **window** switcher:
 - **hold ⌘ and type** — fuzzy-filter the list, ranked by frecency. ↵ commits, ⎋
   cancels, releasing ⌘ always lands on the selection.
 
-**Running AeroSpace, "the last window you were in" skips the tiles beside you.**
-With two windows tiled side by side, the most recent one is a window you are
-*looking at* — landing there isn't a switch, and nudging focus between visible
-tiles is the window manager's job (AeroSpace's own focus keys), not the
-switcher's. So a tap-and-release lands on the most recent window you genuinely
-can't see, which in practice is the top of the workspace you were on before this
-one. A window on the second monitor lives on its own workspace, so it isn't
-"beside you" and stays an ordinary toggle target; minimized windows are never
-chosen by a bare tap either.
+**Running AeroSpace, a bare tap looks past the workspace you're on.** With two
+windows tiled side by side, the most recent one is a window you are *looking
+at* — landing there isn't a switch, and nudging focus between visible tiles is
+the window manager's job (AeroSpace's own focus keys), not the switcher's. So a
+tap-and-release takes the most recent window on a *different* workspace, which
+is what makes ⌘⇥ mean "get me back to where I was" again.
 
-Nothing is hidden from the list — those skipped siblings are the rows
-immediately below you, reachable with ⌘⇧⇥ or by keeping ⇥ held down. And with no
-AeroSpace running there's no tiling to reason about, so none of this applies:
-the default stays the plain most-recent window.
+Two details worth knowing. It requires the candidate's workspace to be known and
+different, rather than merely "not visible right now" — that keeps the default
+off windows sitting on their own native Space, where landing fires a Space-switch
+animation instead of a switch. And it prefers not to un-minimize: a minimized
+window only becomes the default if every other window is minimized too.
+
+Nothing is hidden from the list — the skipped same-workspace siblings are the
+rows immediately below you, reachable with ⌘⇧⇥ or by keeping ⇥ held down. With
+no AeroSpace running there's no tiling to reason about, so none of this applies:
+the default stays the plain most-recent window, exactly as before.
 
 macOS doesn't let ⌘Tab be rebound — the daemon takes it with an event tap, which
 the system gates behind the **Accessibility** grant. Without the grant (or during

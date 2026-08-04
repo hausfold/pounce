@@ -62,11 +62,15 @@ final class WindowTracker {
     private var stamps: [CGWindowID: Double] = [:]
     private var observers: [pid_t: AXObserver] = [:]
     private var refreshScheduled = false
-    // Throttle state for the workspace map — see refresh().
+    private var refreshGeneration = 0
+    // Throttle state for the workspace map — see refresh(). The max age is the
+    // window in which a window MOVED between workspaces (same id, so the id-set
+    // check can't see it) is still filed under the old one; short enough that
+    // it self-heals before you notice, long enough not to be a fork per click.
     private var workspaceFetchIDs = Set<CGWindowID>()
     private var workspaceFetchedAt: TimeInterval = 0
     private var workspaceFetchInFlight = false
-    private static let workspaceMaxAge: TimeInterval = 5
+    private static let workspaceMaxAge: TimeInterval = 3
 
     init() {
         seedFromZOrder()
@@ -113,38 +117,12 @@ final class WindowTracker {
         return order.flatMap { groups[$0] ?? [] }
     }
 
-    // The windows tiled beside `anchor` right now: same AeroSpace workspace, and
-    // actually drawn on screen. Switching to one of those isn't a switch — you're
-    // looking at it already, and nudging focus between visible tiles is what
-    // windowNav's ⌥hjkl is for. Used only to pick which row starts selected;
-    // nothing is ever filtered out of the list.
-    //
-    // nil means "no tiling to reason about" — no AeroSpace, or it doesn't place
-    // the anchor — and the switcher then keeps the plain "row 1 is the last
-    // window" rule. That gate matters: without a tiling WM, a window merely
-    // sitting on screen *behind* the current one is an ordinary switch target,
-    // not a tile, and skipping it would walk the default onto something worse.
-    //
-    // Both halves are load-bearing. Same-workspace alone would skip a minimized
-    // or otherwise hidden sibling that IS a real target; on-screen alone would
-    // skip the other monitor's window (AeroSpace binds each workspace to one
-    // monitor, so a different display is already a different workspace).
-    func windowsTiledBeside(_ anchor: WindowInfo) -> Set<CGWindowID>? {
-        guard Aerospace.binPath != nil, let home = workspaceMap[anchor.id] else { return nil }
-        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
-                                                    kCGNullWindowID) as? [[String: Any]] else { return nil }
-        var onScreen = Set<CGWindowID>()
-        for info in list {
-            guard (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
-                  let num = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value else { continue }
-            onScreen.insert(CGWindowID(num))
-        }
-        var beside = Set<CGWindowID>()
-        for w in cached where w.id != anchor.id
-            && workspaceMap[w.id] == home && onScreen.contains(w.id) {
-            beside.insert(w.id)
-        }
-        return beside
+    // The AeroSpace workspace a window sits on, or nil when there's no tiling to
+    // reason about — no AeroSpace, or it doesn't place this window. Cheap: a
+    // dictionary read against the cached map, safe from inside the event tap.
+    func workspace(of w: WindowInfo) -> String? {
+        guard Aerospace.binPath != nil else { return nil }
+        return workspaceMap[w.id]
     }
 
     // Force the currently-frontmost app's focused window to the top of the MRU
@@ -330,6 +308,13 @@ final class WindowTracker {
             && (ids != workspaceFetchIDs || now - workspaceFetchedAt >= Self.workspaceMaxAge)
         if wantSpaces { workspaceFetchInFlight = true }
 
+        // Passes can overlap (refreshScheduled clears before the work starts) and
+        // a pass that shells out to `aerospace` runs a lot longer than one that
+        // doesn't — so an older snapshot could land after a newer one and
+        // resurrect a window you just closed. Only the newest pass may publish.
+        refreshGeneration += 1
+        let generation = refreshGeneration
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let snapshot = Self.enumerate(apps: apps)
             // Blocking, hence out here rather than on the main thread: the
@@ -338,17 +323,25 @@ final class WindowTracker {
             let spaces = wantSpaces ? Aerospace.workspacesSync() : nil
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.cached = snapshot
-                guard wantSpaces else { return }
-                self.workspaceFetchInFlight = false
-                // A failed pass keeps the previous map rather than dropping
-                // every window into one unnamed group, and doesn't stamp the
-                // clock — so the next refresh retries instead of waiting it out.
-                if let spaces {
-                    self.workspaceMap = spaces
-                    self.workspaceFetchIDs = Set(snapshot.map(\.id))
+                if wantSpaces {
+                    self.workspaceFetchInFlight = false
+                    // A failure keeps the previous map rather than dropping every
+                    // window into one unnamed group — but it still stamps the
+                    // clock, because "installed but not running" is an ordinary
+                    // state and an unstamped failure re-forks on every refresh
+                    // forever, which is the exact cost this throttle exists to
+                    // avoid. Retry is one workspaceMaxAge away.
+                    if let spaces {
+                        self.workspaceMap = spaces
+                        self.workspaceFetchIDs = Set(snapshot.map(\.id))
+                    }
                     self.workspaceFetchedAt = ProcessInfo.processInfo.systemUptime
                 }
+                // The map is keyed by window id and doesn't depend on snapshot
+                // ordering, so it lands even from a superseded pass; only the
+                // snapshot itself is generation-gated.
+                guard generation == self.refreshGeneration else { return }
+                self.cached = snapshot
             }
         }
     }
@@ -470,11 +463,16 @@ enum Aerospace {
             drained.signal()
         }
 
-        if exited.wait(timeout: .now() + 1.0) == .timedOut {
+        var reaped = exited.wait(timeout: .now() + 1.0) == .success
+        if !reaped {
             proc.terminate()
-            _ = exited.wait(timeout: .now() + 0.5)
+            reaped = exited.wait(timeout: .now() + 0.5) == .success
         }
-        guard drained.wait(timeout: .now() + 0.5) == .success else { return nil }
+        // terminationStatus RAISES an ObjC exception if the process is still
+        // running — uncatchable from Swift, so it aborts the whole daemon and
+        // takes ⌘Space down with it. A wedge that survives SIGTERM must return
+        // nil here, never fall through to the read.
+        guard reaped, drained.wait(timeout: .now() + 0.5) == .success else { return nil }
         return (proc.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 

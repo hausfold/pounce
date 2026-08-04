@@ -134,15 +134,17 @@ struct SwitcherView: View {
         return out.count > 1 ? out : [:]
     }
 
-    func listHeight(headers: Int) -> CGFloat {
-        let content = CGFloat(max(state.visible.count, 1)) * SwitcherLayout.rowHeight
-                    + CGFloat(headers) * SwitcherLayout.headerHeight
-        // Headers buy their own height rather than eating into the nine rows
-        // they annotate — and the row part stays an exact multiple of
-        // rowHeight, so the cap never slices a row in half at the bottom edge.
-        let cap = CGFloat(SwitcherLayout.maxVisibleRows) * SwitcherLayout.rowHeight
-                + CGFloat(min(headers, 2)) * SwitcherLayout.headerHeight
-        return min(content, cap)
+    func listHeight(headers: [Int: String]) -> CGFloat {
+        let rows = state.visible.count
+        let shown = min(max(rows, 1), SwitcherLayout.maxVisibleRows)
+        // Count only the headers that actually fall inside the capped region —
+        // a blanket min(headers, 2) over-allocates when both groups sit below
+        // the fold, and the surplus renders as a sliced row at the bottom edge.
+        // Headers buy their own height on top of the rows they annotate, so the
+        // row portion stays an exact multiple of rowHeight either way.
+        let within = headers.keys.filter { $0 < shown }.count
+        return CGFloat(shown) * SwitcherLayout.rowHeight
+             + CGFloat(within) * SwitcherLayout.headerHeight
     }
 
     var body: some View {
@@ -205,7 +207,7 @@ struct SwitcherView: View {
                         }
                         .padding(.vertical, pt(6))
                     }
-                    .frame(height: listHeight(headers: headers.count) + 12)
+                    .frame(height: listHeight(headers: headers) + 12)
                     .onChange(of: state.selection) {
                         if state.visible.indices.contains(state.selection) {
                             proxy.scrollTo(state.selection)
