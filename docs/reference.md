@@ -606,6 +606,17 @@ switcher with an MRU **window** switcher:
 - **hold ⌘ and type** — fuzzy-filter the list, ranked by frecency. ↵ commits, ⎋
   cancels, releasing ⌘ always lands on the selection.
 
+"The last window you were in" deliberately skips windows already on screen
+beside you. With two windows tiled side by side the most recent one is one
+you're *looking at*, so landing there isn't a switch — nudging focus between
+visible tiles is the window manager's job (AeroSpace's own focus keys), not the
+switcher's. A tap-and-release therefore lands on the most recent window you
+genuinely can't see, which with a tiling WM is the top of the workspace you were
+on before this one. Nothing is hidden from the list: those skipped siblings are
+the rows immediately below you, reachable with ⌘⇧⇥ or by keeping ⇥ held down. A
+window hidden behind an accordion, or sitting on a second monitor, isn't "beside
+you" and stays an ordinary toggle target.
+
 macOS doesn't let ⌘Tab be rebound — the daemon takes it with an event tap, which
 the system gates behind the **Accessibility** grant. Without the grant (or during
 Secure Input, e.g. password fields) the tap stands down and stock ⌘Tab keeps
@@ -614,10 +625,14 @@ Accessibility while the daemon is running and the switcher arms itself within a
 couple of seconds — no restart; revoke it and the tap drops live. Flipping
 `windows.enabled` itself does need a daemon restart.
 
-Running [AeroSpace](https://github.com/nikitabobko/AeroSpace)? Each row gets a
-workspace badge, and focusing goes through `aerospace focus --window-id` so a
-window parked on another workspace surfaces correctly — that's the pairing the
-[nebelhaus](https://nebelhaus.com) rice ships enabled.
+Running [AeroSpace](https://github.com/nikitabobko/AeroSpace)? The list gathers
+windows by workspace under a header for each — workspace order is itself MRU, so
+it reads as "here, then where I was before, then before that" — and focusing
+goes through `aerospace focus --window-id` so a window parked on another
+workspace surfaces correctly. That's the pairing the
+[nebelhaus](https://nebelhaus.com) rice ships enabled. Filtered results drop the
+headers (they're ranked by score, not gathered) and carry a per-row workspace
+badge instead.
 
 ## Building from source
 

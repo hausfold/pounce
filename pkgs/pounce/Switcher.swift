@@ -45,8 +45,11 @@ final class WindowSwitcher {
     private var hudTimer: DispatchWorkItem?
     // A quick tap-release toggle shouldn't flash a window; the HUD appears
     // only if the modifier is still held after this delay (or on any explicit
-    // cycle/typing, immediately).
-    private static let hudDelay: TimeInterval = 0.1
+    // cycle/typing, immediately). Tuned to sit above a deliberate back-and-forth
+    // round trip — at 0.1s an ordinary bounce between two windows outran it and
+    // strobed the panel for a few frames on the way past. Raising it costs
+    // nothing when you DO want the list: walking with ⇥ shows it instantly.
+    private static let hudDelay: TimeInterval = 0.25
 
     init?(settings: WindowSwitcherSettings) {
         guard let code = HotKeyParser.keyCode(for: settings.key) else {
@@ -167,11 +170,12 @@ final class WindowSwitcher {
         active = true
         sessionWindows = windows
         state.query = ""
-        state.workspaces = [:]
+        // Read synchronously and frozen for the session: the grouping and the
+        // row badges must agree with the order `windows` already came in, and a
+        // map arriving mid-cycle would relabel rows under the selection.
+        state.workspaces = tracker.workspaceMap
         state.visible = windows
-        // Index 1 — "the window before this one" — is the whole point of MRU:
-        // tap-release lands there without ever seeing the HUD.
-        state.selection = windows.count > 1 ? (reverse ? windows.count - 1 : 1) : 0
+        state.selection = defaultSelection(windows, reverse: reverse)
 
         tracker.refreshSoon()   // freshen the snapshot for the NEXT activation
 
@@ -179,6 +183,24 @@ final class WindowSwitcher {
         hudTimer = show
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.hudDelay, execute: show)
         return true
+    }
+
+    // Where a tap-and-release lands. "The window before this one" is the whole
+    // point of MRU — but when two windows are tiled side by side, the one before
+    // this one is already on screen, so landing there isn't a switch at all;
+    // it's the focus nudge ⌥hjkl exists for. So the default skips past anything
+    // visible beside you and settles on the most recent window you actually
+    // can't see — in practice, the top of the previous workspace's group.
+    //
+    // Nothing is removed from the list: the skipped siblings are still rows
+    // 1..n, still reachable with ⇧⇥ or by keeping ⇥ held down.
+    private func defaultSelection(_ windows: [WindowInfo], reverse: Bool) -> Int {
+        guard windows.count > 1 else { return 0 }
+        if reverse { return windows.count - 1 }
+        let beside = tracker.windowsVisibleBeside(windows[0].id)
+        // All of them visible beside you (one workspace, everything tiled) —
+        // fall back to plain row 1 rather than refusing to switch anywhere.
+        return windows.dropFirst().firstIndex { !beside.contains($0.id) } ?? 1
     }
 
     private func cycle(_ delta: Int) {
@@ -216,11 +238,9 @@ final class WindowSwitcher {
         hudShown = true
         Settings.load().apply()   // config + scale edits apply on next show
         panel.show()
-        // Badges arrive async — the HUD is already up and usable without them.
-        Aerospace.workspaces { [weak self] map in
-            guard let self, self.active else { return }
-            self.state.workspaces = map
-        }
+        // No workspace fetch here any more: the map is cached on the tracker and
+        // was read at activation, so the headers are correct on the first frame
+        // instead of popping in a subprocess later.
     }
 
     private func commit() {

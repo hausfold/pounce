@@ -21,6 +21,7 @@ final class SwitcherState: ObservableObject {
 enum SwitcherLayout {
     static let width: CGFloat = 640
     static let rowHeight: CGFloat = 44
+    static let headerHeight: CGFloat = 26
     static let queryHeight: CGFloat = 40
     static let maxVisibleRows = 9
 }
@@ -110,9 +111,34 @@ final class SwitcherPanel {
 struct SwitcherView: View {
     @ObservedObject var state: SwitcherState
 
-    var listHeight: CGFloat {
-        CGFloat(min(max(state.visible.count, 1), SwitcherLayout.maxVisibleRows))
-            * SwitcherLayout.rowHeight
+    // Row index → the workspace header that precedes it. The list arrives from
+    // WindowTracker already gathered by workspace, so a header is simply the
+    // first row whose workspace differs from the one above.
+    //
+    // Empty while filtering: those results are ranked by score, not gathered, so
+    // headers would slice the ranking into meaningless bands. The per-row badge
+    // takes over there. Also empty when everything is on one workspace — a
+    // single header states the obvious and costs a row of screen.
+    var groupHeaders: [Int: String] {
+        guard state.query.isEmpty else { return [:] }
+        var out: [Int: String] = [:]
+        var previous: String?
+        for (i, w) in state.visible.enumerated() {
+            let ws = state.workspaces[w.id]
+            if let ws, ws != previous { out[i] = ws }
+            previous = ws
+        }
+        return out.count > 1 ? out : [:]
+    }
+
+    func listHeight(headers: Int) -> CGFloat {
+        let content = CGFloat(max(state.visible.count, 1)) * SwitcherLayout.rowHeight
+                    + CGFloat(headers) * SwitcherLayout.headerHeight
+        // Headers buy a little extra height rather than eating into the nine
+        // rows they annotate.
+        let cap = CGFloat(SwitcherLayout.maxVisibleRows) * SwitcherLayout.rowHeight
+                + 2 * SwitcherLayout.headerHeight
+        return min(content, cap)
     }
 
     var body: some View {
@@ -144,6 +170,7 @@ struct SwitcherView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, pt(6))
             } else {
+                let headers = groupHeaders
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
@@ -157,9 +184,16 @@ struct SwitcherView: View {
                             // the highlight on the wrong row. Position identity
                             // re-evaluates `isSelected` per slot every time.
                             ForEach(state.visible.indices, id: \.self) { i in
+                                if let ws = headers[i] {
+                                    SwitcherGroupHeader(name: ws)
+                                        .frame(height: SwitcherLayout.headerHeight)
+                                }
                                 let w = state.visible[i]
                                 SwitcherRow(window: w,
-                                            workspace: state.workspaces[w.id],
+                                            // The header already names it; a
+                                            // badge on every row under it would
+                                            // just repeat itself.
+                                            workspace: headers.isEmpty ? state.workspaces[w.id] : nil,
                                             isSelected: i == state.selection)
                                     .frame(height: SwitcherLayout.rowHeight)
                                     .onTapGesture { state.onSelect?(i) }
@@ -167,7 +201,7 @@ struct SwitcherView: View {
                         }
                         .padding(.vertical, pt(6))
                     }
-                    .frame(height: listHeight + 12)
+                    .frame(height: listHeight(headers: headers.count) + 12)
                     .onChange(of: state.selection) {
                         if state.visible.indices.contains(state.selection) {
                             proxy.scrollTo(state.selection)
@@ -182,6 +216,32 @@ struct SwitcherView: View {
         .clipShape(RoundedRectangle(cornerRadius: PanelChrome.cornerRadius))
         .onChange(of: state.visible.count) { state.onResize?() }
         .onChange(of: state.query.isEmpty) { state.onResize?() }
+    }
+}
+
+// MARK: - Group header
+
+// The workspace a run of rows belongs to. Reading the list as workspaces rather
+// than as one undifferentiated pile is the point: it makes "where was I before
+// this" a visible boundary instead of something you infer from badges.
+struct SwitcherGroupHeader: View {
+    let name: String
+
+    var body: some View {
+        HStack(spacing: pt(8)) {
+            Text(name)
+                .font(.system(size: pt(10), weight: .bold, design: .rounded))
+                .foregroundColor(Theme.blue)
+                .frame(minWidth: pt(18))
+                .padding(.horizontal, pt(6))
+                .padding(.vertical, pt(2))
+                .background(RoundedRectangle(cornerRadius: pt(5)).fill(Theme.blue.opacity(0.15)))
+            Rectangle()
+                .fill(Theme.surface1.opacity(0.35))
+                .frame(height: 1)
+        }
+        .padding(.horizontal, pt(22))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

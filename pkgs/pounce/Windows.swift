@@ -54,6 +54,11 @@ struct WindowInfo: Identifiable {
 // the AX walk, publishing its result back on main.
 final class WindowTracker {
     private(set) var cached: [WindowInfo] = []
+    // window-id → AeroSpace workspace, refreshed on the same background pass as
+    // the AX snapshot. Cached rather than fetched per-show because the switcher
+    // needs it *synchronously* at activation — it decides both the row grouping
+    // and which row starts selected, and neither may shuffle mid-session.
+    private(set) var workspaceMap: [CGWindowID: String] = [:]
     private var stamps: [CGWindowID: Double] = [:]
     private var observers: [pid_t: AXObserver] = [:]
     private var refreshScheduled = false
@@ -67,9 +72,10 @@ final class WindowTracker {
         refreshSoon()
     }
 
-    // The switcher's list: most-recently-focused first. Windows never focused
-    // since the daemon started sink to the bottom (stable by title so the tail
-    // doesn't shuffle between opens).
+    // The switcher's list: most-recently-focused first, then gathered so windows
+    // sharing an AeroSpace workspace sit together. Windows never focused since
+    // the daemon started sink to the bottom (stable by title so the tail doesn't
+    // shuffle between opens).
     func orderedWindows() -> [WindowInfo] {
         let sorted = cached.sorted { a, b in
             let sa = stamps[a.id] ?? 0, sb = stamps[b.id] ?? 0
@@ -82,7 +88,69 @@ final class WindowTracker {
         // so a duplicate would collide SwiftUI's identity and smear the
         // selection highlight onto the wrong row.
         var seen = Set<CGWindowID>()
-        return sorted.filter { seen.insert($0.id).inserted }
+        return groupByWorkspace(sorted.filter { seen.insert($0.id).inserted })
+    }
+
+    // Stable group-by: a workspace takes its rank from its most recent window,
+    // and every other window of that workspace follows it. So the list reads
+    // current-workspace-first, then the workspace you were on before that, and
+    // so on — workspace MRU, with window MRU inside each group. Without
+    // AeroSpace every window maps to nil, which is one group, which is the
+    // plain MRU list this replaced.
+    private func groupByWorkspace(_ windows: [WindowInfo]) -> [WindowInfo] {
+        var order: [String] = []          // workspace names by first appearance
+        var groups: [String: [WindowInfo]] = [:]
+        for w in windows {
+            let key = workspaceMap[w.id] ?? ""
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(w)
+        }
+        return order.flatMap { groups[$0] ?? [] }
+    }
+
+    // The windows already drawn on screen beside `anchor` — same display, both
+    // visible right now. Switching to one of these isn't a switch: you are
+    // looking at it already, and nudging focus between tiles is what windowNav's
+    // ⌥hjkl is for. The switcher uses this only to pick which row starts
+    // selected; nothing is ever filtered out of the list.
+    //
+    // Deliberately "on screen", not "same workspace": a sibling hidden behind an
+    // accordion IS a real switch target, and a window on the second monitor sits
+    // on its own display so it survives too.
+    func windowsVisibleBeside(_ anchor: CGWindowID) -> Set<CGWindowID> {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                    kCGNullWindowID) as? [[String: Any]] else { return [] }
+        var bounds: [CGWindowID: CGRect] = [:]
+        for info in list {
+            guard (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let num = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                  let dict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: dict as CFDictionary) else { continue }
+            bounds[CGWindowID(num)] = rect
+        }
+        // Can't place the anchor on a display → skip nothing, keep plain MRU.
+        guard let anchorRect = bounds[anchor],
+              let home = Self.displayBounds().first(where: { $0.contains(Self.center(anchorRect)) })
+        else { return [] }
+
+        var beside: Set<CGWindowID> = []
+        for (id, rect) in bounds where id != anchor && home.contains(Self.center(rect)) {
+            beside.insert(id)
+        }
+        return beside
+    }
+
+    private static func center(_ r: CGRect) -> CGPoint { CGPoint(x: r.midX, y: r.midY) }
+
+    // Active displays in the same top-left-origin global space as
+    // kCGWindowBounds — NSScreen's frames are bottom-left, so mixing the two
+    // would misplace every window on a multi-monitor setup.
+    private static func displayBounds() -> [CGRect] {
+        var count: UInt32 = 0
+        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return [] }
+        return ids.prefix(Int(count)).map { CGDisplayBounds($0) }
     }
 
     // Force the currently-frontmost app's focused window to the top of the MRU
@@ -258,7 +326,14 @@ final class WindowTracker {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let snapshot = Self.enumerate(apps: apps)
-            DispatchQueue.main.async { self?.cached = snapshot }
+            // One short-lived subprocess next to a full AX walk — and it has to
+            // ride this pass, because the switcher reads the map synchronously
+            // and can't spawn anything from the event tap.
+            let spaces = Aerospace.workspacesSync()
+            DispatchQueue.main.async {
+                self?.cached = snapshot
+                if let spaces { self?.workspaceMap = spaces }
+            }
         }
     }
 
@@ -331,20 +406,45 @@ enum Aerospace {
         }
     }
 
-    // window-id → workspace name, for the HUD badges. Fetched fresh per show —
-    // it's one short-lived subprocess, and the result is stale the moment a
-    // window moves anyway.
-    static func workspaces(completion: @escaping ([CGWindowID: String]) -> Void) {
-        run(["list-windows", "--all", "--format", "%{window-id}\t%{workspace}"]) { status, output in
-            guard status == 0 else { completion([:]); return }
-            var map: [CGWindowID: String] = [:]
-            for line in output.split(separator: "\n") {
-                let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
-                guard parts.count >= 2, let id = UInt32(parts[0].trimmingCharacters(in: .whitespaces)) else { continue }
-                map[CGWindowID(id)] = parts[1].trimmingCharacters(in: .whitespaces)
-            }
-            completion(map)
+    // window-id → workspace name, for the switcher's grouping. Blocking, so it
+    // may ONLY be called off the main thread — WindowTracker.refresh()'s
+    // background pass is the single caller. nil means "no answer this pass"
+    // (AeroSpace absent, erroring, or wedged): the caller keeps the map it had
+    // rather than dropping every window into one unnamed group.
+    static func workspacesSync() -> [CGWindowID: String]? {
+        guard let (status, output) =
+                runSync(["list-windows", "--all", "--format", "%{window-id}\t%{workspace}"]),
+              status == 0 else { return nil }
+        var map: [CGWindowID: String] = [:]
+        for line in output.split(separator: "\n") {
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard parts.count >= 2, let id = UInt32(parts[0].trimmingCharacters(in: .whitespaces)) else { continue }
+            map[CGWindowID(id)] = parts[1].trimmingCharacters(in: .whitespaces)
         }
+        return map
+    }
+
+    // Blocking sibling of run(), for callers already on a background queue.
+    // nil on any failure. The watchdog is what keeps a wedged AeroSpace from
+    // pinning a worker thread for every refresh that follows it.
+    private static func runSync(_ args: [String]) -> (Int32, String)? {
+        guard let bin = binPath else { return nil }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: bin)
+        proc.arguments = args
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run() } catch { return nil }
+
+        let watchdog = DispatchWorkItem { if proc.isRunning { proc.terminate() } }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0, execute: watchdog)
+        // Drain before waiting: the other order deadlocks the moment the output
+        // outgrows the pipe buffer.
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        watchdog.cancel()
+        return (proc.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
     // Fire-and-callback subprocess, never blocking the caller; completion runs

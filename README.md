@@ -101,7 +101,7 @@ next open. No registry, no rebuild, no restart.
 
 - **quick answers** — type `2*847`, `72 f in c`, `100 usd in eur`, or `14:00 utc in pst` and the answer pins to the top row. ⏎ copies it. (currency is the one engine that touches the network — daily reference rates, pounce's only outbound call; `"quickAnswers": { "currency": false }` turns it off.)
 - **the hotkey** — the daemon grabs ⌘Space in-process, so a press lands in an already-warm process: no shell, no client spawn, no socket round-trip.
-- **⌘Tab window switcher** — opt-in MRU switcher across *windows*, fuzzy-filterable, with workspace badges when AeroSpace is running.
+- **⌘Tab window switcher** — opt-in MRU switcher across *windows*, fuzzy-filterable, grouped by workspace when AeroSpace is running. Tap-and-release skips whatever is already tiled on screen beside you, so "back" means the window you can't see.
 - **native modes** — clipboard history, emoji & symbols, screenshots, camera, cheatsheets.
 - **symbols in the emoji picker** — the same grid holds the mac modifier keys (type `command` → ⌘), arrows, math, typography and box drawing. Plain Unicode, so they paste anywhere; the footer shows the codepoint.
 - **System Settings, deep-linked** — every settings pane (Displays, Bluetooth, Accessibility, …) is a first-class palette item that jumps straight to that pane, not just to the Settings window.
