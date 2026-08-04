@@ -19,10 +19,14 @@ final class SwitcherState: ObservableObject {
 // MARK: - Layout
 
 enum SwitcherLayout {
-    static let width: CGFloat = 640
-    static let rowHeight: CGFloat = 44
-    static let headerHeight: CGFloat = 26
-    static let queryHeight: CGFloat = 40
+    // The switcher is a separate panel, but it is still pounce UI: its outer
+    // geometry must follow `scale` along with the text, icons, and padding in
+    // its rows. Keep the base values here so scale 1.0 is unchanged.
+    static var width: CGFloat { ptWidth(640) }
+    static var rowHeight: CGFloat { pt(44) }
+    static var headerHeight: CGFloat { pt(26) }
+    static var queryHeight: CGFloat { pt(40) }
+    static var listVPadding: CGFloat { pt(6) }
     static let maxVisibleRows = 9
 }
 
@@ -57,7 +61,7 @@ final class SwitcherPanel {
         blur.blendingMode = .behindWindow
         blur.state = .active
         blur.wantsLayer = true
-        blur.layer?.cornerRadius = 16
+        blur.layer?.cornerRadius = PanelChrome.cornerRadius
         blur.layer?.masksToBounds = true
         blur.layer?.borderWidth = 1
         PounceUI.applyChrome(blur)   // material/appearance/border follow the palette
@@ -174,7 +178,7 @@ struct SwitcherView: View {
                     .foregroundColor(Theme.subtext0)
                     .frame(height: SwitcherLayout.rowHeight)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, pt(6))
+                    .padding(.vertical, SwitcherLayout.listVPadding)
             } else {
                 let headers = groupHeaders
                 ScrollViewReader { proxy in
@@ -208,9 +212,9 @@ struct SwitcherView: View {
                                     .onTapGesture { state.onSelect?(i) }
                             }
                         }
-                        .padding(.vertical, pt(6))
+                        .padding(.vertical, SwitcherLayout.listVPadding)
                     }
-                    .frame(height: listHeight(headers: headers) + 12)
+                    .frame(height: listHeight(headers: headers) + 2 * SwitcherLayout.listVPadding)
                     .onChange(of: state.selection) {
                         if state.visible.indices.contains(state.selection) {
                             proxy.scrollTo(state.selection)
