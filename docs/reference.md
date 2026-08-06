@@ -210,11 +210,6 @@ case "$(printf '%s' "$sel" | cut -f1)" in
 esac
 ```
 
-A declared modifier fires on an **empty** box too, handing back `<action>\t` with
-nothing after the tab — because "show me my drafts" and "let me grab a screenshot
-first" are things you reach for *before* typing, not after. Plain ↵ on an empty
-box still just dismisses, and a modifier the spec never declared is left alone.
-
 **Writing more than one line.** ⇧↵ inserts a newline (plain ↵ still commits), and
 the box grows with the text up to half the screen. `shift:` in an `--actions`
 spec is a label only — it renders `⇧↵` in the bar and is never delivered as an
