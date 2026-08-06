@@ -469,6 +469,15 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   blocks is accepted here too. Add a **space** for a two-step sequence — see
   below.
 
+  The laptop **Fn/Globe key** is a special one-step binding: for example,
+  `"mode:emoji": { "hotkey": "fn" }`. Because Fn is modifier-only, that opt-in
+  binding uses a keyboard event tap and needs Pounce's Accessibility grant
+  (`pounce --request-accessibility`). It fires only when Fn is tapped alone, so
+  Fn combinations keep working; while armed, it replaces macOS's configured
+  Globe action so both emoji pickers do not open together. `"globe"` and
+  `"function"` are accepted aliases. Ordinary chords and leader sequences stay
+  permission-free.
+
 `enabled` and `alias` only mean something for things the palette lists, so a
 `mode:` entry carries just a hotkey.
 

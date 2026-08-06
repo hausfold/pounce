@@ -198,7 +198,7 @@ enum ConfigSpec {
             // per-item fields is the honest documentation.
             ConfigSection(
                 name: "items",
-                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys.",
+                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too; because it is a modifier-only key, that opt-in binding needs Accessibility.",
                 // Three fields, and only three — see ItemSettings.parse.
                 raw: """
                 // "cmd:emoji": {
@@ -207,6 +207,7 @@ enum ConfigSpec {
                 //   "hotkey": "opt+e", // a global key straight to this item
                 // },
                 // "app:/Applications/Ghostty.app": { "hotkey": "opt+t" },
+                // "mode:emoji": { "hotkey": "fn" },
                 """),
         ]
     }

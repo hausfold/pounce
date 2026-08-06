@@ -25,6 +25,8 @@ func runItemSettingsTests() -> Int {
           "the last segment is the key, the rest are modifiers")
     check(HotKeySpec.parse("F") == HotKeySpec(key: "f", modifiers: []),
           "a bare key needs no modifier and lowercases")
+    check(HotKeySpec.parse("Fn") == HotKeySpec(key: "fn", modifiers: []),
+          "the modifier-only Fn binding survives parsing for the event-tap path")
     check(HotKeySpec.parse("CMD + Shift + V") == HotKeySpec(key: "v", modifiers: ["cmd", "shift"]),
           "spacing and case are tolerated")
 
