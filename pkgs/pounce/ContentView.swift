@@ -384,6 +384,17 @@ struct ContentView: View {
             // (as this did) capped every typed-text step at exactly one thing it
             // could do with what you wrote.
             if !state.query.isEmpty { state.commitText(state.query, action: action) }
+            // An EMPTY box still commits a modified Return, as long as the step
+            // declared that modifier in `--actions`. Not every modified action is
+            // about the text: "show me my drafts" and "let me grab a screenshot
+            // first" are things you reach for BEFORE you have typed anything, and
+            // requiring a character first made the action bar advertise two chords
+            // that silently dismissed the palette instead. Plain ↵ on an empty box
+            // is still a dismissal — there is nothing to submit.
+            else if action != "enter",
+                    state.freeTextActions.contains(where: { $0.key == action }) {
+                state.commitText("", action: action)
+            }
             else { state.cancel() }
             return
         }
