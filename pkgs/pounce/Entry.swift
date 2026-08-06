@@ -335,6 +335,11 @@ enum DaemonMode {
     static var hotKey: HotKeyManager?
     // Retained so the ⌘Tab event tap + window tracker stay alive.
     static var windowSwitcher: WindowSwitcher?
+    // Fn/Globe is a modifier-only key, so its opt-in item binding uses a session
+    // event tap rather than the Carbon manager above (FunctionKey.swift).
+    static var functionKey: FunctionKeyHotKey?
+    static var functionKeyRequest: (label: String, onFire: () -> Void)?
+    static var functionKeyReportIndex: Int?
     // Retained for the daemon's lifetime so an armed leader's transient
     // registrations and timers survive (see Leader.swift).
     static var leader: LeaderRunner?
@@ -384,6 +389,35 @@ enum DaemonMode {
         }
     }
 
+    // Arm a configured bare Fn/Globe item binding. Like the window switcher,
+    // this is idempotent and is called both at startup and when Accessibility
+    // flips on later, so granting Pounce never requires a daemon restart.
+    static func armFunctionKeyBinding() {
+        guard functionKey == nil, let request = functionKeyRequest else { return }
+        guard AXIsProcessTrusted() else {
+            NSLog("pounce daemon: binding \(request.label) needs Accessibility; Fn/Globe left to macOS (grant via `pounce --request-accessibility`)")
+            updateFunctionKeyReport("\(request.label) — NEEDS Accessibility")
+            return
+        }
+        if let binding = FunctionKeyHotKey(onFire: request.onFire) {
+            functionKey = binding
+            NSLog("pounce daemon: binding \(request.label) registered (Accessibility event tap)")
+            updateFunctionKeyReport(request.label)
+        } else {
+            NSLog("pounce daemon: binding \(request.label) event tap failed to install; Fn/Globe left to macOS")
+            updateFunctionKeyReport("\(request.label) — FAILED, event tap unavailable")
+        }
+    }
+
+    static func updateFunctionKeyReport(_ line: String) {
+        if let index = functionKeyReportIndex, bindingReport.indices.contains(index) {
+            bindingReport[index] = line
+        } else {
+            functionKeyReportIndex = bindingReport.count
+            bindingReport.append(line)
+        }
+    }
+
     // The startup `trusted=` line is a snapshot: TCC can flip while the daemon
     // runs (the user ticks the box in System Settings, or a `brew upgrade`
     // reissues the adhoc signature and drops the grant). AXIsProcessTrusted() is
@@ -403,9 +437,17 @@ enum DaemonMode {
                 NSLog("pounce daemon accessibility trusted=\(now) (changed while running)")
                 if now {
                     armWindowSwitcher(windows)
+                    armFunctionKeyBinding()
                 } else if windowSwitcher != nil {
                     windowSwitcher = nil   // deinit disables the tap + removes the run-loop source
                     NSLog("pounce daemon: Accessibility revoked; window switcher disarmed, stock switcher restored")
+                }
+                if !now, functionKey != nil {
+                    functionKey = nil
+                    if let request = functionKeyRequest {
+                        updateFunctionKeyReport("\(request.label) — NEEDS Accessibility")
+                    }
+                    NSLog("pounce daemon: Accessibility revoked; Fn/Globe binding disarmed, stock action restored")
                 }
             }
         }
@@ -693,15 +735,36 @@ enum DaemonMode {
                 ? "\(step.display) → \(node.target!)"
                 : "\(step.display) → leader (\(reachable.count) sequence\(reachable.count == 1 ? "" : "s"))"
 
+            let fire: () -> Void = node.isLeaf
+                ? { runTarget(node.target!) }
+                : { leaderRunner.arm(node) }
+
+            // A bare Fn/Globe tap is a modifier-only gesture: Carbon cannot
+            // register it, so hand the one leaf to FunctionKeyHotKey. Modifiers
+            // or leader children would be ambiguous with ordinary Fn chords and
+            // are rejected explicitly instead of arming something surprising.
+            if FunctionKeyHotKey.matches(step.key) {
+                guard node.isLeaf, step.modifiers.isEmpty else {
+                    NSLog("pounce daemon: binding \(label) uses Fn/Globe with modifiers or as a leader; only a bare one-step `fn` binding is supported")
+                    bindingReport.append("\(label) — only bare one-step `fn` is supported")
+                    continue
+                }
+                if let existing = functionKeyRequest {
+                    NSLog("pounce daemon: binding conflict — \(label) and \(existing.label) name the same physical Fn/Globe key")
+                    bindingReport.append("\(label) — conflicts with \(existing.label)")
+                    continue
+                }
+                functionKeyRequest = (label, fire)
+                updateFunctionKeyReport("\(label) — waiting for Accessibility")
+                continue
+            }
+
             guard let keyCode = HotKeyParser.keyCode(for: step.key) else {
                 NSLog("pounce daemon: binding \(label) uses unknown key '\(step.key)'; skipped")
                 bindingReport.append("\(label) — unknown key '\(step.key)'")
                 continue
             }
             let modifiers = HotKeyParser.modifierMask(for: step.modifiers)
-            let fire: () -> Void = node.isLeaf
-                ? { runTarget(node.target!) }
-                : { leaderRunner.arm(node) }
 
             guard manager.register(keyCode: keyCode, modifiers: modifiers, onFire: fire) else {
                 NSLog("pounce daemon: could not register binding \(label) (already taken by another app?)")
@@ -738,6 +801,8 @@ enum DaemonMode {
                 bindingReport.append("\(label) — no such command: \(missing.joined(separator: ", "))")
             }
         }
+
+        armFunctionKeyBinding()
 
         // The MRU window switcher (default ⌘Tab, see Switcher.swift). Unlike the
         // palette hotkey (Carbon, no permissions), taking ⌘Tab needs an event

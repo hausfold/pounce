@@ -56,7 +56,7 @@ enum DoctorMode {
             if status.accessibility {
                 ok("Accessibility granted")
             } else {
-                warn("Accessibility not granted — auto-paste, the \u{2318}Tab switcher, and "
+                warn("Accessibility not granted — auto-paste, Fn/Globe item bindings, the \u{2318}Tab switcher, and "
                      + "--transform need it (`pounce --request-accessibility`)")
             }
         }
