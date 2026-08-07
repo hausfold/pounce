@@ -4,9 +4,10 @@ import Foundation
 //
 // Two sources feed the launcher's app list, unioned so neither can hide an app:
 //
-//   1. A filesystem walk of the standard Applications dirs, plus a short
-//      allowlist of first-class system apps that live elsewhere (systemAppPaths
-//      — Finder, under /System/Library/CoreServices). Its result is cached
+//   1. A filesystem walk of the standard Applications dirs (including the
+//      user-facing CoreServices/Applications directory), plus a short allowlist
+//      of first-class system apps that live elsewhere (systemAppPaths — Finder,
+//      under /System/Library/CoreServices). Its result is cached
 //      as an in-memory snapshot (fsApps) that a background task refreshes — so
 //      the keystroke path (apps(), called on every ⌘Space) reads the snapshot
 //      instantly instead of paying a synchronous directory walk + stat storm
@@ -89,6 +90,7 @@ final class AppScanner {
             URL(fileURLWithPath: "/Applications"),
             URL(fileURLWithPath: "/System/Applications"),
             URL(fileURLWithPath: "/System/Applications/Utilities"),
+            URL(fileURLWithPath: "/System/Library/CoreServices/Applications"),
         ]
         dirs.append(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"))
         return dirs
@@ -97,12 +99,12 @@ final class AppScanner {
     // First-class system apps that live outside the Applications dirs and would
     // otherwise be missed by BOTH sources: the walk never descends
     // /System/Library, and the Spotlight source drops anything under /library/
-    // (see spotlightAccepts) to bury framework-internal helper bundles. Finder
-    // is the one CoreServices app worth launching by name — a palette that can't
-    // open Finder is broken — while the ~100 UIElement/background agents beside
-    // it are exactly the clutter that guard exists to keep out. Listed by exact
-    // path (ABI-stable across releases); each still passes through the normal
-    // metadata read + isHelper filter, so a helper here is still dropped.
+    // (see spotlightAccepts) to bury framework-internal helper bundles.
+    // CoreServices contains ~100 UIElement/background agents that the /library/
+    // guard correctly keeps out. Its dedicated Applications subdirectory is
+    // covered by searchDirs above; list useful apps outside that boundary by
+    // exact, ABI-stable path instead of scanning CoreServices wholesale. Each
+    // still passes through the normal metadata read + isHelper filter.
     static let systemAppPaths: [String] = [
         "/System/Library/CoreServices/Finder.app",
     ]
