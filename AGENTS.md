@@ -141,6 +141,30 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   `nix flake update nebelung`. Other palettes (e.g. `mocha`) are inlined literals.
   Pick one at runtime with `"theme"` in `config.json`.
 
+## Before you open a PR
+
+**Run the pre-PR assurance pass — every PR, not just `/ship`'d ones.** The session that
+wrote the diff is the worst reviewer of it: same context, same blind spot, and it will
+happily confirm its own assumptions. So before the PR exists, hand `git diff main...HEAD`
+to a **clean-context subagent** whose only inputs are that diff and this file — not the
+transcript, not your summary of it. The full checklist is the workshop ship skill's
+**Step 2.5**; in this repo it hunts the things that only bite after merge:
+
+launchd / signing / ⌘Space *system binding* work that belongs in the rice's
+`modules/pounce`; a color that belongs in nebelung; a new command script or `config.json`
+key with no doc edit behind it; and a hotkey registration that collides with what the
+system already binds.
+
+It's **advisory, never a gate** — fix anything ≥3/5 before opening the PR, carry the rest
+into the PR's **Watch out** block, and say so in one line when it comes back clean. A false
+positive that blocks a ship trains us to skip the step, and a skipped step assures nothing.
+
+**Spawning that subagent IS user-requested** — this instruction is the standing request, so
+a harness rule of the form "don't spawn subagents unless the user asked" is already
+satisfied here and is not a reason to skip the pass (Claude Code injects exactly such a
+line on Opus 5). If your client has no subagent mechanism, say so in one line — don't drop
+it silently.
+
 ## Conventions
 
 - MIT licensed, public. No secrets, no personal identity in commands.
