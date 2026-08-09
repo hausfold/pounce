@@ -9,7 +9,7 @@ the palette — a keyboard-first launcher for macOS, where every command is a fi
 
 ![part of hausfold](https://img.shields.io/badge/part_of-hausfold-f2c4e5?labelColor=202020)
 ![themed by nebelung](https://img.shields.io/badge/themed_by-nebelung-c9a8f1?labelColor=202020)
-![brew](https://img.shields.io/badge/brew-nebelhaus%2Ftap-f5b58e?labelColor=202020)
+![brew](https://img.shields.io/badge/brew-hausfold%2Ftap-f5b58e?labelColor=202020)
 ![license](https://img.shields.io/badge/license-MIT-d7d7d7?labelColor=202020)
 
 <!-- assets/demo.webp — trigger hotkey, fuzzy-type an app, then a command with a submenu -->
@@ -41,7 +41,7 @@ extensions? Use Raycast. Want to *own* your launcher? Pounce.
 ## install
 
 ```sh
-brew tap nebelhaus/tap
+brew tap hausfold/tap
 brew install pounce
 brew services start pounce       # the palette daemon
 pounce --request-accessibility   # approve the prompt, once
@@ -52,7 +52,7 @@ notarized — no compile step, no Xcode CLT. The signing identity is stable acro
 releases, so the Accessibility grant survives `brew upgrade`.
 
 **No Homebrew?** Grab the DMG from the [latest
-release](https://github.com/nebelhaus/pounce/releases/latest) (or
+release](https://github.com/hausfold/pounce/releases/latest) (or
 `nebelhaus.com/download/pounce`), drag `Pounce.app` to Applications, and open
 it. First launch registers a login item (approve it in System Settings if
 macOS asks), starts the daemon, and shows the palette — the built-in commands
@@ -71,7 +71,7 @@ place. Applying it is always your keystroke. `"updates": { "check": false }` in
 `config.json` turns the check off.
 
 On Nix, take the flake input, or kick the tyres with
-`nix run github:nebelhaus/pounce -- --help`.
+`nix run github:hausfold/pounce -- --help`.
 
 Requires macOS 14 Sonoma or later, Apple Silicon.
 
@@ -119,11 +119,11 @@ next open. No registry, no rebuild, no restart.
 
 ## the family
 
-- 🏠 [**nebelhaus**](https://github.com/nebelhaus/nebelhaus) — the house. the whole rice, one Nix flake. start here.
-- 🐾 [**pounce**](https://github.com/nebelhaus/pounce) — the palette. keyboard-first launcher; every command a file. *(you are here)*
-- 🪺 [**perch**](https://github.com/nebelhaus/perch) — the shelf. files, caught in the notch.
-- 🌫️ [**nebelung**](https://github.com/nebelhaus/nebelung) — the theme. the silver-mist palette.
-- 🧰 [**workshop**](https://github.com/nebelhaus/workshop) — the bench. where the family is built.
+- 🏠 [**nebelhaus**](https://github.com/hausfold/hausfold) — the house. the whole rice, one Nix flake. start here.
+- 🐾 [**pounce**](https://github.com/hausfold/pounce) — the palette. keyboard-first launcher; every command a file. *(you are here)*
+- 🪺 [**perch**](https://github.com/hausfold/perch) — the shelf. files, caught in the notch.
+- 🌫️ [**nebelung**](https://github.com/hausfold/nebelung) — the theme. the silver-mist palette.
+- 🧰 [**workshop**](https://github.com/hausfold/workshop) — the bench. where the family is built.
 
 Each one stands alone. Together they're a house.
 

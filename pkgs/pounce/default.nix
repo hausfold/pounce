@@ -62,7 +62,7 @@ stdenvNoCC.mkDerivation {
     cp ${nebelungSwiftFile} Palette+nebelung.generated.swift
 
     # Compile + assemble via the shared build script (also used by the Homebrew
-    # formula in nebelhaus/homebrew-tap) so the two packagings never drift.
+    # formula in hausfold/homebrew-tap) so the two packagings never drift.
     POUNCE_VERSION="$version" bash ./build.sh
   '';
 

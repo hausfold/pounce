@@ -182,7 +182,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: nebelhaus/homebrew-tap
+          repository: hausfold/homebrew-tap
           # Write deploy key for the tap repo, stored as a secret here. The
           # formula's version/sha lines are CI-owned; humans never bump them.
           ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
@@ -192,7 +192,7 @@ jobs:
           TAG="$GITHUB_REF_NAME"
           VER="${TAG#v}"
           curl -fsSL --retry 5 --retry-delay 5 -o /tmp/pounce.tar.gz \
-            "https://github.com/nebelhaus/pounce/releases/download/$TAG/pounce-$TAG-macos.tar.gz"
+            "https://github.com/hausfold/pounce/releases/download/$TAG/pounce-$TAG-macos.tar.gz"
           SHA="$(sha256sum /tmp/pounce.tar.gz | cut -d' ' -f1)"
           sed -i -E \
             -e "s#^  version \".*\"#  version \"$VER\"#" \

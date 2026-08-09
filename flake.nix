@@ -9,7 +9,7 @@
     # latte counterpart, which together are what lets a zero-config pounce
     # follow macOS light/dark. Only palette data is used — the theme-builder
     # packages are never realised — so this stays a pure eval.
-    nebelung.url = "github:nebelhaus/nebelung";
+    nebelung.url = "github:hausfold/nebelung";
     nebelung.inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -46,7 +46,7 @@
         }
       );
 
-      # `nix run github:nebelhaus/pounce`
+      # `nix run github:hausfold/pounce`
       apps = forAll (system: {
         default = {
           type = "app";

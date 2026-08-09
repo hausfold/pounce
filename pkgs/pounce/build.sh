@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build Pounce.app in this directory. The single source of truth for the
 # compile + bundle assembly — called by BOTH the Nix derivation (default.nix)
-# and the Homebrew formula (nebelhaus/homebrew-tap), so packagers never drift.
+# and the Homebrew formula (hausfold/homebrew-tap), so packagers never drift.
 #
 # Inputs:
 #   POUNCE_VERSION                     stamped into the binary and Info.plist
