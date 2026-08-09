@@ -23,7 +23,11 @@ import SwiftUI
 // (password fields) keyboard taps go deaf and events flow to the stock switcher
 // — an acceptable, self-healing fallback.
 final class WindowSwitcher {
-    private let tracker = WindowTracker()
+    // Injected rather than owned: auto-quit (AutoQuit.swift) reads the same AX
+    // snapshot, and a second tracker would mean a second AXObserver on every
+    // running app. DaemonMode holds the one instance and hands it to whoever
+    // needs it.
+    private let tracker: WindowTracker
     // Separate store from the launcher's frecency.json: two live Frecency
     // instances on one file would clobber each other's writes.
     private let frecency = Frecency(filename: "window-frecency.json")
@@ -52,11 +56,12 @@ final class WindowSwitcher {
     // nothing when you DO want the list: walking with ⇥ shows it instantly.
     private static let hudDelay: TimeInterval = 0.25
 
-    init?(settings: WindowSwitcherSettings) {
+    init?(settings: WindowSwitcherSettings, tracker: WindowTracker) {
         guard let code = HotKeyParser.keyCode(for: settings.key) else {
             NSLog("pounce switcher: unknown key '\(settings.key)'")
             return nil
         }
+        self.tracker = tracker
         triggerKey = CGKeyCode(code)
         requiredFlags = Self.eventFlags(for: settings.modifiers)
         // Release-to-commit needs a modifier to release; a bare key would also

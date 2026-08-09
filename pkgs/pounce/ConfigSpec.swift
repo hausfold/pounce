@@ -191,6 +191,24 @@ enum ConfigSpec {
                         json: json(s.windows.modifiers)),
                 ]),
 
+            ConfigSection(
+                name: "autoQuit",
+                doc: "Quit an app when you close its last window — what Windows does and macOS doesn't. Off by default. Reads the same window snapshot as \"windows\", so it wants the same Accessibility grant, and is read once at daemon start. The quit is the polite one ⌘Q sends: an app with unsaved work puts its sheet up and stays.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Turn auto-quit on.",
+                        json: json(s.autoQuit.enabled)),
+                    ConfigField(
+                        name: "delay",
+                        doc: "Seconds to wait, then look again before quitting. This is what lets an app close one window and open another — a browser replacing its last window, an editor switching projects — without being quit out from under you.",
+                        json: json(s.autoQuit.delay)),
+                    ConfigField(
+                        name: "exclude",
+                        doc: "Bundle ids that are never auto-quit. Setting this REPLACES the default rather than adding to it — keep Finder in your list unless you want the desktop to blink out and relaunch.",
+                        json: json(s.autoQuit.exclude)),
+                ]),
+
             // `items` is the one setting with no fixed key list — it's keyed by
             // pounce's own stable item keys, of which there are dozens, and which
             // you discover with `pounce --help`. Enumerating them here would be a

@@ -335,8 +335,15 @@ struct Invocation {
 enum DaemonMode {
     // Retained for the daemon's lifetime so its Carbon handler stays installed.
     static var hotKey: HotKeyManager?
-    // Retained so the ⌘Tab event tap + window tracker stay alive.
+    // Retained so the ⌘Tab event tap stays alive.
     static var windowSwitcher: WindowSwitcher?
+    // The AX window snapshot, shared by every feature that reads it (the ⌘Tab
+    // switcher, auto-quit). One instance on purpose: the tracker keeps an
+    // AXObserver on every running app, and a second copy would double that for no
+    // new information. Created on first use, dropped when Accessibility goes away.
+    static var windowTracker: WindowTracker?
+    // Retained so the census hook the tracker calls has something to call.
+    static var autoQuit: AutoQuit?
     // Fn/Globe is a modifier-only key, so its opt-in item binding uses a session
     // event tap rather than the Carbon manager above (FunctionKey.swift).
     static var functionKey: FunctionKeyHotKey?
@@ -379,16 +386,54 @@ enum DaemonMode {
     static func armWindowSwitcher(_ settings: WindowSwitcherSettings) {
         guard settings.enabled, windowSwitcher == nil else { return }
         let combo = "\(settings.modifiers.joined(separator: "+"))+\(settings.key)"
-        guard AXIsProcessTrusted() else {
+        guard let tracker = sharedWindowTracker() else {
             NSLog("pounce daemon: windows.enabled is set but Accessibility is not granted; window switcher off, stock \(combo) untouched (grant via `pounce --request-accessibility`)")
             return
         }
-        if let switcher = WindowSwitcher(settings: settings) {
+        if let switcher = WindowSwitcher(settings: settings, tracker: tracker) {
             windowSwitcher = switcher
             NSLog("pounce daemon: window switcher armed on \(combo)")
         } else {
             NSLog("pounce daemon: window switcher event tap failed to install; stock \(combo) untouched")
+            releaseWindowTrackerIfUnused()
         }
+    }
+
+    // The one WindowTracker, built on first demand. nil without Accessibility:
+    // the AX walk it exists to do returns nothing at all without the grant, so
+    // there is no point paying for the observers.
+    static func sharedWindowTracker() -> WindowTracker? {
+        guard AXIsProcessTrusted() else { return nil }
+        if windowTracker == nil { windowTracker = WindowTracker() }
+        return windowTracker
+    }
+
+    // A tracker nobody reads is pure cost — an AXObserver per running app, an AX
+    // walk per window event, an `aerospace` fork per population change. Callers
+    // take it before they know whether they'll succeed (the switcher needs it to
+    // construct), so whoever fails hands it back.
+    static func releaseWindowTrackerIfUnused() {
+        guard windowSwitcher == nil, autoQuit == nil else { return }
+        windowTracker = nil
+    }
+
+    // Arms auto-quit (AutoQuit.swift). Idempotent and Accessibility-gated exactly
+    // like the switcher above, and for the same reason: the grant may be ticked
+    // after the daemon booted, and watchAccessibility calls this again when it is.
+    static func armAutoQuit(_ settings: AutoQuitSettings) {
+        guard settings.enabled, autoQuit == nil else { return }
+        guard let tracker = sharedWindowTracker() else {
+            NSLog("pounce daemon: autoQuit.enabled is set but Accessibility is not granted; auto-quit off (grant via `pounce --request-accessibility`)")
+            return
+        }
+        let quitter = AutoQuit(settings: settings)
+        // Weak: DaemonMode owns the quitter, and the tracker outlives it whenever
+        // the switcher is also on.
+        tracker.onCensus = { [weak quitter] census in quitter?.consume(census) }
+        autoQuit = quitter
+        let excluded = settings.exclude.isEmpty
+            ? "nothing excluded" : "never quits \(settings.exclude.joined(separator: ", "))"
+        NSLog("pounce daemon: auto-quit armed (\(settings.delay)s delay, \(excluded))")
     }
 
     // Arm a configured bare Fn/Globe item binding. Like the window switcher,
@@ -431,7 +476,7 @@ enum DaemonMode {
     // tap couldn't install without Accessibility (so no daemon restart is needed);
     // on revoke it drops the now-dead tap so the stock switcher resumes and a
     // later re-grant re-arms from a clean slate.
-    static func watchAccessibility(windows: WindowSwitcherSettings) {
+    static func watchAccessibility(windows: WindowSwitcherSettings, autoQuit quit: AutoQuitSettings) {
         accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
             let now = AXIsProcessTrusted()
             if now != lastTrusted {
@@ -439,10 +484,23 @@ enum DaemonMode {
                 NSLog("pounce daemon accessibility trusted=\(now) (changed while running)")
                 if now {
                     armWindowSwitcher(windows)
+                    armAutoQuit(quit)
                     armFunctionKeyBinding()
                 } else if windowSwitcher != nil {
                     windowSwitcher = nil   // deinit disables the tap + removes the run-loop source
                     NSLog("pounce daemon: Accessibility revoked; window switcher disarmed, stock switcher restored")
+                }
+                if !now {
+                    // Both go, and the tracker with them: without the grant its AX
+                    // walk reports every app as windowless, which is precisely the
+                    // input that would make auto-quit close everything you have
+                    // open. Dropping it also means a re-grant rebuilds the
+                    // observers from a clean slate.
+                    if autoQuit != nil {
+                        autoQuit = nil
+                        NSLog("pounce daemon: Accessibility revoked; auto-quit disarmed")
+                    }
+                    releaseWindowTrackerIfUnused()
                 }
                 if !now, functionKey != nil {
                     functionKey = nil
@@ -816,6 +874,11 @@ enum DaemonMode {
         // arms it live, so this boot-time call may find no grant and no-op.
         armWindowSwitcher(settings.windows)
 
+        // Quit-on-last-window-close (AutoQuit.swift). Same grant, same live-arming
+        // story as the switcher above — and it shares that feature's AX snapshot,
+        // so with both on there is still only one tracker.
+        armAutoQuit(settings.autoQuit)
+
         // Clipboard history watcher: poll the pasteboard while the daemon lives.
         if settings.clipboard.enabled {
             Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
@@ -839,7 +902,7 @@ enum DaemonMode {
         // value that happened to hold the instant the daemon launched.
         lastTrusted = AXIsProcessTrusted()
         NSLog("pounce daemon accessibility trusted=\(lastTrusted!) (startup snapshot)")
-        watchAccessibility(windows: settings.windows)
+        watchAccessibility(windows: settings.windows, autoQuit: settings.autoQuit)
         app.run()
     }
 

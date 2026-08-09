@@ -130,6 +130,15 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   feature free of an Accessibility grant, unlike the ⌘Tab switcher. The transient
   registrations live in their own `HotKeyManager` under a separate Carbon signature
   so disarming can never unregister the palette key.
+- **Anything that reads the window population** (the ⌘Tab switcher, auto-quit):
+  take `DaemonMode.sharedWindowTracker()`, never a fresh `WindowTracker()`. It
+  keeps an AXObserver on *every* running app, so a second instance doubles that
+  for no new information; it's Accessibility-gated, which is why it's built on
+  demand and dropped when the grant goes away. New consumers subscribe to
+  `onCensus` — and note the census reports whether each app *answered* the AX
+  walk separately from its window count, because a busy app that timed out looks
+  exactly like an app with nothing open, and `AutoQuitPolicy` must not confuse
+  the two.
 - **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost on
   rebuild. The *rice* (`nebelhaus/modules/pounce`) re-signs a stable copy to keep the
   grant — that logic lives there, not here. Here, just: `pounce --request-accessibility`
