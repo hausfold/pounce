@@ -40,7 +40,7 @@ pounce --check-accessibility     # prints: true
 changes every rebuild and macOS silently drops the Accessibility grant. If you
 run pounce as a launch agent from Nix, copy the app to a stable path and re-sign
 it with a consistent identity once, then point the agent there. See
-[`nebelhaus`](https://github.com/nebelhaus/nebelhaus) for a working `launchd`
+[`nebelhaus`](https://github.com/hausfold/hausfold) for a working `launchd`
 wrapper that does exactly this. The Homebrew build is Developer ID signed and
 does not have this problem.
 
@@ -376,13 +376,13 @@ and every panel's width is held inside the visible screen. That matters most on 
 Mac that has *also* been set to a lower-resolution "larger text" display mode —
 both make things bigger, and they multiply.
 
-On the [nebelhaus](https://github.com/nebelhaus/nebelhaus) rice this is written
+On the [nebelhaus](https://github.com/hausfold/hausfold) rice this is written
 for you from `haus.ui.scale`, so the palette grows with the rest of the
 desktop.
 
 The **nebelung** palette and its light counterpart **nebelung-latte** are both
 compiled into the binary straight from the
-[nebelung](https://github.com/nebelhaus/nebelung) flake, so they never drift from
+[nebelung](https://github.com/hausfold/nebelung) flake, so they never drift from
 the rest of the theme. Set `"theme": "mocha"` for stock Catppuccin.
 
 ### Following macOS light/dark
@@ -418,7 +418,7 @@ Homebrew installs alike:
 ```sh
 mkdir -p ~/.config/pounce/themes
 curl -fsSLo ~/.config/pounce/themes/nebelung-latte.json \
-  https://raw.githubusercontent.com/nebelhaus/nebelung/main/palette/nebelung-latte.hex.json
+  https://raw.githubusercontent.com/hausfold/nebelung/main/palette/nebelung-latte.hex.json
 # then in config.json:  "theme": "nebelung-latte"
 ```
 
@@ -670,5 +670,5 @@ Building from source needs the **Xcode Command Line Tools** — that path compil
 against the system Swift toolchain via `xcrun` (`xcode-select --install`).
 
 Hacking on pounce as part of the wider rice? The
-[workshop](https://github.com/nebelhaus/workshop)'s `bench try` rebuilds a whole
+[workshop](https://github.com/hausfold/workshop)'s `bench try` rebuilds a whole
 nebelhaus machine against your local checkout, uncommitted edits included.

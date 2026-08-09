@@ -9,7 +9,7 @@ The short version:
 
 - Pounce is a native, scriptable **command palette for macOS**: a Swift daemon
   (`pkgs/pounce`) plus a shell-scripted command library
-  (`pkgs/pounce-commands`), in the [nebelhaus](https://github.com/nebelhaus)
+  (`pkgs/pounce-commands`), in the [hausfold](https://github.com/hausfold)
   family.
 - **This repo owns the app and its commands, nothing else.** How pounce is
   *launched* (launchd, signing, ⌘Space, the Accessibility grant) belongs to the

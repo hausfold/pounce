@@ -3,11 +3,11 @@
 # pounce: description = Open a pre-filled bug report on GitHub
 # pounce: icon = ladybug
 
-# Opens github.com/nebelhaus/pounce with a new-issue form pre-filled from a
+# Opens github.com/hausfold/pounce with a new-issue form pre-filled from a
 # template. No hosted .github/ISSUE_TEMPLATE needed — the title/body/labels ride
 # in the URL query, so this works even against a repo without one.
 
-repo="nebelhaus/pounce"
+repo="hausfold/pounce"
 
 # Environment footer, best-effort. `pounce --version` prints "pounce <ver>".
 version=$(pounce --version 2>/dev/null | awk '{print $2}')

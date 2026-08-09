@@ -2,7 +2,7 @@
 
 **Pounce** — a native, scriptable command palette for macOS. A small Swift daemon
 (`pkgs/pounce`, Swift sources split one-file-per-concern) plus a shell-scripted command library
-(`pkgs/pounce-commands`). Part of the [nebelhaus](https://github.com/nebelhaus) family.
+(`pkgs/pounce-commands`). Part of the [hausfold](https://github.com/hausfold) family.
 
 **This file is the one set of instructions, for every agent.** Claude Code,
 Codex, OpenCode, Cursor, Copilot — TUI or GUI — all read *this*, directly or
@@ -19,7 +19,7 @@ its command scripts. Nothing else.
 | Want to change… | Repo |
 |---|---|
 | the pounce app (UI, ranking, launcher) or a command script | `~/code/workshop/pounce` ← **you are here** |
-| how pounce is *launched* on the system (launchd, signing, ⌘Space) | `~/code/workshop/nebelhaus` → `modules/pounce` |
+| how pounce is *launched* on the system (launchd, signing, ⌘Space) | `~/code/workshop/hausfold` → `modules/pounce` |
 | pounce's colors | `~/code/workshop/nebelung` |
 | this machine's pounce settings (`config.json`) | the rice's `modules/pounce`, or the consumer host |
 

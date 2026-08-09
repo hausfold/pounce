@@ -22,7 +22,7 @@ for _d in /opt/homebrew/bin /usr/local/bin /run/current-system/sw/bin \
 done
 export PATH; unset _d
 
-REPO="nebelhaus/pounce"
+REPO="hausfold/pounce"
 AGENT_LABEL="com.local.pounce.daemon"
 
 notify() { osascript -e "display notification \"$1\" with title \"Update Pounce\""; }

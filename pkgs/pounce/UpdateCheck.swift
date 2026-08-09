@@ -133,7 +133,7 @@ final class UpdateNudge {
                         notifiedAt: prev?.notifiedAt, dismissed: v)
     }
 
-    static let endpoint = URL(string: "https://api.github.com/repos/nebelhaus/pounce/releases/latest")!
+    static let endpoint = URL(string: "https://api.github.com/repos/hausfold/pounce/releases/latest")!
     // Hourly: the nudge should show up the day it's cut, not up to a day late.
     static let maxAge: TimeInterval = 3600
     // …but the BANNER is the invasive surface, so it repeats at most daily

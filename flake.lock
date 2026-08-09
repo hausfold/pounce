@@ -28,13 +28,13 @@
       "locked": {
         "lastModified": 1786272642,
         "narHash": "sha256-ultAA39a+rW0gcJtCoO9lKjy0EiBhEr8E39p5/B20P4=",
-        "owner": "nebelhaus",
+        "owner": "hausfold",
         "repo": "nebelung",
         "rev": "af1a3ab983a005d0ca45d1b68685ec0a8270855b",
         "type": "github"
       },
       "original": {
-        "owner": "nebelhaus",
+        "owner": "hausfold",
         "repo": "nebelung",
         "type": "github"
       }
