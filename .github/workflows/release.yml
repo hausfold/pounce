@@ -5,9 +5,12 @@ name: release
 #
 # The tarball ships a prebuilt Pounce.app signed with our Developer ID (hardened
 # runtime) and notarized by Apple, plus the command scripts. Because it is
-# prebuilt and signed, every install shares ONE stable code identity — so the
-# Accessibility/TCC grant survives upgrades (an ad-hoc build changed identity on
-# every rebuild and had to be re-granted). arm64 only, matching the nix target.
+# prebuilt and signed, every install normally shares ONE stable code identity —
+# so the Accessibility/TCC grant survives upgrades (an ad-hoc build changed
+# identity on every rebuild and had to be re-granted). The one deliberate
+# exception is the com.local.pounce -> com.hausfold.pounce identifier migration;
+# release notes keep that one-time re-approval visible to skip-version upgraders.
+# arm64 only, matching the nix target.
 #
 # The bundled Palette+nebelung.generated.swift is rendered from the PINNED
 # nebelung input, so the release gets the exact palette this flake.lock pins.
@@ -171,7 +174,17 @@ jobs:
           rm -f "$RUNNER_TEMP/notary-dmg.p8"
 
       - name: Create GitHub release
-        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes
+        run: |
+          cat > "$RUNNER_TEMP/identifier-migration.md" <<'EOF'
+          ### Upgrade note
+
+          If you are upgrading from a build whose bundle identifier was
+          `com.local.pounce`, macOS will ask you to approve Pounce in
+          **System Settings → Privacy & Security → Accessibility** one more time.
+          The app and standalone login item now use the canonical hausfold IDs.
+          EOF
+          gh release create "$GITHUB_REF_NAME" dist/* --generate-notes \
+            --notes-file "$RUNNER_TEMP/identifier-migration.md"
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -197,8 +210,17 @@ jobs:
           sed -i -E \
             -e "s#^  version \".*\"#  version \"$VER\"#" \
             -e "s#^  sha256 \".*\"#  sha256 \"$SHA\"#" \
+            -e 's#com\.local\.pounce#com.hausfold.pounce#g' \
             -e '/^  revision [0-9]+$/d' \
             Formula/pounce.rb
+          grep -q 'com.hausfold.pounce' Formula/pounce.rb || {
+            echo "::error::formula did not adopt com.hausfold.pounce"
+            exit 1
+          }
+          if grep -q 'com.local.pounce' Formula/pounce.rb; then
+            echo "::error::legacy pounce identifier remains in formula"
+            exit 1
+          fi
           if git diff --quiet; then
             echo "formula already current"
             exit 0

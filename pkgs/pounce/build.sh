@@ -62,13 +62,13 @@ cp emoji.json symbols.json Pounce.app/Contents/Resources/
 # resurrects crashes: the single-instance guard's clean exit(0) (e.g. brew
 # services already owns the socket) must not throttle-loop launchd.
 mkdir -p Pounce.app/Contents/Library/LaunchAgents
-cat > Pounce.app/Contents/Library/LaunchAgents/com.local.pounce.daemon.plist <<'EOF'
+cat > Pounce.app/Contents/Library/LaunchAgents/com.hausfold.pounce.daemon.plist <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.local.pounce.daemon</string>
+    <string>com.hausfold.pounce.daemon</string>
     <key>BundleProgram</key>
     <string>Contents/MacOS/pounce</string>
     <key>ProgramArguments</key>
@@ -86,10 +86,20 @@ cat > Pounce.app/Contents/Library/LaunchAgents/com.local.pounce.daemon.plist <<'
     <key>ProcessType</key>
     <string>Interactive</string>
     <key>AssociatedBundleIdentifiers</key>
-    <string>com.local.pounce</string>
+    <string>com.hausfold.pounce</string>
 </dict>
 </plist>
 EOF
+
+# Compatibility bridge for direct installs that registered the old SMAppService
+# plist. It stays indefinitely because the in-app updater jumps straight to the
+# latest release: an old install can skip any number of versions. The first new
+# daemon starts a detached migration helper; that helper unregisters this legacy
+# service and registers the new one without leaving the old login item behind.
+cp Pounce.app/Contents/Library/LaunchAgents/com.hausfold.pounce.daemon.plist \
+   Pounce.app/Contents/Library/LaunchAgents/com.local.pounce.daemon.plist
+/usr/bin/plutil -replace Label -string com.local.pounce.daemon \
+  Pounce.app/Contents/Library/LaunchAgents/com.local.pounce.daemon.plist
 
 # Bundle the built-in command library INSIDE the app, so a Pounce.app that was
 # simply dragged to /Applications still ships Emoji, Clipboard, Find Files and

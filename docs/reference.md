@@ -50,8 +50,10 @@ Run **Update Pounce** from the palette to self-update in place. What it does
 depends on how Pounce was installed: a Homebrew build runs `brew update && brew
 upgrade pounce && brew services restart pounce`; a copy dragged to
 `/Applications` downloads the latest release, verifies its signature, and swaps
-the app in place (the Developer ID matches on both sides, so the Accessibility
-grant survives). A Nix or nebelhaus-rice install updates through the store
+the app in place. The stable Developer ID normally preserves Accessibility.
+Upgrading from a build identified as `com.local.pounce` to
+`com.hausfold.pounce` is the one exception: approve Pounce in Accessibility
+once more. A Nix or nebelhaus-rice install updates through the store
 instead, so the command no-ops there with a hint to run `haus update` or bump
 your flake input. Either way it runs in the background and reports via
 notifications.
@@ -547,7 +549,7 @@ same contract as `windows`. After adding one, restart the daemon:
 
 ```sh
 brew services restart pounce                            # Homebrew
-launchctl kickstart -k gui/$(id -u)/org.nixos.pounce    # nebelhaus / Nix
+launchctl kickstart -k gui/$(id -u)/com.hausfold.pounce # nebelhaus / Nix
 ```
 
 Then check it armed. A binding whose combo another app already owns fails

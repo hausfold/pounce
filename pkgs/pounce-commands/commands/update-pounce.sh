@@ -9,8 +9,10 @@
 #   brew    brew update && brew upgrade pounce && brew services restart pounce
 #   direct  Pounce.app dragged to /Applications from the release download —
 #           fetch the latest release tarball, verify its signature, swap the
-#           app in place, bounce the daemon. Same Developer ID on both sides,
-#           so the TCC (Accessibility) grant survives the swap.
+#           app in place, bounce the daemon. The Developer ID normally keeps
+#           TCC stable; the one-time com.local.pounce -> com.hausfold.pounce
+#           bundle-ID migration is the deliberate exception and needs a fresh
+#           Accessibility approval after the update.
 #
 # Both run silently in the background with progress via notifications.
 
@@ -23,7 +25,7 @@ done
 export PATH; unset _d
 
 REPO="hausfold/pounce"
-AGENT_LABEL="com.local.pounce.daemon"
+AGENT_LABEL="com.hausfold.pounce.daemon"
 
 notify() { osascript -e "display notification \"$1\" with title \"Update Pounce\""; }
 

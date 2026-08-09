@@ -172,6 +172,8 @@ enum Main {
             // `pounce config init` writes an annotated config.json: every
             // setting at its default, documented, and commented out.
             ConfigMode.run(op: args.count >= 3 ? args[2] : nil, args: args)
+        } else if args.contains("--migrate-autostart") {
+            Autostart.migrateLegacyRegistration()
         } else if args.count >= 2 && args[1] == "autostart" {
             // Positional like `focus`/`doctor` (see those branches for why).
             // Manages the self-registered login item — the drag-install
@@ -454,6 +456,8 @@ enum DaemonMode {
     }
 
     static func run() {
+        Autostart.scheduleLegacyMigrationIfNeeded()
+
         // Single-instance guard. Two supervisors can legitimately race for the
         // daemon — brew services and the self-registered login item, or launchd's
         // copy arriving while AppLaunchMode's in-process fallback is booting —

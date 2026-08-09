@@ -9,7 +9,7 @@ import ServiceManagement
 // terminal, no Nix.
 //
 // Boundary note (see AGENTS.md): the launch agent for the RICE lives in
-// nebelhaus/modules/pounce, and Homebrew's in the formula's service block —
+// hausfold/modules/pounce, and Homebrew's in the formula's service block —
 // those are packager concerns and stay out of this repo. What lives HERE is the
 // app registering ITSELF via SMAppService, the same in-process exception the
 // global hotkey already has: a capability only the app can provide, needed
@@ -17,7 +17,7 @@ import ServiceManagement
 // they exec the binary with --daemon, which skips AppLaunchMode entirely.
 //
 // The agent is the plist build.sh bakes into
-// Contents/Library/LaunchAgents/com.local.pounce.daemon.plist (the only
+// Contents/Library/LaunchAgents/com.hausfold.pounce.daemon.plist (the only
 // location SMAppService.agent accepts). An SMAppService agent — unlike
 // SMAppService.mainApp — passes explicit arguments, so the login launch is
 // `pounce --daemon`, indistinguishable from the packagers' invocations. Its
@@ -27,10 +27,108 @@ import ServiceManagement
 
 enum Autostart {
     // Must match the plist filename build.sh writes into the bundle.
-    static let plistName = "com.local.pounce.daemon.plist"
+    static let plistName = "com.hausfold.pounce.daemon.plist"
+    // Transitional alias retained in the bundle so an app upgraded in place can
+    // unregister the SMAppService job shipped before the hausfold rename.
+    private static let legacyPlistName = "com.local.pounce.daemon.plist"
 
     @available(macOS 13.0, *)
     private static var service: SMAppService { .agent(plistName: plistName) }
+    @available(macOS 13.0, *)
+    private static var legacyService: SMAppService { .agent(plistName: legacyPlistName) }
+
+    @available(macOS 13.0, *)
+    private static var legacyServiceIsRegistered: Bool {
+        switch legacyService.status {
+        case .enabled, .requiresApproval: return true
+        case .notFound, .notRegistered:   return false
+        @unknown default:                 return false
+        }
+    }
+
+    // The old updater swaps the app and then kickstarts the OLD label. That new
+    // daemon must not unregister its own launchd job in-process: launchd would
+    // kill it before it could register the replacement. Start a detached helper
+    // instead; it survives the bootout, registers the new label, and launchd
+    // brings the daemon back under the canonical service.
+    @discardableResult
+    static func scheduleLegacyMigrationIfNeeded() -> Bool {
+        guard #available(macOS 13.0, *), legacyServiceIsRegistered else { return false }
+
+        let bundlePath = Bundle.main.bundleURL.standardizedFileURL.path
+        let userApplications = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Applications/Pounce.app").standardizedFileURL.path
+        guard bundlePath == "/Applications/Pounce.app" || bundlePath == userApplications,
+              let executable = Bundle.main.executableURL else { return false }
+
+        let worker = Process()
+        worker.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        worker.arguments = [
+            "-e", "use POSIX qw(setsid); setsid(); exec(@ARGV)",
+            executable.path, "--migrate-autostart",
+        ]
+        let null = FileHandle(forWritingAtPath: "/dev/null")
+        worker.standardOutput = null
+        worker.standardError = null
+        worker.standardInput = FileHandle(forReadingAtPath: "/dev/null")
+        do {
+            try worker.run()
+            NSLog("pounce: scheduled legacy login-item migration")
+            return true
+        } catch {
+            NSLog("pounce: couldn't schedule legacy login-item migration (\(error.localizedDescription))")
+            return false
+        }
+    }
+
+    // Hidden worker entry point. It is deliberately not part of the public
+    // `autostart` CLI: it exists only to bridge com.local.pounce.daemon to the
+    // canonical label after an in-place app update.
+    static func migrateLegacyRegistration() -> Never {
+        guard #available(macOS 13.0, *) else { exit(0) }
+
+        // The updater-launched daemon and a simultaneous Finder open can both
+        // notice the legacy service. Only one helper may move it. The lock is
+        // process-external because each observer launches its own detached
+        // worker.
+        guard let lock = NSDistributedLock(
+            path: NSTemporaryDirectory() + "com.hausfold.pounce-autostart-migration.lock"
+        ), lock.try() else { exit(0) }
+        guard legacyServiceIsRegistered else {
+            lock.unlock()
+            exit(0)
+        }
+
+        do {
+            try legacyService.unregister()
+
+            // unregister() retires the old launchd job, but termination is
+            // asynchronous. Registering the replacement while the old daemon
+            // still owns the socket makes the new job exit 0, which its
+            // SuccessfulExit=false policy correctly treats as final. Wait for
+            // the incumbent to be fully gone before bootstrapping the new job.
+            for _ in 0..<50 where SocketConfig.daemonAlive() {
+                usleep(100_000)
+            }
+            guard !SocketConfig.daemonAlive() else {
+                throw NSError(domain: "pounce", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "legacy daemon did not stop within 5 seconds",
+                ])
+            }
+
+            try service.register()
+            NSLog("pounce: migrated login item to com.hausfold.pounce.daemon")
+            lock.unlock()
+            exit(0)
+        } catch {
+            // Do not turn a label migration into lost login persistence. The
+            // compatibility plist remains embedded for exactly this rollback.
+            try? legacyService.register()
+            NSLog("pounce: legacy login-item migration failed (\(error.localizedDescription))")
+            lock.unlock()
+            exit(1)
+        }
+    }
 
     // Human-readable status for `pounce autostart status` and the doctor-style
     // logs. Distinguishes "needs the user's blessing in System Settings"
@@ -128,6 +226,13 @@ enum AppLaunchMode {
     }
 
     static func run() {
+        // A migration helper owns registration from here. Do not independently
+        // register the new service and race it; the helper will bootstrap the
+        // canonical daemon after the old socket disappears.
+        if Autostart.scheduleLegacyMigrationIfNeeded() {
+            exit(0)
+        }
+
         if SocketConfig.daemonAlive() {
             summonLauncher()
         }
