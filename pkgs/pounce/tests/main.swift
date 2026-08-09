@@ -59,6 +59,7 @@ failures += runUpdateNudgeTests()
 failures += runSymbolsTests()
 failures += runConfigTemplateTests()
 failures += runDraftsTests()
+failures += runAutoQuitTests()
 
 if failures == 0 {
     exit(0)

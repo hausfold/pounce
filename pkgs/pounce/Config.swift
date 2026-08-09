@@ -268,6 +268,29 @@ struct WindowSwitcherSettings {
     var modifiers: [String] = ["cmd"]
 }
 
+// Quit an app when its last window closes (AutoQuit.swift) — the Windows-style
+// behaviour macOS deliberately doesn't have. Default off, and it stays off even
+// in opinionated setups until someone asks for it: a windowless app is a normal
+// macOS state that parts of the system rely on, so quitting one is a change the
+// user must have chosen. Rides the window switcher's AX snapshot, so it needs the
+// same Accessibility grant and is read once at daemon start.
+struct AutoQuitSettings {
+    var enabled: Bool = false
+    // Grace period before the quit, in seconds; clamped to 0.25…3600 on read.
+    // Not politeness — it is what keeps "close this window, open another" (a
+    // browser replacing its last window) from reading as "I'm done with this
+    // app". Two seconds is the responsive end of the trade and matches what
+    // comparable tools ship; it is NOT long enough for a cold IDE reopening a
+    // project, which is a case for `exclude` rather than for a default nobody
+    // would enjoy.
+    var delay: Double = 2
+    // Bundle ids never auto-quit. Finder is here because it is the app macOS runs
+    // windowless by design — quit it and the desktop blinks out while it
+    // relaunches. Setting this REPLACES the default rather than adding to it, so
+    // keep Finder in your list unless you mean to lose it.
+    var exclude: [String] = ["com.apple.finder"]
+}
+
 struct Settings {
     enum WindowMode: String { case standard = "default", compact }
 
@@ -281,6 +304,7 @@ struct Settings {
     var appLauncher = AppLauncherSettings()
     var hotkey = HotKeyConfig()
     var windows = WindowSwitcherSettings()
+    var autoQuit = AutoQuitSettings()
     var quickAnswers = QuickAnswerSettings()
     // Daily latest-release check that nudges (palette row + one notification)
     // but never applies — see UpdateCheck.swift. Default on; independently
@@ -414,6 +438,20 @@ struct Settings {
             if let e = w["enabled"] as? Bool { s.windows.enabled = e }
             if let k = w["key"] as? String, !k.isEmpty { s.windows.key = k }
             if let m = w["modifiers"] as? [String], !m.isEmpty { s.windows.modifiers = m }
+        }
+        if let q = obj["autoQuit"] as? [String: Any] {
+            if let e = q["enabled"] as? Bool { s.autoQuit.enabled = e }
+            // Clamped at both ends, not rejected. The floor: a zero delay quits
+            // in the same run-loop turn as the close, before an app replacing its
+            // window has drawn the replacement. The ceiling: `.now() + seconds`
+            // traps on Int64 overflow, so a config that says 20000000000 (a
+            // plausible "these are nanoseconds, surely" mistake) would crash the
+            // daemon the first time any app went windowless — minutes after the
+            // edit, with nothing to connect the two.
+            if let d = q["delay"] as? Double { s.autoQuit.delay = min(3600, max(0.25, d)) }
+            // No emptiness guard, unlike `modifiers` above: "exclude": [] is a
+            // meaningful answer (quit everything, Finder included).
+            if let x = q["exclude"] as? [String] { s.autoQuit.exclude = x }
         }
         s.items = ItemSettings.parse(obj["items"])
         return s

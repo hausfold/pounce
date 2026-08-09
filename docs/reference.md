@@ -294,9 +294,9 @@ on Nix? Every plugin is still just one script: copy it into
 ## Configuration
 
 Optional settings live in `~/.config/pounce/config.json`. The file is re-read on
-every open, so edits apply on the next launch — no restart needed. (The two
-exceptions are the things the daemon has to *grab* at startup: `windows` and the
-`items` hotkeys.) Every key is optional and falls back to a default.
+every open, so edits apply on the next launch — no restart needed. (The
+exceptions are the things the daemon sets up at startup: `windows`, `autoQuit`
+and the `items` hotkeys.) Every key is optional and falls back to a default.
 
 **Start from a config that documents itself:**
 
@@ -337,6 +337,11 @@ config written by a newer one.
     "enabled": false,       // MRU window switcher on ⌘Tab (needs Accessibility)
     "key": "tab",
     "modifiers": ["cmd"]
+  },
+  "autoQuit": {
+    "enabled": false,       // quit an app when you close its last window
+    "delay": 2,             // seconds to wait, then look again before quitting
+    "exclude": ["com.apple.finder"]  // never auto-quit these; REPLACES the default
   },
   "clipboard": {
     "enabled": true,
@@ -661,6 +666,59 @@ Headers appear only when there are two or more groups to tell apart; with
 everything on one workspace the list is plain. Filtered results are ranked by
 score rather than gathered, so they drop the headers and carry a per-row
 workspace badge instead.
+
+## Quit on last window close (opt-in)
+
+macOS keeps an app running after you close its last window. On Windows that
+closes the program, and if that is the muscle memory you have, every windowless
+app is a ⌘Q you forgot. With `"autoQuit": { "enabled": true }` pounce closes that
+gap: when an app's last window goes away, it is asked to quit.
+
+**Asked, not killed.** The quit is the same Quit event ⌘Q sends, so an app with
+unsaved work puts its sheet up and stays open — and pounce won't ask it again
+until it has a window once more. Nothing here can lose work that ⌘Q wouldn't.
+
+**The delay is load-bearing.** `delay` (2s by default, clamped to 0.25–3600) is
+not politeness — it is what tells "I'm done with this app" apart from "close this
+window, open another", which is what a browser does when you close its last window
+and hit ⌘N. After the wait pounce looks again, and anything open at all —
+including panels and dialogs the ⌘Tab switcher wouldn't list — calls the quit off.
+Two seconds is the responsive end of that trade; it is not enough for a cold IDE
+reopening a project, which is a case for `exclude` rather than for a delay you'd
+feel on every app.
+
+**`exclude` replaces its default; it doesn't extend it.** Out of the box the list
+is `["com.apple.finder"]`, because Finder is the one app macOS runs windowless by
+design (quit it and the desktop blinks out while it relaunches). Write your own
+list and Finder is only in it if you put it there. Read a bundle id off any
+running app with `osascript -e 'id of app "Notes"'`.
+
+It reads the same window snapshot as the ⌘Tab switcher, so it wants the same
+**Accessibility** grant, and it shares that snapshot rather than taking its own —
+turning both on costs one set of observers, not two. Without the grant auto-quit
+stays off and says so in the log rather than guessing (an app pounce can't see
+into looks exactly like an app with nothing open, and acting on that would quit
+whatever was busy). Grant it while the daemon runs and auto-quit arms itself
+within a couple of seconds; revoke it and it stands down live. Flipping
+`autoQuit.enabled` itself needs a daemon restart.
+
+**The one thing that will surprise you: an app doing work in the background is
+still just an app with a window.** Close the Docker Desktop dashboard and Docker
+is asked to quit, which stops your containers; the same shape catches media
+players (⌘W on Music stops playback), torrent clients, and chat and mail apps you
+keep running for their notifications. Nothing here can lose work that ⌘Q wouldn't
+— it's the same quit — but ⌘Q is something you *chose*. That class of app is what
+`exclude` is for, so expect to spend the first week adding to the list. The
+shipped default has only Finder in it because Finder is the only app macOS itself
+structurally needs; everything else is a judgement about *your* apps, and a list
+guessed here would be both incomplete and stale.
+
+Two things it never touches at all: an app that has been windowless since the
+daemon started (that's every menu-bar app, and quitting them on sight would be a
+rout), and an app with no bundle id — there'd be no way to name it in `exclude`,
+so it never becomes a candidate. Note the first is about the app's *whole* run
+under the daemon: a menu-bar app that opens a window once and has it closed is a
+candidate from then on.
 
 ## Building from source
 

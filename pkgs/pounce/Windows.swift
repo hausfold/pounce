@@ -71,6 +71,13 @@ final class WindowTracker {
     private var workspaceFetchedAt: TimeInterval = 0
     private var workspaceFetchInFlight = false
     private static let workspaceMaxAge: TimeInterval = 3
+    // Published after every snapshot that lands: one entry per regular app, with
+    // its window count and whether it answered the AX walk at all. AutoQuit is
+    // the only consumer — the switcher reads `cached` directly — and it exists as
+    // a hook rather than a reference so the tracker stays unaware of it.
+    var onCensus: (([AppWindowCensus]) -> Void)?
+
+    private var workspaceObservers: [NSObjectProtocol] = []
 
     init() {
         seedFromZOrder()
@@ -79,6 +86,27 @@ final class WindowTracker {
         }
         installWorkspaceObservers()
         refreshSoon()
+    }
+
+    // A tracker is dropped whenever nothing needs it any more — Accessibility
+    // revoked, the switcher failing to arm — which makes this an ordinary path,
+    // not a shutdown-only one. Both halves matter:
+    //
+    //   the AX sources  each AXObserver's callback carries an UNRETAINED pointer
+    //                   back to this object, so leaving a source on the run loop
+    //                   past dealloc hands the next window notification a
+    //                   dangling refcon — a use-after-free that takes the daemon,
+    //                   and ⌘Space with it.
+    //   the NSWorkspace those closures are weak and so survive dealloc harmlessly,
+    //   tokens          but they are never replaced: a revoke/re-grant cycle would
+    //                   otherwise stack a fresh set on every pass.
+    deinit {
+        for (_, observer) in observers {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(),
+                                  AXObserverGetRunLoopSource(observer), .defaultMode)
+        }
+        let nc = NSWorkspace.shared.notificationCenter
+        for token in workspaceObservers { nc.removeObserver(token) }
     }
 
     // The switcher's list: most-recently-focused first, then gathered so windows
@@ -202,20 +230,21 @@ final class WindowTracker {
 
     private func installWorkspaceObservers() {
         let nc = NSWorkspace.shared.notificationCenter
-        nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+        // Tokens kept so deinit can unregister — see the note there.
+        workspaceObservers.append(nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                        object: nil, queue: .main) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             self?.touchFocusedWindow(pid: app.processIdentifier)
             self?.refreshSoon()   // cheap way to prune windows closed since last look
-        }
-        nc.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
+        })
+        workspaceObservers.append(nc.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
                        object: nil, queue: .main) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                   app.activationPolicy == .regular else { return }
             self?.observe(app)
             self?.refreshSoon()
-        }
-        nc.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
+        })
+        workspaceObservers.append(nc.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
                        object: nil, queue: .main) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             if let observer = self?.observers.removeValue(forKey: app.processIdentifier) {
@@ -223,7 +252,7 @@ final class WindowTracker {
                                       AXObserverGetRunLoopSource(observer), .defaultMode)
             }
             self?.refreshSoon()
-        }
+        })
     }
 
     // Per-app AXObserver: NSWorkspace only reports app-level activation, so
@@ -316,7 +345,7 @@ final class WindowTracker {
         let generation = refreshGeneration
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let snapshot = Self.enumerate(apps: apps)
+            let (snapshot, responded, standard) = Self.enumerate(apps: apps)
             // Blocking, hence out here rather than on the main thread: the
             // switcher reads the cached map synchronously and can't spawn
             // anything from inside the event tap.
@@ -346,6 +375,19 @@ final class WindowTracker {
                 // snapshot itself is generation-gated.
                 guard generation == self.refreshGeneration else { return }
                 self.cached = snapshot
+                // Only a published (newest-generation) pass reports a census: a
+                // superseded one may have walked a window population two events
+                // old, and auto-quit acts on the transition to zero.
+                if let onCensus = self.onCensus {
+                    var counts: [pid_t: Int] = [:]
+                    for w in snapshot { counts[w.pid, default: 0] += 1 }
+                    onCensus(apps.map {
+                        AppWindowCensus(pid: $0.pid, name: $0.name, bundleId: $0.bundleId,
+                                        responded: responded.contains($0.pid),
+                                        windows: counts[$0.pid] ?? 0,
+                                        standardWindows: standard[$0.pid] ?? 0)
+                    })
+                }
                 // A pass that changed the population leaves the map one window
                 // short. Coalesced, so this costs nothing when nothing changed.
                 if Set(snapshot.map(\.id)) != ids { self.refreshSoon() }
@@ -353,8 +395,22 @@ final class WindowTracker {
         }
     }
 
-    private static func enumerate(apps: [(pid: pid_t, name: String, bundleId: String?, path: String?)]) -> [WindowInfo] {
+    // Returns two things beyond the window list, both of them only auto-quit's
+    // business — for a switcher LIST, a busy app and an empty one look the same on
+    // purpose:
+    //
+    //   responded  an app that misses the messaging timeout contributes no windows,
+    //              exactly like an app that has none. AutoQuitPolicy must not
+    //              confuse the two, so the walk says which apps actually answered.
+    //   standard   how many of each app's windows are ordinary document windows
+    //              rather than the dialogs that also pass the filter below. A
+    //              modal "really quit?" alert is a window by every other measure,
+    //              and treating it as one would let a declined quit re-arm itself.
+    private static func enumerate(apps: [(pid: pid_t, name: String, bundleId: String?, path: String?)])
+        -> (windows: [WindowInfo], responded: Set<pid_t>, standard: [pid_t: Int]) {
         var out: [WindowInfo] = []
+        var responded = Set<pid_t>()
+        var standard: [pid_t: Int] = [:]
         for app in apps {
             let axApp = AXUIElementCreateApplication(app.pid)
             // Cap how long a busy/hung app may stall the walk (default is 6s!).
@@ -362,6 +418,7 @@ final class WindowTracker {
             var value: CFTypeRef?
             guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
                   let windows = value as? [AXUIElement] else { continue }
+            responded.insert(app.pid)
             for el in windows {
                 var id: CGWindowID = 0
                 _AXUIElementGetWindow(el, &id)
@@ -370,8 +427,12 @@ final class WindowTracker {
                 // (AXSystemDialog, AXUnknown, floating panels) aren't targets a
                 // window switcher should offer. A missing subrole passes — some
                 // apps never set one on perfectly ordinary windows.
-                if let sub = stringAttr(el, kAXSubroleAttribute),
+                let subrole = stringAttr(el, kAXSubroleAttribute)
+                if let sub = subrole,
                    sub != kAXStandardWindowSubrole, sub != kAXDialogSubrole { continue }
+                if subrole == nil || subrole == kAXStandardWindowSubrole {
+                    standard[app.pid, default: 0] += 1
+                }
                 let title = stringAttr(el, kAXTitleAttribute) ?? ""
                 out.append(WindowInfo(
                     id: id, pid: app.pid, appName: app.name, bundleId: app.bundleId,
@@ -381,7 +442,7 @@ final class WindowTracker {
                     axElement: el))
             }
         }
-        return out
+        return (out, responded, standard)
     }
 
     private static func stringAttr(_ el: AXUIElement, _ attr: String) -> String? {
