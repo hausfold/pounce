@@ -49,7 +49,10 @@ pounce --request-accessibility   # approve the prompt, once
 
 The formula installs a prebuilt `Pounce.app`, signed with our Developer ID and
 notarized — no compile step, no Xcode CLT. The signing identity is stable across
-releases, so the Accessibility grant survives `brew upgrade`.
+releases, so the Accessibility grant normally survives `brew upgrade`. The
+first build using `com.hausfold.pounce` is the one deliberate exception: if you
+upgrade from a `com.local.pounce` build, approve Pounce in Accessibility once
+more.
 
 **No Homebrew?** Grab the DMG from the [latest
 release](https://github.com/hausfold/pounce/releases/latest) (or
