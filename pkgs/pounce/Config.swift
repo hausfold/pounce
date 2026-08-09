@@ -64,8 +64,8 @@ enum UIScale {
 func pt(_ base: CGFloat) -> CGFloat { (base * UIScale.factor).rounded() }
 
 // Hold a window width inside the screen. Scale and display mode COMPOUND — a
-// large-print Mac turns both up (`nebelhaus.ui.scale` and
-// `nebelhaus.displays.*.uiScale = "larger-text"`), and 820pt at 1.4× is wider than
+// large-print Mac turns both up (`haus.ui.scale` and
+// `haus.displays.*.uiScale = "larger-text"`), and 820pt at 1.4× is wider than
 // the 1147pt-wide desktop that the second one leaves — so the panels have to be
 // told where the screen ends. A panel narrower than intended is a compromise; one
 // wider than the screen is unusable.

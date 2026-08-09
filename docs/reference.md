@@ -308,7 +308,7 @@ commented out — so the file changes nothing until you uncomment a line, and yo
 make it minimal by deleting the lines you never touched. It never overwrites a
 config you already have (it writes `config.json.new` beside it instead; `--force`
 replaces). On a machine managed by the nebelhaus rice it refuses outright: that
-config.json is generated from `nebelhaus.pounce.*`, and the next rebuild would
+config.json is generated from `haus.pounce.*`, and the next rebuild would
 put the generated one straight back.
 
 **Comments and trailing commas are fine** — pounce parses config.json as JSON5,
@@ -377,7 +377,7 @@ Mac that has *also* been set to a lower-resolution "larger text" display mode �
 both make things bigger, and they multiply.
 
 On the [nebelhaus](https://github.com/nebelhaus/nebelhaus) rice this is written
-for you from `nebelhaus.ui.scale`, so the palette grows with the rest of the
+for you from `haus.ui.scale`, so the palette grows with the rest of the
 desktop.
 
 The **nebelung** palette and its light counterpart **nebelung-latte** are both
@@ -426,7 +426,7 @@ Pounce uses these keys: `base`, `surface0`–`surface2`, `text`, `subtext0`,
 `overlay0`, `mauve`, `blue`. A file missing any of them (or an unknown name)
 falls back to the built-in default. A file also *shadows* a built-in of the same
 name, so `themes/nebelung.json` wins over the compiled-in one. On the nebelhaus
-rice you never do this by hand — `nebelhaus.theme.{flavor,contrast}` installs the
+rice you never do this by hand — `haus.theme.{flavor,contrast}` installs the
 matching variant and points `"theme"` at it.
 
 The window chrome (blur material, appearance, border, fill opacity) follows the
