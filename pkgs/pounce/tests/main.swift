@@ -60,6 +60,7 @@ failures += runSymbolsTests()
 failures += runConfigTemplateTests()
 failures += runDraftsTests()
 failures += runAutoQuitTests()
+failures += runAppScannerTests()
 
 if failures == 0 {
     exit(0)
