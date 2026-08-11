@@ -291,15 +291,26 @@ final class AppScanner {
 
     // MARK: Spotlight source
 
+    // Container bundles whose *insides* are implementation detail: an .app nested
+    // in one is a helper the parent invokes, never something a person launches by
+    // name (Sparkle.framework's "Updater.app", QuickLook.framework's "qlmanage").
+    // Matched anywhere in the path rather than by location, because the same
+    // framework is framework-internal whether it sits under /Library, inside
+    // another .app, or in a project's own build output.
+    private static let nestedBundleExtensions = [
+        ".app", ".framework", ".xcframework", ".bundle", ".appex", ".xpc", ".plugin",
+    ]
+
     // Keep only top-level, user-launchable apps. A raw "every app bundle" query
     // is dominated by nested helpers (…/Foo.app/Contents/…/Bar.app), framework
-    // internals under /Library, and build artifacts — none of which a person
-    // launches by name, all of which would drown the palette.
+    // internals, and build artifacts — none of which a person launches by name,
+    // all of which would drown the palette.
     private func spotlightAccepts(path: String) -> Bool {
         guard path.hasSuffix(".app") else { return false }
-        let parent = (path as NSString).deletingLastPathComponent
-        if parent.hasSuffix(".app") || parent.contains(".app/") { return false }
         let lower = path.lowercased()
+        // Only the ancestors matter: the trailing ".app" is the candidate itself.
+        let parent = (lower as NSString).deletingLastPathComponent + "/"
+        for ext in Self.nestedBundleExtensions where parent.contains(ext + "/") { return false }
         for bad in ["/library/", "/nix/store/", "/.trash/", "/private/",
                     "/deriveddata/", "/node_modules/", "/.build/"] {
             if lower.contains(bad) { return false }
