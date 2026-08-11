@@ -99,7 +99,7 @@ final class AppScanner {
     // First-class system apps that live outside the Applications dirs and would
     // otherwise be missed by BOTH sources: the walk never descends
     // /System/Library, and the Spotlight source drops anything under /library/
-    // (see spotlightAccepts) to bury framework-internal helper bundles.
+    // (see spotlightAccepts) to bury the helper bundles that live there.
     // CoreServices contains ~100 UIElement/background agents that the /library/
     // guard correctly keeps out. Its dedicated Applications subdirectory is
     // covered by searchDirs above; list useful apps outside that boundary by
@@ -124,6 +124,38 @@ final class AppScanner {
                          age: Double, demoted: Set<String>, alias: String? = nil) -> PounceItem {
         let b = boost(forAge: age) - (demoted.contains(bundleId) ? Self.demotionPenalty : 0)
         return .app(name: name, path: path, boost: b, alias: alias)
+    }
+
+    // Container bundles whose *insides* are implementation detail: an .app nested
+    // in one is a helper the parent invokes, never something a person launches by
+    // name — Sparkle.framework's "Updater.app", QuickLook.framework's
+    // "qlmanage.app". `.xcframework` needs its own entry: it does not contain the
+    // substring ".framework/".
+    private static let nestedBundleExtensions = [
+        ".app", ".framework", ".xcframework", ".bundle", ".appex", ".xpc", ".plugin",
+    ]
+
+    // True when the candidate lives INSIDE one of those containers. Matched by
+    // container rather than by location, because a framework's insides are
+    // framework-internal wherever the framework sits — under /Library, inside
+    // another .app, or in a project's own build output (an Xcode project building
+    // into its own tree is exactly what slipped past the /library/ path guard and
+    // put three copies of "Updater" in the palette).
+    //
+    // Both sources need it. Spotlight indexes these bundles wherever they are;
+    // and the filesystem walk descends into them too — unlike a .app, a
+    // .framework is not a "package", so .skipsPackageDescendants does not stop it
+    // (an app shipped as a plain folder in /Applications carries its frameworks
+    // in the open).
+    static func nestedInBundle(path: String) -> Bool {
+        // Only the ancestors matter: the trailing ".app" is the candidate itself.
+        // Lowercased because HFS+/APFS are case-insensitive by default, so a
+        // "Foo.APP" on disk is the same container to everything but a substring
+        // match. The extensions are component-anchored by the trailing "/", so
+        // a directory merely *named* like one (v1.0.appdir) can't match.
+        let parent = ((path.lowercased()) as NSString).deletingLastPathComponent + "/"
+        for ext in nestedBundleExtensions where parent.contains(ext + "/") { return true }
+        return false
     }
 
     // Stable dedupe key: resolve symlinks so a nix-store app symlinked into
@@ -197,13 +229,15 @@ final class AppScanner {
         // metadata when the bundle's ctime is unchanged (a steady-state walk
         // only stats, never re-reads a plist). Shared by the Applications walk
         // and the systemAppPaths pass below. Drops background/bridge helpers
-        // (see isHelper) — never a launchable target; the per-config hide list
-        // is applied later, at apps() read time, so it can change without a
-        // re-walk. Mutates the enclosing seen/result/meta.
+        // (see isHelper) and bundle-internal ones (see nestedInBundle) — never a
+        // launchable target; the per-config hide list is applied later, at apps()
+        // read time, so it can change without a re-walk. Mutates the enclosing
+        // seen/result/meta.
         func consider(_ url: URL) {
             let path = url.path
             if seen.contains(path) { return }
             seen.insert(path)
+            if Self.nestedInBundle(path: path) { return }
 
             let ctime = (try? url.resourceValues(forKeys: [.creationDateKey]))?
                 .creationDate?.timeIntervalSince1970 ?? 0
@@ -293,12 +327,11 @@ final class AppScanner {
 
     // Keep only top-level, user-launchable apps. A raw "every app bundle" query
     // is dominated by nested helpers (…/Foo.app/Contents/…/Bar.app), framework
-    // internals under /Library, and build artifacts — none of which a person
-    // launches by name, all of which would drown the palette.
-    private func spotlightAccepts(path: String) -> Bool {
+    // internals, and build artifacts — none of which a person launches by name,
+    // all of which would drown the palette.
+    static func spotlightAccepts(path: String) -> Bool {
         guard path.hasSuffix(".app") else { return false }
-        let parent = (path as NSString).deletingLastPathComponent
-        if parent.hasSuffix(".app") || parent.contains(".app/") { return false }
+        if nestedInBundle(path: path) { return false }
         let lower = path.lowercased()
         for bad in ["/library/", "/nix/store/", "/.trash/", "/private/",
                     "/deriveddata/", "/node_modules/", "/.build/"] {
@@ -313,7 +346,7 @@ final class AppScanner {
         for i in 0..<query.resultCount {
             guard let item = query.result(at: i) as? NSMetadataItem,
                   let path = item.value(forAttribute: NSMetadataItemPathKey) as? String,
-                  spotlightAccepts(path: path),
+                  Self.spotlightAccepts(path: path),
                   !isHelperBundle(atPath: path) else { continue }
 
             var name = (item.value(forAttribute: NSMetadataItemDisplayNameKey) as? String)
