@@ -56,6 +56,11 @@ final class FunctionKeyHotKey {
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            // DIAGNOSTIC (fn+Esc/native-picker race, see AGENTS/task notes): if
+            // this ever logs, the tap was off for some stretch of real time —
+            // any fn transition (ours or a stray one) in that gap went straight
+            // to macOS's own Globe handling, unsuppressed.
+            NSLog("pounce DIAG: fn tap disabled (\(type == .tapDisabledByTimeout ? "timeout" : "userInput")), re-enabling at \(Date())")
             gesture.reset()
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
@@ -69,6 +74,9 @@ final class FunctionKeyHotKey {
 
             let nowDown = event.flags.contains(.maskSecondaryFn)
             let shouldFire = gesture.functionFlagsChanged(isDown: nowDown)
+            // DIAGNOSTIC: every fn transition this tap sees, and whether it
+            // decided to fire pounce's menu.
+            NSLog("pounce DIAG: fn \(nowDown ? "down" : "up") at \(Date())\(shouldFire ? " -> FIRE" : "")")
             // Presenting a mode can do layout and disk reads. Leave the tap
             // callback first so macOS never disables it for taking too long.
             if shouldFire { DispatchQueue.main.async { self.onFire() } }

@@ -413,7 +413,10 @@ struct CustomTextField: NSViewRepresentable {
                     // goes through the ordinary text-storage path and does insert.
                     textView.insertText("\n", replacementRange: textView.selectedRange())
                     return true
-                } else if flags.contains(.command) { parent.onSubmit("cmd") }
+                }
+                // DIAGNOSTIC (fn+Esc/native-picker race)
+                NSLog("pounce DIAG: dismiss via enter at \(Date())")
+                if flags.contains(.command) { parent.onSubmit("cmd") }
                 else if flags.contains(.option) { parent.onSubmit("opt") }
                 else if flags.contains(.control) { parent.onSubmit("ctrl") }
                 else { parent.onSubmit("enter") }
@@ -432,6 +435,8 @@ struct CustomTextField: NSViewRepresentable {
                     textView.string = ""
                     return true
                 }
+                // DIAGNOSTIC (fn+Esc/native-picker race)
+                NSLog("pounce DIAG: dismiss via esc at \(Date())")
                 parent.state.cancel()
                 return true
             default:
