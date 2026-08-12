@@ -40,7 +40,7 @@ pounce --check-accessibility     # prints: true
 changes every rebuild and macOS silently drops the Accessibility grant. If you
 run pounce as a launch agent from Nix, copy the app to a stable path and re-sign
 it with a consistent identity once, then point the agent there. See
-[`nebelhaus`](https://github.com/hausfold/hausfold) for a working `launchd`
+[`nebelhaus`](https://github.com/hausfold/haus) for a working `launchd`
 wrapper that does exactly this. The Homebrew build is Developer ID signed and
 does not have this problem.
 
@@ -383,7 +383,7 @@ and every panel's width is held inside the visible screen. That matters most on 
 Mac that has *also* been set to a lower-resolution "larger text" display mode —
 both make things bigger, and they multiply.
 
-On the [nebelhaus](https://github.com/hausfold/hausfold) rice this is written
+On the [nebelhaus](https://github.com/hausfold/haus) rice this is written
 for you from `haus.ui.scale`, so the palette grows with the rest of the
 desktop.
 

@@ -123,7 +123,7 @@ next open. No registry, no rebuild, no restart.
 
 ## the family
 
-- 🏠 [**nebelhaus**](https://github.com/hausfold/hausfold) — the house. the whole rice, one Nix flake. start here.
+- 🏠 [**nebelhaus**](https://github.com/hausfold/haus) — the house. the whole rice, one Nix flake. start here.
 - 🐾 [**pounce**](https://github.com/hausfold/pounce) — the palette. keyboard-first launcher; every command a file. *(you are here)*
 - 🪺 [**perch**](https://github.com/hausfold/perch) — the shelf. files, caught in the notch.
 - 🌫️ [**nebelung**](https://github.com/hausfold/nebelung) — the theme. the silver-mist palette.
