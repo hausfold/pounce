@@ -152,7 +152,19 @@ final class PounceUI {
             forName: NSWindow.didResignKeyNotification, object: window, queue: .main
         ) { [weak self] _ in
             guard let self = self, self.state.isVisible else { return }
+            // DIAGNOSTIC (fn+Esc/native-picker race)
+            NSLog("pounce DIAG: dismiss via click-out at \(Date())")
             self.state.cancel()
+        }
+
+        // DIAGNOSTIC (fn+Esc/native-picker race): log every app activation so a
+        // native Character Viewer / emoji picker appearing right after a
+        // dismiss shows up here with a timestamp to correlate against.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            NSLog("pounce DIAG: app activated -> \(app.bundleIdentifier ?? "?") (\(app.localizedName ?? "?")) at \(Date())")
         }
     }
 
@@ -386,6 +398,8 @@ final class PounceUI {
     private func refocusCaptured(wasKey: Bool) {
         defer { capturedApp = nil }
         guard wasKey, let app = capturedApp, !app.isTerminated else { return }
+        // DIAGNOSTIC (fn+Esc/native-picker race)
+        NSLog("pounce DIAG: refocusCaptured activating \(app.bundleIdentifier ?? "?") at \(Date())")
         app.activate(options: [.activateIgnoringOtherApps])
     }
 
