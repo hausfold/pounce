@@ -12,6 +12,15 @@ import Carbon
 // leaves that event untouched and suppresses only Fn's own flag transitions —
 // the hardware-produced Fn combination still reaches the frontmost app, while
 // a lone tap replaces macOS's configured Globe action instead of opening both.
+//
+// That suppression only covers the ordinary flagsChanged CGEvent this tap
+// watches. HOLDING Fn can additionally trigger macOS's native Character
+// Viewer via a private per-app HUD controller (TUINSCursorUIController /
+// TextInputUI.framework) that reads Fn on its own — confirmed by log capture
+// showing that HUD's activate/hide cycle fire with zero corresponding
+// DIAG "fn down/up" lines from this tap. No CGEventTap placement suppresses
+// that path; see docs/reference.md's Fn/Globe section for the System
+// Settings workaround.
 final class FunctionKeyHotKey {
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?

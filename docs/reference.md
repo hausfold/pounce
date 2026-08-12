@@ -480,10 +480,18 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   `"mode:emoji": { "hotkey": "fn" }`. Because Fn is modifier-only, that opt-in
   binding uses a keyboard event tap and needs Pounce's Accessibility grant
   (`pounce --request-accessibility`). It fires only when Fn is tapped alone, so
-  Fn combinations keep working; while armed, it replaces macOS's configured
-  Globe action so both emoji pickers do not open together. `"globe"` and
-  `"function"` are accepted aliases. Ordinary chords and leader sequences stay
-  permission-free.
+  Fn combinations keep working. `"globe"` and `"function"` are accepted
+  aliases. Ordinary chords and leader sequences stay permission-free.
+
+  **Turn off macOS's own Globe action** (System Settings → Keyboard → "Press 🌐
+  key to" → **Do Nothing**) once you bind it here — otherwise the two can race.
+  Holding Fn down (rather than a quick tap) can trigger macOS's native
+  Character Viewer even though Pounce's tap suppresses every Fn transition it
+  sees: that native picker is driven by a private per-app HUD controller
+  (`TUINSCursorUIController` / `TextInputUI.framework`) that watches Fn on its
+  own, not via the ordinary keyboard event stream a tap can intercept. There is
+  no code-level fix on Pounce's side for that path — the system setting is the
+  only thing that removes the second handler.
 
 `enabled` and `alias` only mean something for things the palette lists, so a
 `mode:` entry carries just a hotkey.
