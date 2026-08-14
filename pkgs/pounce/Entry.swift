@@ -40,7 +40,9 @@ enum Main {
     running one item:
       run <item-key>            run a single item by the key config.json's
                                 `items` map uses — `cmd:emoji`,
-                                `mode:clipboard`, `app:/Applications/Foo.app`.
+                                `mode:clipboard`, `app:/Applications/Foo.app`,
+                                `shortcut:<uuid>` (`shortcuts list
+                                --show-identifiers`).
                                 For binders that already own the keystroke
                                 (AeroSpace binding modes, skhd, Shortcuts):
                                 they do the chord, pounce does the action.
