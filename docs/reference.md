@@ -668,7 +668,7 @@ windows by workspace, each group under its own header — workspace order is
 itself MRU, so it reads as "here, then where I was before, then before that" —
 and focusing goes through `aerospace focus --window-id` so a window parked on
 another workspace surfaces correctly. That's the pairing the
-[nebelhaus](https://nebelhaus.com) rice ships enabled.
+[haus](https://hausfold.co) rice ships enabled.
 
 Headers appear only when there are two or more groups to tell apart; with
 everything on one workspace the list is plain. Filtered results are ranked by
