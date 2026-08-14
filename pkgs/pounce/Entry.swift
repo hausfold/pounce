@@ -114,7 +114,7 @@ enum Main {
       -h, --help                this text
 
     config: ~/.config/pounce/config.json   commands: ~/.config/pounce/commands
-    docs:   https://nebelhaus.com/reference/pounce/
+    docs:   https://hausfold.co/docs/haus/reference/pounce/
     """
 
     static func main() {

@@ -96,11 +96,12 @@ until you name them.
 
 ## more
 
-- [nebelhaus.com/pounce](https://nebelhaus.com/pounce) — the product page
+- [hausfold.co/pounce](https://hausfold.co/pounce/) — the product page
 - [`docs/reference.md`](./docs/reference.md) — config, command discovery,
   plugins, the hotkey, building from source
-- [The pounce guide](https://nebelhaus.com/guides/pounce/) · [Writing pounce
-  commands](https://nebelhaus.com/guides/pounce-commands/)
+- [The pounce guide](https://hausfold.co/docs/haus/guides/pounce/) · [config &
+  CLI reference](https://hausfold.co/docs/haus/reference/pounce/) — pounce
+  inside the haus rice
 - `pounce --help` — the authoritative flag list
 
 <p align="center"><a href="https://hausfold.co">⌂ hausfold</a></p>
