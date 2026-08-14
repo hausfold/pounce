@@ -1,42 +1,34 @@
 <div align="center">
 
-<!-- identity banner — peach wordmark (assets/pounce-banner-rounded.png) -->
-<img src="./assets/pounce-banner-rounded.png" alt="pounce" width="480">
+# 🐾 pounce
 
 **summon, aim, pounce**
 
-the palette — a keyboard-first launcher for macOS, where every command is a file.
-
-![part of hausfold](https://img.shields.io/badge/part_of-hausfold-f2c4e5?labelColor=202020)
-![themed by nebelung](https://img.shields.io/badge/themed_by-nebelung-c9a8f1?labelColor=202020)
-![brew](https://img.shields.io/badge/brew-hausfold%2Ftap-f5b58e?labelColor=202020)
-![license](https://img.shields.io/badge/license-MIT-d7d7d7?labelColor=202020)
-
-<!-- assets/demo.webp — trigger hotkey, fuzzy-type an app, then a command with a submenu -->
-![pounce demo](./assets/demo.webp)
+*a keyboard-first command palette for macOS, where every command is a file*
 
 </div>
 
 ---
 
-Hit a hotkey, fuzzy-type, hit return. Pounce is a small Swift daemon that draws a
-fast `dmenu`-style picker over your screen — your installed apps and your own
-commands, one list, gone again before you've thought about it.
+Hit ⌘Space, fuzzy-type three letters, hit return. Pounce is a small Swift daemon
+that draws a `dmenu`-style picker over your screen — your apps, your commands,
+one ranked list — and is gone again before you've thought about it.
 
-It's the launcher for people who'd rather write a five-line shell script than
-learn a plugin SDK.
+A command is one shell script. The metadata lives in a comment. That's the
+whole API:
 
-📖 **[nebelhaus.com/pounce](https://nebelhaus.com/pounce)**
+```sh
+#!/bin/bash
+# pounce: name = Say Hello
+# pounce: icon = hand.wave
+osascript -e 'display notification "🐾" with title "Pounce"'
+```
 
-## why pounce
+Save that as `~/.config/pounce/commands/hello.sh` and it's in the palette on the
+next open. No registry, no rebuild, no restart, no account.
 
-- **every command is a file** — one self-describing shell script, dropped in a folder. no plugin API, no extension store, no account.
-- **native and tiny** — a single Swift `LSUIElement` binary. no Electron.
-- **scriptable end to end** — a submenu is just a script that re-invokes `pounce` with a new list. pipe anything in, act on whatever comes out.
-- **yours** — MIT, no telemetry, no cloud, no login.
-
-The trade-off is deliberate minimalism. Want a marketplace of pre-built
-extensions? Use Raycast. Want to *own* your launcher? Pounce.
+Want a marketplace of pre-built extensions? Use Raycast. Want a launcher you can
+read end to end and change with a text editor? Pounce.
 
 ## install
 
@@ -47,90 +39,68 @@ brew services start pounce       # the palette daemon
 pounce --request-accessibility   # approve the prompt, once
 ```
 
-The formula installs a prebuilt `Pounce.app`, signed with our Developer ID and
-notarized — no compile step, no Xcode CLT. The signing identity is stable across
-releases, so the Accessibility grant normally survives `brew upgrade`. The
-first build using `com.hausfold.pounce` is the one deliberate exception: if you
-upgrade from a `com.local.pounce` build, approve Pounce in Accessibility once
-more.
+macOS gives ⌘Space to Spotlight — free it in **System Settings → Keyboard →
+Keyboard Shortcuts → Spotlight**, or pick another combo in `config.json`. If a
+key ever does nothing, `pounce doctor` names whatever ate it.
 
 **No Homebrew?** Grab the DMG from the [latest
-release](https://github.com/hausfold/pounce/releases/latest) (or
-`nebelhaus.com/download/pounce`), drag `Pounce.app` to Applications, and open
-it. First launch registers a login item (approve it in System Settings if
-macOS asks), starts the daemon, and shows the palette — the built-in commands
-travel inside the app, and the *Update Pounce* command keeps a drag-install
-current from then on. `pounce autostart on|off|status` manages the login item
-from a terminal.
+release](https://github.com/hausfold/pounce/releases/latest), drag `Pounce.app`
+to Applications, open it — first launch registers a login item and starts the
+daemon. It's Developer ID signed and notarized either way, so there's no
+Gatekeeper detour and the Accessibility grant survives upgrades. **On Nix**,
+take the flake input, or kick the tyres with `nix run github:hausfold/pounce --
+--help`.
 
-Staying current is nudged, never automatic. The daemon checks for a new release
-hourly; while one is pending, *Update Pounce* is renamed with the new version
-and pinned to the palette's first row, and a notification repeats at most once
-a day. `⌘⏎` on that row skips the version — the pin and the notification stop
-until the *next* release. The nudge names your install's own command — Return installs it on a
-Homebrew or drag install, while a Nix or nebelhaus-rice install is pointed at
-`haus update` / your flake, since those update through the store rather than in
-place. Applying it is always your keystroke. `"updates": { "check": false }` in
-`config.json` turns the check off.
+Requires macOS 14 Sonoma or later, Apple Silicon. Updating is a nudge, never
+automatic: a new release pins *Update Pounce* to the first row until you take it,
+or skip that version with ⌘⏎.
 
-On Nix, take the flake input, or kick the tyres with
-`nix run github:hausfold/pounce -- --help`.
+## what you get
 
-Requires macOS 14 Sonoma or later, Apple Silicon.
+- **answers, not searches** — type `2*847`, `72 f in c`, `100 usd in eur` or
+  `14:00 utc in pst` and the result pins to the top row; ⏎ copies it. No trigger
+  prefix, no round-trip.
+- **the stuff you'd otherwise hunt for** — clipboard history, screenshot
+  browser, file search, camera preview, and every System Settings pane as a
+  first-class row that opens *that* pane, not just Settings.
+- **⌘ is a character** — the emoji picker holds symbols too, so typing
+  `command` gets you ⌘, and arrows, math and box-drawing come with it. Plain
+  Unicode; it pastes anywhere.
+- **⌘Tab across windows** *(opt-in)* — MRU, fuzzy-filterable, per *window* not
+  per app. With AeroSpace it groups rows by workspace.
+- **quit on last window close** *(opt-in)* — the Windows habit macOS never had.
+- **transform the selection** — pipe whatever's highlighted through any shell
+  filter and paste it back: `pounce --transform 'tr "[:lower:]" "[:upper:]"'`.
+- **hotkeys that are yours** — the daemon grabs the key in-process (no client
+  spawn, no socket), and leader sequences work: `opt+space e` → emoji.
+- **`pounce config init`** — writes a config with *every* setting at its
+  default, a sentence above each, all commented out. You learn the settings by
+  reading your own config.
 
-## the taste
+MIT, no telemetry, no cloud, no login. The only things it ever calls home for
+are currency rates and the update check — both switched off with one line.
+
+## scripting it
+
+Any script can borrow the palette. Pipe lines in, get the chosen one back:
 
 ```sh
-# dmenu-style: a bare picker over stdin
 echo -e "one\ntwo\nthree" | pounce -p "pick one:"
-
-# launcher mode: rank installed apps, merge your commands
-pounce --launcher -p "Search apps & actions..."
 ```
 
-A command is one script. That's the whole API:
-
-```sh
-#!/bin/bash
-# pounce: name = Say Hello
-# pounce: icon = hand.wave
-osascript -e 'display notification "🐾" with title "Pounce"'
-```
-
-Drop it in `~/.config/pounce/commands/hello.sh` and it's in the palette on the
-next open. No registry, no rebuild, no restart.
-
-## what's in the box
-
-- **quick answers** — type `2*847`, `72 f in c`, `100 usd in eur`, or `14:00 utc in pst` and the answer pins to the top row. ⏎ copies it. (currency is the one engine that touches the network — daily reference rates, pounce's only outbound call; `"quickAnswers": { "currency": false }` turns it off.)
-- **the hotkey** — the daemon grabs ⌘Space in-process, so a press lands in an already-warm process: no shell, no client spawn, no socket round-trip.
-- **⌘Tab window switcher** — opt-in MRU switcher across *windows*, fuzzy-filterable. With AeroSpace running it groups rows by workspace, and a tap-and-release looks past the workspace you're on — so "back" means where you came from, not the tile you're already looking at.
-- **quit on last window close** — opt-in; the Windows habit macOS doesn't have. Close an app's last window and it's asked to quit — the same polite quit ⌘Q sends, after a beat in case a replacement window is on its way, with Finder excluded out of the box. Rides the switcher's window snapshot, so running both costs one set of observers.
-- **native modes** — clipboard history, emoji & symbols, screenshots, camera, cheatsheets.
-- **symbols in the emoji picker** — the same grid holds the mac modifier keys (type `command` → ⌘), arrows, math, typography and box drawing. Plain Unicode, so they paste anywhere; the footer shows the codepoint.
-- **System Settings, deep-linked** — every settings pane (Displays, Bluetooth, Accessibility, …) is a first-class palette item that jumps straight to that pane, not just to the Settings window.
-- **optional plugins** — docker, ssh, tailscale, spotify, bluetooth, audio, github, caffeinate. off by default; enable by id.
-- **`pounce doctor`** — one command: is the daemon up, is Accessibility granted, is a macOS shortcut or another hotkey daemon quietly eating your key.
-- **`pounce config init`** — a config.json with every setting at its default, a sentence above each one, all commented out. Uncomment what you want, delete the rest; you never have to know a setting exists before you can find it. (Comments and trailing commas are fine — it's parsed as JSON5.)
+A submenu is just a command that re-invokes `pounce` with a new list — pick a
+brew service, then pick start/stop — and `--chain` keeps the window up between
+steps so it reads as one motion. Optional plugins ship the same way (docker,
+ssh, tailscale, spotify, bluetooth, audio, github, caffeinate, perplexity), off
+until you name them.
 
 ## more
 
 - [nebelhaus.com/pounce](https://nebelhaus.com/pounce) — the product page
-- [`docs/reference.md`](./docs/reference.md) — config, command discovery, plugins, hotkey troubleshooting, building from source
-- [The pounce guide](https://nebelhaus.com/guides/pounce/) · [Writing pounce commands](https://nebelhaus.com/guides/pounce-commands/) — using pounce inside the rice
+- [`docs/reference.md`](./docs/reference.md) — config, command discovery,
+  plugins, the hotkey, building from source
+- [The pounce guide](https://nebelhaus.com/guides/pounce/) · [Writing pounce
+  commands](https://nebelhaus.com/guides/pounce-commands/)
+- `pounce --help` — the authoritative flag list
 
-`pounce --help` prints the full flag list.
-
-## the family
-
-- 🏠 [**nebelhaus**](https://github.com/hausfold/haus) — the house. the whole rice, one Nix flake. start here.
-- 🐾 [**pounce**](https://github.com/hausfold/pounce) — the palette. keyboard-first launcher; every command a file. *(you are here)*
-- 🪺 [**perch**](https://github.com/hausfold/perch) — the shelf. files, caught in the notch.
-- 🌫️ [**nebelung**](https://github.com/hausfold/nebelung) — the theme. the silver-mist palette.
-- 🧰 [**workshop**](https://github.com/hausfold/workshop) — the bench. where the family is built.
-
-Each one stands alone. Together they're a house.
-
-## license
-
-MIT © hausfold
+<p align="center"><a href="https://hausfold.co">⌂ hausfold</a></p>
