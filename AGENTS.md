@@ -114,14 +114,26 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   people READ be the file pounce reads.
 - **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
   enable / alias / hotkey for anything the palette can address, keyed by the item's
-  **frecency key** — `cmd:<id>`, `app:<path>`, plus `mode:<name>` for the built-in
-  windows. One map, not three parallel keys, because one entry is one row of a
+  **frecency key** — `cmd:<id>`, `app:<path>`, `shortcut:<uuid>`, plus `mode:<name>`
+  for the built-in windows. One map, not three parallel keys, because one entry is one row of a
   settings list. `ItemTarget` is the single parser for that grammar (it also backs
   `pounce run <item-key>`, the escape hatch for external binders). Foundation-only so
   `tests/run.sh` compiles it. Enable/alias apply in `DaemonState.load`; hotkeys are
   registered once at daemon start (`DaemonMode.run`) and reported to `pounce doctor`
   via `DaemonMode.bindingReport` — a binding that loses its combo, or names a command
   that doesn't exist, is invisible otherwise.
+- **A new launcher item source** (apps, the Shortcuts library — `AppScanner.swift`,
+  `Shortcuts.swift`): build rows in `DaemonState.load`'s `launcher` branch, off a
+  background-refreshed in-memory snapshot, never a blocking call on the keystroke
+  (`ShortcutsStore.coldWaitBudget` is what a cold source is allowed to cost). Its
+  frecency key doubles as an `ItemTarget`, so one string is the row key, the
+  `items` override key, the hotkey target and the `pounce run` argument. **Act on
+  the selection in `Commit`, not in a new `clientString` verb** — the launcher is
+  presented by three paths (in-process hotkey, socket client, no-daemon fallback)
+  and only the first could interpret a new verb; `appLaunch` / `shortcutRun` are
+  daemon-side for exactly that reason. Note the pounce/Spotlight asymmetry
+  Shortcuts.swift documents: an app's **App Intents** are discoverable but not
+  invocable by anyone but the system, so there is nothing to add there.
 - **Leader sequences** (`"opt+space e"`, `Leader.swift`): whitespace separates steps,
   `+` separates modifiers. Sequences sharing a leader share a `HotKeyNode`, so the
   leader is registered once and owns a map of next steps. **Do not reach for a

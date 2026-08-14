@@ -86,6 +86,10 @@ func runItemSettingsTests() -> Int {
     check(ItemTarget.parse("cmd:emoji") == .command("emoji"), "cmd: names a command id")
     check(ItemTarget.parse("app:/Applications/Foo.app") == .app("/Applications/Foo.app"),
           "app: names a path")
+    check(ItemTarget.parse("shortcut:0ECC8F7A-3A52-467A-84C0-511CCE1CB9B7")
+          == .shortcut("0ECC8F7A-3A52-467A-84C0-511CCE1CB9B7"),
+          "shortcut: names a Shortcuts-library entry by its identifier")
+    check(ItemTarget.parse("shortcut:") == nil, "an empty shortcut identifier is not a target")
     check(ItemTarget.parse("mode:clipboard") == .mode("clipboard"), "mode: names a built-in window")
     check(ItemTarget.parse("mode:nope") == nil, "an unknown mode is not a target")
     check(ItemTarget.parse("nonsense") == nil, "a prefix-less string is not a target")

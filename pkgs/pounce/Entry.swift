@@ -550,7 +550,6 @@ enum DaemonMode {
 
         AppScanner.shared.warm()
         EmojiStore.shared.warm()   // filter the dataset to OS-renderable glyphs off the main thread
-
         // Warm the command registry so the first ⌘Space doesn't pay the initial
         // scan + header parse. Kept on the main queue — refresh() is only ever
         // touched from the main thread (here and in presentLauncher), so the
@@ -559,6 +558,14 @@ enum DaemonMode {
         DispatchQueue.main.async { registry.refresh() }
 
         let settings = Settings.load()
+
+        // warm() is unconditional — config is re-read on every ⌘Space, so turning
+        // `shortcuts.enabled` back on has to work without a daemon restart, and a
+        // warm snapshot is what makes that first summon show the library instead
+        // of waiting on a cold CLI run. What the setting gates is the *work*: a
+        // store told it's off skips every refresh (see ShortcutsStore.rebuild).
+        ShortcutsStore.shared.setEnabled(settings.shortcuts.enabled)
+        ShortcutsStore.shared.warm()
 
         // Currency rates for the quick-answer engine: hydrate from the disk
         // cache now, refresh from the network when stale, re-check every 6h.
@@ -691,6 +698,8 @@ enum DaemonMode {
                 let cfg = NSWorkspace.OpenConfiguration()
                 cfg.activates = true
                 NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: cfg)
+            case .shortcut(let id):
+                ShortcutsStore.run(id: id)
             case nil:
                 NSLog("pounce daemon: \(ItemTarget.problem(with: target) ?? "bad target '\(target)'"); ignored")
             }

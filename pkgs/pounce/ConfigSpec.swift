@@ -142,6 +142,16 @@ enum ConfigSpec {
                 ]),
 
             ConfigSection(
+                name: "shortcuts",
+                doc: "Your Shortcuts library, as ordinary launcher rows.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "List the shortcuts from Shortcuts.app alongside apps and commands; ⏎ runs one. This is also how you reach an app's Shortcuts/Spotlight action from pounce — wrap it in a one-action shortcut and it shows up here, since macOS gives no way to fire another app's App Intent directly. Shortcuts start ranked below everything at an empty query and climb by use.",
+                        json: json(s.shortcuts.enabled)),
+                ]),
+
+            ConfigSection(
                 name: "apps",
                 doc: "The app launcher's opinions about which apps matter.",
                 fields: [

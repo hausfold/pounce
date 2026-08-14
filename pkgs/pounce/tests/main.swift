@@ -61,6 +61,7 @@ failures += runConfigTemplateTests()
 failures += runDraftsTests()
 failures += runAutoQuitTests()
 failures += runAppScannerTests()
+failures += runShortcutsTests()
 
 if failures == 0 {
     exit(0)
