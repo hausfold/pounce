@@ -357,6 +357,12 @@ final class PounceUI {
             }
         }
 
+        // A Shortcuts-library entry: spawned, never waited on (see
+        // ShortcutsStore.run). Deliberately NOT added to the refocus exclusions
+        // below — unlike an app launch, running a shortcut usually takes no
+        // focus, so the app you summoned pounce from should get it back.
+        if let id = commit.shortcutRun { ShortcutsStore.run(id: id) }
+
         resultSink?(commit.clientString ?? "")
 
         switch commit.disposition {

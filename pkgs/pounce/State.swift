@@ -21,6 +21,13 @@ struct Commit {
     // reveal it in Finder (reveal true). Distinct from appLaunch, which uses the
     // app-specific openApplication path; files open via NSWorkspace.open.
     var fileOpen: (path: String, reveal: Bool)? = nil
+    // A Shortcuts-library entry to run, by identifier. A daemon-side side
+    // effect rather than a clientString verb for the same reason appLaunch is
+    // one: the launcher is presented by three different paths (the in-process
+    // hotkey, a socket client running pounce-palette, and the no-daemon
+    // fallback), and only the first of those could interpret a new verb. Acting
+    // here makes ⏎ run the shortcut on all three.
+    var shortcutRun: String? = nil
 }
 
 // MARK: - State
@@ -363,7 +370,10 @@ final class DaemonState: ObservableObject {
                 hiddenBundleIds: Set(settings.appLauncher.hideBundleIds)))
             // The Shortcuts library, which is also how an app's App Intent
             // becomes runnable from here — see Shortcuts.swift for why the
-            // intents themselves can't be.
+            // intents themselves can't be. The store is told the setting on
+            // every summon (config is re-read here) so its background refresh
+            // stops the moment you switch it off, and resumes when you don't.
+            ShortcutsStore.shared.setEnabled(settings.shortcuts.enabled)
             if settings.shortcuts.enabled {
                 built.append(contentsOf: ShortcutsStore.shared.items())
             }
@@ -515,10 +525,12 @@ final class DaemonState: ObservableObject {
             return Commit(clientString: "run\t\(item.payload)",
                           disposition: item.submenu ? .loading : .linger, appLaunch: nil)
         case .shortcut:
-            // The daemon spawns `shortcuts run <uuid>` and never waits on it, so
-            // there's nothing to linger for — hide like an app launch does.
-            return Commit(clientString: "shortcut\t\(item.payload)",
-                          disposition: .hideNow, appLaunch: nil)
+            // Run natively (see Commit.shortcutRun) and hand the client nothing,
+            // exactly like an app launch: `shortcuts run` is spawned and never
+            // waited on, so there's nothing to linger for and nothing for a
+            // pipe-consuming script to act on.
+            return Commit(clientString: "", disposition: .hideNow, appLaunch: nil,
+                          shortcutRun: item.payload)
         case .plain:
             let a = item.action(for: action) != nil ? action : "enter"
             return Commit(clientString: "\(a)\t\(item.raw)", disposition: .linger, appLaunch: nil)

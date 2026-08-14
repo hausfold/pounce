@@ -65,6 +65,17 @@ final class ShortcutsStore {
     private var refreshTimer: Timer?
     private let lock = NSLock()
 
+    // Mirrors `shortcuts.enabled`, pushed in by whoever last read the config
+    // (the daemon at startup, then DaemonState.load on every summon) rather than
+    // read from here — Settings lives in Config.swift, which pulls in AppKit,
+    // and this file stays Foundation-only so tests/run.sh can compile it.
+    // Only the background refresh consults it; see rebuild().
+    private var enabled = true
+
+    func setEnabled(_ on: Bool) {
+        lock.lock(); enabled = on; lock.unlock()
+    }
+
     // MARK: Parsing
     //
     // `--show-identifiers` renders one shortcut per line as `Name (UUID)`. A
@@ -99,12 +110,31 @@ final class ShortcutsStore {
 
     // MARK: Reading the library
 
-    // The launcher's rows. Reads the snapshot; only the very first call (before
-    // warm() has populated it) pays the synchronous `shortcuts list`.
+    // How long a cold call is willing to wait for `shortcuts list`. Warm it's
+    // ~16ms; cold at login, the Shortcuts XPC service has to spin up first and
+    // there is no ceiling on that. This runs on the main thread (DaemonState.load
+    // does), so an unbounded wait would be a palette that doesn't paint — the
+    // one thing pounce is never allowed to be. Past the budget the call gives up
+    // and returns nothing; the rebuild it started still finishes and populates
+    // the snapshot, so the next summon (or the 60s timer) has the library.
+    private static let coldWaitBudget: TimeInterval = 0.25
+
+    // The launcher's rows. Served from the snapshot; only a cold cache (before
+    // warm() has landed, or in a no-daemon `pounce --launcher`) pays for a list,
+    // and even then only up to coldWaitBudget.
     func items() -> [PounceItem] {
         lock.lock(); var snapshot = cache; lock.unlock()
         if snapshot == nil {
-            rebuild()
+            let done = DispatchSemaphore(value: 0)
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.rebuild(force: true)   // reaching here IS the setting being on
+                done.signal()
+            }
+            if done.wait(timeout: .now() + Self.coldWaitBudget) == .timedOut {
+                NSLog("pounce: `shortcuts list` exceeded \(Self.coldWaitBudget)s — "
+                    + "showing the launcher without shortcuts this time")
+                return []
+            }
             lock.lock(); snapshot = cache; lock.unlock()
         }
         return (snapshot ?? []).map {
@@ -125,7 +155,16 @@ final class ShortcutsStore {
         }
     }
 
-    private func rebuild() {
+    private func rebuild(force: Bool = false) {
+        // warm() and its timer are unconditional so that re-enabling the feature
+        // needs no daemon restart — but a user who turned it OFF should not go on
+        // paying a subprocess a minute for the daemon's whole life. Bailing here
+        // rather than skipping the timer keeps that property: the cache is left
+        // untouched (nil, not empty), so the first items() call after the setting
+        // flips back on repopulates it. (items() itself is only reached when the
+        // setting is on, and forces a rebuild through the cold path regardless.)
+        lock.lock(); let on = enabled; lock.unlock()
+        guard on || force else { return }
         guard FileManager.default.isExecutableFile(atPath: Self.cli) else {
             lock.lock(); cache = []; lock.unlock()
             return
