@@ -232,6 +232,16 @@ struct FileSearchSettings {
     var maxResults: Int = 60
 }
 
+// The Shortcuts library as launcher rows (see Shortcuts.swift). On by default:
+// a shortcut is user-authored, already named for what it does, and is the only
+// supported way to fire an app's App Intent from outside that app — so listing
+// them is the same bargain as listing apps. They carry a negative baseBoost so
+// a big library can't take over the empty-query list before frecency has an
+// opinion; set `enabled: false` if you'd rather the palette never mention them.
+struct ShortcutsSettings {
+    var enabled: Bool = true
+}
+
 // App-launcher tuning. `demoteBundleIds` lists apps that should sink below
 // everything at an empty query and rely on frecency (actual use) to climb back —
 // the fix for junk like Feedback Assistant squatting the top slot. Defaults to a
@@ -311,6 +321,7 @@ struct Settings {
     // self-disabled on Nix-managed installs, whose updates ride the flake.
     var updates = UpdateSettings()
     var fileSearch = FileSearchSettings()
+    var shortcuts = ShortcutsSettings()
     // Per-item overrides (enable / alias / hotkey), keyed by stable item key.
     // See ItemSettings.swift. Empty by default: an untouched config behaves
     // exactly as it did before this key existed.
@@ -424,6 +435,9 @@ struct Settings {
             if let e = fs["enabled"] as? Bool { s.fileSearch.enabled = e }
             if let h = fs["homeOnly"] as? Bool { s.fileSearch.homeOnly = h }
             if let m = fs["maxResults"] as? Int { s.fileSearch.maxResults = m }
+        }
+        if let sc = obj["shortcuts"] as? [String: Any] {
+            if let e = sc["enabled"] as? Bool { s.shortcuts.enabled = e }
         }
         if let ap = obj["apps"] as? [String: Any] {
             if let d = ap["demoteBundleIds"] as? [String] { s.appLauncher.demoteBundleIds = Set(d) }

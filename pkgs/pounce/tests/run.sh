@@ -29,10 +29,11 @@ echo 'let pounceVersion = "dev"' > "$scratch/version_stub.swift"
   Frecency.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
   Currency.swift ItemSettings.swift FunctionKeyGesture.swift CommandRegistry.swift UpdateCheck.swift \
   ConfigTemplate.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \
+  Shortcuts.swift \
   "$scratch/version_stub.swift" \
   tests/main.swift tests/quickanswer_tests.swift tests/itemsettings_tests.swift \
   tests/functionkey_tests.swift \
   tests/commandregistry_tests.swift tests/update_tests.swift tests/symbols_tests.swift \
   tests/configtemplate_tests.swift tests/drafts_tests.swift tests/autoquit_tests.swift \
-  tests/appscanner_tests.swift
+  tests/appscanner_tests.swift tests/shortcuts_tests.swift
 "$bin"

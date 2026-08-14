@@ -65,6 +65,11 @@ or skip that version with ⌘⏎.
 - **the stuff you'd otherwise hunt for** — clipboard history, screenshot
   browser, file search, camera preview, and every System Settings pane as a
   first-class row that opens *that* pane, not just Settings.
+- **your Shortcuts, as rows** — every entry in your Shortcuts library is a
+  first-class row; ⏎ runs it. It's also the way to reach an app's
+  Shortcuts/Spotlight action: wrap it in a one-action shortcut once and it's a
+  keystroke away, since macOS gives no one a way to fire another app's App
+  Intent directly.
 - **⌘ is a character** — the emoji picker holds symbols too, so typing
   `command` gets you ⌘, and arrows, math and box-drawing come with it. Plain
   Unicode; it pastes anywhere.

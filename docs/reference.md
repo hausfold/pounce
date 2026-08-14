@@ -114,6 +114,40 @@ symbols appear there once you've used one, floated in by the same frecency that
 ranks emoji. ⏎ copies (and auto-pastes, with `clipboard.autoPaste` and the
 Accessibility grant) exactly like emoji.
 
+## Shortcuts — and why not App Intents
+
+Every shortcut in your Shortcuts library is an ordinary launcher row: type its
+name, press ⏎, it runs. No mode, no prefix, no submenu. They rank by frecency
+like everything else, and accept the same per-item `alias` / `hotkey` /
+`enabled` overrides under the key `shortcut:<uuid>` (see below). Turn the whole
+source off with:
+
+```jsonc
+{ "shortcuts": { "enabled": false } }
+```
+
+**Why they start at the bottom.** A shortcut carries a small negative rank so a
+sixty-entry library can't take over the seven empty-query slots on the day you
+install this. Typed search is unaffected — the penalty only applies when you
+haven't typed anything — and using a shortcut once lifts it back out.
+
+**App Intents are a different thing, and pounce can't run them.** macOS 26's
+Spotlight fires an app's App Intents directly — type *Add to Perch Shelf*, press
+⏎, done. Pounce lists none of them, and that isn't an oversight:
+
+- *Discovering* them is easy. Any app that exposes intents ships
+  `Contents/Resources/Metadata.appintents/extract.actionsdata` — plain JSON with
+  each action's title, description and SF Symbol.
+- *Running* one has no public API. Spotlight goes through private, entitled
+  system frameworks, and the `shortcuts` CLI deliberately lists only your saved
+  library — never an app's App Shortcuts. A row parsed out of that JSON would
+  have nothing behind it, which is worse than no row.
+
+The supported bridge is a shortcut. In Shortcuts.app, make a new shortcut whose
+single action is the app's intent, name it what you'd type, and it becomes a
+normal library entry — which pounce then shows and runs like any other row. One
+setup step, then it behaves exactly like the Spotlight action you were after.
+
 ## Writing a command
 
 A command is one self-describing shell script. The metadata lives in a
@@ -449,6 +483,7 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
 |---|---|
 | `cmd:<id>` | a command script, by filename without `.sh` |
 | `app:/Applications/Foo.app` | an application, by path |
+| `shortcut:<uuid>` | a Shortcuts-library entry, by its identifier (`shortcuts list --show-identifiers`) |
 | `mode:<name>` | a built-in window: `launcher`, `clipboard`, `emoji`, `screenshots`, `camera`, `filesearch` |
 
 ```jsonc
@@ -457,6 +492,7 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
     "cmd:emoji":                     { "alias": "emo", "hotkey": "opt+e" },
     "cmd:brew-services":             { "enabled": false },
     "app:/Applications/Ghostty.app": { "alias": "term", "hotkey": "opt+t" },
+    "shortcut:0ECC8F7A-3A52-467A-84C0-511CCE1CB9B7": { "alias": "shelf" },
     "mode:clipboard":                { "hotkey": "cmd+shift+v" }
   }
 }

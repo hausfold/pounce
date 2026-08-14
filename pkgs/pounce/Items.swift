@@ -7,6 +7,7 @@ enum ItemKind {
     case command   // launcher command: selecting returns its id to the client
     case app       // launcher app: the daemon launches it natively
     case answer    // inline quick answer (calculator etc.): ⏎ copies it
+    case shortcut  // Shortcuts-library entry: the daemon runs it via the CLI
 }
 
 struct ItemAction {
@@ -125,6 +126,18 @@ struct PounceItem: Identifiable {
                                     ItemAction(key: "cmd", label: "Reveal in Finder")],
                           kind: .app, payload: path,
                           frecencyKey: "app:\(path)", baseBoost: boost, group: nil, submenu: false)
+    }
+
+    // One entry from the Shortcuts library (see Shortcuts.swift). Keyed by the
+    // library UUID rather than the name, so renaming a shortcut in Shortcuts.app
+    // keeps its frecency and any `items` override pointed at it.
+    static func shortcut(name: String, id: String) -> PounceItem {
+        return PounceItem(raw: id, title: name, searchAlias: nil, subtitle: "Shortcut",
+                          icon: "app:\(ShortcutsStore.iconPath)",
+                          actions: [ItemAction(key: "enter", label: "Run")],
+                          kind: .shortcut, payload: id,
+                          frecencyKey: "shortcut:\(id)",
+                          baseBoost: -ShortcutsStore.emptyQueryPenalty, group: nil, submenu: false)
     }
 
     // A file/folder hit for the Find Files mode. Display-only: FileSearchView

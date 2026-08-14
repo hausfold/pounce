@@ -124,6 +124,8 @@ struct ItemSetting: Equatable {
 //
 //   "cmd:<id>"                      a command script (its filename without .sh)
 //   "app:/Applications/Foo.app"     an application, by path
+//   "shortcut:<uuid>"               a Shortcuts-library entry, by its library
+//                                   identifier (`shortcuts list --show-identifiers`)
 //   "mode:<name>"                   a built-in window: launcher, clipboard,
 //                                   emoji, screenshots, camera, filesearch
 //
@@ -131,6 +133,7 @@ struct ItemSetting: Equatable {
 //     "cmd:emoji":                    { "alias": "emo", "hotkey": "opt+e" },
 //     "cmd:brew-services":            { "enabled": false },
 //     "app:/Applications/Ghostty.app": { "hotkey": "opt+t" },
+//     "shortcut:0ECC8F7A-3A52-467A-84C0-511CCE1CB9B7": { "alias": "shelf" },
 //     "mode:clipboard":               { "hotkey": "cmd+shift+v" }
 //   }
 struct ItemSettings {
@@ -184,6 +187,7 @@ enum ItemTarget: Equatable {
     case command(String)   // "cmd:emoji"        — a command script by id
     case app(String)       // "app:/Applications/Foo.app"
     case mode(String)      // "mode:clipboard"   — a built-in window
+    case shortcut(String)  // "shortcut:<uuid>"  — a Shortcuts-library entry
 
     // The built-in windows a "mode:" target may name. Single-sourced here so the
     // daemon's dispatch, the CLI's validation and the error text can't drift.
@@ -192,6 +196,9 @@ enum ItemTarget: Equatable {
     static func parse(_ target: String) -> ItemTarget? {
         if target.hasPrefix("cmd:"), target.count > 4 { return .command(String(target.dropFirst(4))) }
         if target.hasPrefix("app:"), target.count > 4 { return .app(String(target.dropFirst(4))) }
+        if target.hasPrefix("shortcut:"), target.count > 9 {
+            return .shortcut(String(target.dropFirst(9)))
+        }
         if target.hasPrefix("mode:") {
             let name = String(target.dropFirst(5))
             return modes.contains(name) ? .mode(name) : nil
@@ -212,7 +219,8 @@ enum ItemTarget: Equatable {
             return "'\(target)' names no built-in mode (expected one of: "
                 + modes.map { "mode:" + $0 }.joined(separator: ", ") + ")"
         }
-        return "'\(target)' is not an item key (expected cmd:<id>, app:<path> or mode:<name>)"
+        return "'\(target)' is not an item key "
+            + "(expected cmd:<id>, app:<path>, shortcut:<uuid> or mode:<name>)"
     }
 }
 

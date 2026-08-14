@@ -361,6 +361,12 @@ final class DaemonState: ObservableObject {
             built.append(contentsOf: AppScanner.shared.apps(
                 demotedBundleIds: settings.appLauncher.demoteBundleIds,
                 hiddenBundleIds: Set(settings.appLauncher.hideBundleIds)))
+            // The Shortcuts library, which is also how an app's App Intent
+            // becomes runnable from here — see Shortcuts.swift for why the
+            // intents themselves can't be.
+            if settings.shortcuts.enabled {
+                built.append(contentsOf: ShortcutsStore.shared.items())
+            }
             // Apply the per-item overrides from config.json's `items` map. Both
             // passes key off frecencyKey ("cmd:<id>" / "app:<path>"), which is
             // exactly how the map is addressed — see ItemSetting. Done here, on
@@ -508,6 +514,11 @@ final class DaemonState: ObservableObject {
             // so step 2 swaps in without a gap. Terminal commands briefly linger.
             return Commit(clientString: "run\t\(item.payload)",
                           disposition: item.submenu ? .loading : .linger, appLaunch: nil)
+        case .shortcut:
+            // The daemon spawns `shortcuts run <uuid>` and never waits on it, so
+            // there's nothing to linger for — hide like an app launch does.
+            return Commit(clientString: "shortcut\t\(item.payload)",
+                          disposition: .hideNow, appLaunch: nil)
         case .plain:
             let a = item.action(for: action) != nil ? action : "enter"
             return Commit(clientString: "\(a)\t\(item.raw)", disposition: .linger, appLaunch: nil)

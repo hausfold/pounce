@@ -550,6 +550,11 @@ enum DaemonMode {
 
         AppScanner.shared.warm()
         EmojiStore.shared.warm()   // filter the dataset to OS-renderable glyphs off the main thread
+        // Unconditional, unlike the row build in DaemonState.load: config is
+        // re-read on every ⌘Space, so turning `shortcuts.enabled` back on has to
+        // work without a daemon restart — and a warm snapshot is what makes that
+        // first summon show the library instead of a one-off blocking CLI run.
+        ShortcutsStore.shared.warm()
 
         // Warm the command registry so the first ⌘Space doesn't pay the initial
         // scan + header parse. Kept on the main queue — refresh() is only ever
@@ -617,9 +622,12 @@ enum DaemonMode {
             // pounce-palette used to exec it. App launches come back with an empty
             // string (handled natively in PounceUI) and are ignored here.
             ui.resultSink = { result in
-                guard result.hasPrefix("run\t") else { return }
-                let id = String(result.dropFirst(4))
-                if let path = registry.scriptPath(for: id) { CommandSpawner.run(scriptPath: path) }
+                if result.hasPrefix("run\t") {
+                    let id = String(result.dropFirst(4))
+                    if let path = registry.scriptPath(for: id) { CommandSpawner.run(scriptPath: path) }
+                } else if result.hasPrefix("shortcut\t") {
+                    ShortcutsStore.run(id: String(result.dropFirst(9)))
+                }
             }
             ui.present()
             // Press→present latency on the in-process fast path, broken into
@@ -691,6 +699,8 @@ enum DaemonMode {
                 let cfg = NSWorkspace.OpenConfiguration()
                 cfg.activates = true
                 NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: cfg)
+            case .shortcut(let id):
+                ShortcutsStore.run(id: id)
             case nil:
                 NSLog("pounce daemon: \(ItemTarget.problem(with: target) ?? "bad target '\(target)'"); ignored")
             }
