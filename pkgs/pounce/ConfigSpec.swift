@@ -226,7 +226,7 @@ enum ConfigSpec {
             // per-item fields is the honest documentation.
             ConfigSection(
                 name: "items",
-                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too; because it is a modifier-only key, that opt-in binding needs Accessibility — and turn off System Settings > Keyboard > \"Press 🌐 key to\" (set it to Do Nothing), or macOS's own Emoji & Symbols HUD can still pop up alongside it.",
+                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\", \"shortcut:<uuid>\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too; because it is a modifier-only key, that opt-in binding needs Accessibility — and turn off System Settings > Keyboard > \"Press 🌐 key to\" (set it to Do Nothing), or macOS's own Emoji & Symbols HUD can still pop up alongside it.",
                 // Three fields, and only three — see ItemSettings.parse.
                 raw: """
                 // "cmd:emoji": {
