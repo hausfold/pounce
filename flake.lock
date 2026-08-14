@@ -26,11 +26,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786523045,
-        "narHash": "sha256-+EcG371D3eXHURFQ+Cy81ZGY+9bynAZ2VbaY+LhpL6I=",
+        "lastModified": 1786703432,
+        "narHash": "sha256-ZqnE1pzpc4+UgJBaFNE3zm/+EJkFGEHcBZtV6J7iMdI=",
         "owner": "hausfold",
         "repo": "nebelung",
-        "rev": "76d22a9ac5370306b7181d4977cf5b5a94963d87",
+        "rev": "36411cb95c0a6f51368c65eea0dd07e7e247d238",
         "type": "github"
       },
       "original": {
