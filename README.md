@@ -6,6 +6,8 @@
 
 *a keyboard-first command palette for macOS, where every command is a file*
 
+<sub>**pre-release** · every path that could lose your work is either reversible by design or stops to ask you first. that's the intent, not a warranty — `config init` won't clobber a config you already have, and `brew uninstall pounce` is the whole of the way out. tell us what breaks.</sub>
+
 </div>
 
 ---
