@@ -40,7 +40,7 @@ pounce --check-accessibility     # prints: true
 changes every rebuild and macOS silently drops the Accessibility grant. If you
 run pounce as a launch agent from Nix, copy the app to a stable path and re-sign
 it with a consistent identity once, then point the agent there. See
-[`nebelhaus`](https://github.com/hausfold/haus) for a working `launchd`
+[`haus`](https://github.com/hausfold/haus) for a working `launchd`
 wrapper that does exactly this. The Homebrew build is Developer ID signed and
 does not have this problem.
 
@@ -53,7 +53,7 @@ upgrade pounce && brew services restart pounce`; a copy dragged to
 the app in place. The stable Developer ID normally preserves Accessibility.
 Upgrading from a build identified as `com.local.pounce` to
 `com.hausfold.pounce` is the one exception: approve Pounce in Accessibility
-once more. A Nix or nebelhaus-rice install updates through the store
+once more. A Nix or haus-desktop install updates through the store
 instead, so the command no-ops there with a hint to run `haus update` or bump
 your flake input. Either way it runs in the background and reports via
 notifications.
@@ -343,7 +343,7 @@ That writes **every** setting at its default, with a sentence above it, all
 commented out — so the file changes nothing until you uncomment a line, and you
 make it minimal by deleting the lines you never touched. It never overwrites a
 config you already have (it writes `config.json.new` beside it instead; `--force`
-replaces). On a machine managed by the nebelhaus rice it refuses outright: that
+replaces). On a machine managed by the haus desktop it refuses outright: that
 config.json is generated from `haus.pounce.*`, and the next rebuild would
 put the generated one straight back.
 
@@ -417,7 +417,7 @@ and every panel's width is held inside the visible screen. That matters most on 
 Mac that has *also* been set to a lower-resolution "larger text" display mode —
 both make things bigger, and they multiply.
 
-On the [nebelhaus](https://github.com/hausfold/haus) rice this is written
+On the [haus](https://github.com/hausfold/haus) rice this is written
 for you from `haus.ui.scale`, so the palette grows with the rest of the
 desktop.
 
@@ -466,8 +466,8 @@ curl -fsSLo ~/.config/pounce/themes/nebelung-latte.json \
 Pounce uses these keys: `base`, `surface0`–`surface2`, `text`, `subtext0`,
 `overlay0`, `mauve`, `blue`. A file missing any of them (or an unknown name)
 falls back to the built-in default. A file also *shadows* a built-in of the same
-name, so `themes/nebelung.json` wins over the compiled-in one. On the nebelhaus
-rice you never do this by hand — `haus.theme.{flavor,contrast}` installs the
+name, so `themes/nebelung.json` wins over the compiled-in one. On a haus
+desktop you never do this by hand — `haus.theme.{flavor,contrast}` installs the
 matching variant and points `"theme"` at it.
 
 The window chrome (blur material, appearance, border, fill opacity) follows the
@@ -598,7 +598,7 @@ same contract as `windows`. After adding one, restart the daemon:
 
 ```sh
 brew services restart pounce                            # Homebrew
-launchctl kickstart -k gui/$(id -u)/com.hausfold.pounce # nebelhaus / Nix
+launchctl kickstart -k gui/$(id -u)/com.hausfold.pounce # haus / Nix
 ```
 
 Then check it armed. A binding whose combo another app already owns fails
@@ -775,4 +775,4 @@ against the system Swift toolchain via `xcrun` (`xcode-select --install`).
 
 Hacking on pounce as part of the wider rice? The
 [workshop](https://github.com/hausfold/workshop)'s `bench try` rebuilds a whole
-nebelhaus machine against your local checkout, uncommitted edits included.
+haus machine against your local checkout, uncommitted edits included.

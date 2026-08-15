@@ -104,7 +104,7 @@ enum Main {
       autostart on|off|status   start the daemon at login via a self-registered
                                 login item (System Settings → Login Items).
                                 For drag-installs of Pounce.app; Homebrew users
-                                use `brew services`, the nebelhaus rice wires
+                                use `brew services`, the haus desktop wires
                                 its own agent. Double-clicking Pounce.app
                                 registers this automatically.
       --copy-file <path>        copy a file to the clipboard and exit
@@ -204,7 +204,7 @@ enum Main {
 // of the target grammar regardless of what pressed the key.
 //
 // The point is composability with tools that already own the keyboard: a
-// nebelhaus user's AeroSpace binding mode, skhd, a Shortcut, a Stream Deck. They
+// haus user's AeroSpace binding mode, skhd, a Shortcut, a Stream Deck. They
 // do the two-step; pounce just executes step two.
 enum RunMode {
     static func run(target: String?) {

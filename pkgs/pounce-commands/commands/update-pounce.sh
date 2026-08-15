@@ -3,7 +3,7 @@
 # pounce: description = Update to the latest release
 # pounce: icon = arrow.down.circle
 
-# One-tap self-update for the two non-nebelhaus installs (Nix users update via
+# One-tap self-update for the two non-haus installs (Nix users update via
 # their flake, so this bails for them; see the guards):
 #
 #   brew    brew update && brew upgrade pounce && brew services restart pounce
@@ -134,7 +134,7 @@ else
         # is `haus update` — "bench ship / rebuild" is the workshop's own verb,
         # not something an end user of the rice has ever run.
         if [ -d "$HOME/.local/state/pounce" ]; then
-            notify "Pounce comes from the nebelhaus rice — run 'haus update' to pick up the new version."
+            notify "Pounce comes from the haus desktop — run 'haus update' to pick up the new version."
         else
             notify "Pounce is managed by Nix here — update your pounce flake input to pick up the new version."
         fi

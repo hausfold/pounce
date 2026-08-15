@@ -6,7 +6,7 @@
 //   pounce config init --force   replace an existing one
 //
 // Pounce is installable on its own (Homebrew, a drag-install), and standalone is
-// the case this is FOR: inside the nebelhaus rice the settings are written from
+// the case this is FOR: inside the haus desktop the settings are written from
 // `haus.pounce.*` and this file isn't yours to edit — see the guard below.
 
 import Foundation

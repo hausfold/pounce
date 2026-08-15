@@ -17,7 +17,7 @@ import Foundation
 //
 // The daemon reads these from its OWN environment, so the launch agent that
 // starts the daemon must export the same values the pounce-palette wrapper does
-// (see nebelhaus/modules/pounce). Missing dirs are simply skipped.
+// (see haus/modules/pounce). Missing dirs are simply skipped.
 final class CommandRegistry {
     struct Entry {
         let id: String

@@ -5,7 +5,7 @@
 // default with a comment above, so you learn the surface by reading your own
 // config and you make it minimal by deleting the lines you never touched. No
 // doc-site round trip to find out what exists. Pounce had the same problem the
-// nebelhaus rice did — the settings were discoverable only in the reference, and
+// haus desktop did — the settings were discoverable only in the reference, and
 // you had to know a setting existed before you could look it up.
 //
 // THREE THINGS ABOUT JSON MAKE THIS FIDDLIER THAN THE NIX VERSION, and all three

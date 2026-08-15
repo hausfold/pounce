@@ -6,7 +6,7 @@ import Foundation
 //
 // The palette is a transient, focus-fragile surface: it dies on Esc and on a
 // click into any other app. That is exactly right for "pick a row" and exactly
-// wrong for "type a paragraph" — and callers like the nebelhaus Spawn Agent
+// wrong for "type a paragraph" — and callers like the haus Spawn Agent
 // command DO ask you to type a paragraph. Losing it to a stray click is the one
 // failure a picker can't apologise for, because the text only ever existed in
 // that field.
