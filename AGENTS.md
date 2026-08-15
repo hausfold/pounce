@@ -31,7 +31,7 @@ its command scripts. Nothing else.
 > (`HotKey.swift`, config `hotkey`) so ⌘Space→palette skips the shell/client
 > spawn — that latency-critical capability lives here. But the *system binding*
 > (the launch agent, its exported `POUNCE_*` command dirs, whether ⌘Space is left
-> to the daemon vs. an external binder) is still a nebelhaus concern.
+> to the daemon vs. an external binder) is still a haus concern.
 
 ## Build
 
@@ -48,7 +48,7 @@ To test inside the full rice without pushing: `bench try` from the workshop
 (`~/code/workshop`) rebuilds the user's machine against this local checkout; the
 `rebuild-pounce` alias on the host does the same. A plain rebuild uses the pinned
 GitHub rev — after pushing here, ripple with `bench ship` (or `nix flake update
-nebelhaus` in the consumer).
+haus` in the consumer — whatever that flake names the input).
 
 When you open the PR for a `worktree-*` branch, give it a **What / Why / Verify / Watch-out**
 body (see the workshop ship skill's Step 3) — the session that wrote the code is gone by the
@@ -152,7 +152,7 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   exactly like an app with nothing open, and `AutoQuitPolicy` must not confuse
   the two.
 - **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost on
-  rebuild. The *rice* (`nebelhaus/modules/pounce`) re-signs a stable copy to keep the
+  rebuild. The *rice* (`haus/modules/pounce`) re-signs a stable copy to keep the
   grant — that logic lives there, not here. Here, just: `pounce --request-accessibility`
   / `--check-accessibility`.
 - **Theming**: colors live in `Palette` (`Theme.swift`). The default **nebelung**

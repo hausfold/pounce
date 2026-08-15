@@ -3,8 +3,8 @@ import ApplicationServices
 
 // MARK: - Focus (hush)
 
-// `pounce focus <status|toggle|on|off>` — the privileged half of nebelhaus's
-// hush room. macOS has no public API to set a Focus, so nebelhaus binds the
+// `pounce focus <status|toggle|on|off>` — the privileged half of haus's
+// hush room. macOS has no public API to set a Focus, so haus binds the
 // "Turn Do Not Disturb On/Off" symbolic hotkey (AppleSymbolicHotKeys 175)
 // declaratively to ⌃⌥⇧⌘F13 and this subcommand presses that chord
 // synthetically; state is read from the DoNotDisturb assertions DB.
@@ -13,7 +13,7 @@ import ApplicationServices
 // RESPONSIBLE process, not the binary: `pounce focus` spawned by sketchybar
 // (the bar pill) or a terminal is attributed to THAT app, so the signed
 // copy's grants only count when pounce answers for itself. The daemon
-// (launchd-spawned from ~/.local/state/pounce/Pounce.app — see nebelhaus
+// (launchd-spawned from ~/.local/state/pounce/Pounce.app — see haus
 // modules/pounce) IS its own responsible process, so when the calling
 // context lacks a grant the op is forwarded over the pounce socket and runs
 // under the daemon's Accessibility / Full Disk Access. One pair of
@@ -27,7 +27,7 @@ import ApplicationServices
 //   3  no Accessibility grant anywhere — refuse to press blind
 //   64 usage
 enum FocusMode {
-    // ⌃⌥⇧⌘ F13 — lockstep with modules/hush in the nebelhaus repo. The
+    // ⌃⌥⇧⌘ F13 — lockstep with modules/hush in the haus repo. The
     // binding (1966080) is only the four modifiers, but the synthetic press
     // must ALSO carry .maskSecondaryFn: physical F-key events always have the
     // fn bit set, and the hotkey matcher rejects an F13 chord without it.

@@ -9,7 +9,7 @@
 #
 # WHERE "connect" opens is pluggable, so the generic library works whether
 # pounce is installed solo or inside a rice:
-#   • $POUNCE_TERMINAL_LAUNCHER set → runs `<launcher> ssh <host>` (nebelhaus
+#   • $POUNCE_TERMINAL_LAUNCHER set → runs `<launcher> ssh <host>` (haus
 #     points this at its zellij float-term); otherwise
 #   • open ssh://<host> — macOS routes it to your default terminal.
 

@@ -37,7 +37,7 @@ enum SocketConfig {
 // Every size in pounce's UI is a point value written for scale 1.0 and read back
 // through `pt(_:)`. `"scale"` in config.json multiplies them, so the whole window
 // — text, rows, icons, and the panels behind the palette — grows as one piece
-// rather than one hand-tuned number at a time. This is the seam the nebelhaus
+// rather than one hand-tuned number at a time. This is the seam the haus
 // rice's `ui.scale` reaches when a rice asks for a Mac you can read.
 //
 // Deliberately NOT a `.scaleEffect` on the hosting view: that rasterises and then
@@ -270,7 +270,7 @@ struct HotKeyConfig {
 // walk windows most-recent-first, release to land. Default off — taking over
 // ⌘Tab is a bold move that additionally needs the Accessibility grant (the
 // event tap won't install without it), so it's strictly opt-in here; opinionated
-// setups (the nebelhaus rice) turn it on in the config they ship. Read once at
+// setups (the haus desktop) turn it on in the config they ship. Read once at
 // daemon start: toggling requires a daemon restart, unlike the palette settings.
 struct WindowSwitcherSettings {
     var enabled: Bool = false

@@ -305,7 +305,7 @@ final class AppScanner {
     // Helper/bridge apps that clutter the palette without being things you'd
     // ever launch: pure background agents (LSBackgroundOnly — e.g. Anthropic's
     // "Claude Code URL Handler", which exists only to catch claude:// links) and
-    // AppleScript droplets (executable "droplet" — e.g. the nebelhaus EditorOpen
+    // AppleScript droplets (executable "droplet" — e.g. the haus EditorOpen
     // file-open bridge). Deliberately NOT gated on LSUIElement: plenty of real
     // menu-bar apps set that yet are worth launching, so filtering it would hide
     // apps the user wants. Mirrors what Launchpad hides.

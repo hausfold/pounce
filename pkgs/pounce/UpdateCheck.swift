@@ -48,7 +48,7 @@ import FoundationNetworking
 enum InstallKind {
     case homebrew    // <brew prefix>/…/Pounce.app — the script runs `brew upgrade`
     case direct      // dragged to /Applications — the script swaps the app in place
-    case rice        // the nebelhaus rice's re-signed copy — `haus update`
+    case rice        // the haus desktop's re-signed copy — `haus update`
     case nix         // a bare store path (own flake, `nix run`) — flake update
     case unknown
 

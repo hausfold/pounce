@@ -11,7 +11,7 @@ struct Palette {
     let text, subtext, subtext0: Color
     let mauve, blue: Color   // accent (selection/highlight) + secondary accent
 
-    // nebelung — the custom desaturated Catppuccin used across the nebelhaus rice,
+    // nebelung — the custom desaturated Catppuccin used across the haus desktop,
     // and the default theme. `static let nebelung` and its light counterpart
     // `nebelungLatte` are GENERATED at build time from the nebelung flake's
     // `palettes` output (see pkgs/pounce/default.nix), so they live in
