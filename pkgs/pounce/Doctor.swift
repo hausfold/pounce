@@ -103,6 +103,29 @@ enum DoctorMode {
             }
         }
 
+        // macOS's own Globe/Fn action, whenever anything here binds `fn`. It is a
+        // SECOND handler for the same physical key and pounce cannot take it away:
+        // the tap suppresses Fn's flagsChanged CGEvent, but the Character Viewer is
+        // summoned through a private path (TextInputUI's per-app HUD) that no tap
+        // sees. Both then fire on one tap, and the native picker latches onto the
+        // frontmost app — so it reappears on every later app switch, which reads as
+        // "Cmd-Tab spawns the macOS emoji picker" long after the Fn press that
+        // actually caused it. The system setting is the only off switch.
+        if settings.items.bindings.contains(where: {
+            $0.sequence.steps.count == 1 && FunctionKeyHotKey.matches($0.sequence.steps[0].key)
+        }) {
+            let action = globeKeyAction()
+            if action == 0 {
+                ok("macOS's own \u{1F310} key action is off")
+            } else {
+                warn("macOS's own \u{1F310} key action is \(globeActionName(action)) — it fires alongside "
+                     + "your Fn binding and opens the native Character Viewer")
+                problems.append("Turn off macOS's own Globe action: System Settings \u{2192} Keyboard "
+                                + "\u{2192} \u{201C}Press \u{1F310} key to\u{201D} \u{2192} Do Nothing. "
+                                + "Pounce's event tap cannot suppress it.")
+            }
+        }
+
         // A macOS system shortcut on the same combo (Spotlight, input sources, …).
         if let conflict = HotKeyConflict.systemConflict(keyName: settings.hotkey.key,
                                                         modifierNames: settings.hotkey.modifiers) {
@@ -202,6 +225,24 @@ enum DoctorMode {
         do { try p.run() } catch { return false }
         p.waitUntilExit()
         return p.terminationStatus == 0
+    }
+
+    // System Settings → Keyboard → "Press 🌐 key to". Unset means the macOS
+    // default, which on a Mac with a Globe key is NOT "Do Nothing" — so a nil
+    // read is a warning, not a pass.
+    private static func globeKeyAction() -> Int? {
+        CFPreferencesCopyAppValue("AppleFnUsageType" as CFString,
+                                  "com.apple.HIToolbox" as CFString) as? Int
+    }
+
+    private static func globeActionName(_ value: Int?) -> String {
+        switch value {
+        case 1:  return "\u{201C}Change Input Source\u{201D}"
+        case 2:  return "\u{201C}Show Emoji & Symbols\u{201D}"
+        case 3:  return "\u{201C}Start Dictation\u{201D}"
+        case nil: return "unset (macOS's default, which isn't Do Nothing)"
+        default: return "set to \(value!)"
+        }
     }
 
     private struct Binding { let file: String; let line: Int; let text: String }

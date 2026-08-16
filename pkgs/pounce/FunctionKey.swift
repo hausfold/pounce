@@ -14,13 +14,17 @@ import Carbon
 // a lone tap replaces macOS's configured Globe action instead of opening both.
 //
 // That suppression only covers the ordinary flagsChanged CGEvent this tap
-// watches. HOLDING Fn can additionally trigger macOS's native Character
-// Viewer via a private per-app HUD controller (TUINSCursorUIController /
-// TextInputUI.framework) that reads Fn on its own — confirmed by log capture
-// showing that HUD's activate/hide cycle fire with zero corresponding
-// DIAG "fn down/up" lines from this tap. No CGEventTap placement suppresses
-// that path; see docs/reference.md's Fn/Globe section for the System
-// Settings workaround.
+// watches. macOS's own Globe action reads Fn through a private per-app HUD
+// controller (TUINSCursorUIController / TextInputUI.framework) that no tap
+// sees, so while "Press 🌐 key to" is anything but Do Nothing the SAME tap
+// can also open the native Character Viewer — a plain ~100ms tap does it,
+// not just a held press: log capture shows CharacterPalette's "First
+// activateServer" landing 15ms after a DIAG "fn up -> FIRE" line from this
+// tap. And once it fires, the Character Palette latches onto the frontmost
+// app, so it re-shows on every later app switch, which is why the symptom
+// gets misread as ⌘Tab spawning the picker. No CGEventTap placement
+// suppresses that path; `pounce doctor` flags the system setting instead
+// (see docs/reference.md's Fn/Globe section).
 final class FunctionKeyHotKey {
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?

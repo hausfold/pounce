@@ -520,14 +520,25 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   aliases. Ordinary chords and leader sequences stay permission-free.
 
   **Turn off macOS's own Globe action** (System Settings → Keyboard → "Press 🌐
-  key to" → **Do Nothing**) once you bind it here — otherwise the two can race.
-  Holding Fn down (rather than a quick tap) can trigger macOS's native
-  Character Viewer even though Pounce's tap suppresses every Fn transition it
-  sees: that native picker is driven by a private per-app HUD controller
-  (`TUINSCursorUIController` / `TextInputUI.framework`) that watches Fn on its
-  own, not via the ordinary keyboard event stream a tap can intercept. There is
-  no code-level fix on Pounce's side for that path — the system setting is the
-  only thing that removes the second handler.
+  key to" → **Do Nothing**) once you bind it here — this is required, not a
+  nicety, and `pounce doctor` now says so when anything binds `fn`. Leaving it
+  on gives the same physical key two handlers: an ordinary quick tap can still
+  reach macOS's native Character Viewer even though Pounce's tap suppresses
+  every Fn transition it sees, because that picker is summoned by a private
+  per-app HUD controller (`TUINSCursorUIController` / `TextInputUI.framework`)
+  that watches Fn on its own, not via the keyboard event stream a tap can
+  intercept. No CGEventTap placement removes it. Worse, once it fires the
+  Character Palette **latches onto whatever app is frontmost**, so it re-shows
+  on every later app switch (⌘Tab) or input-source switch (Caps Lock) — which
+  looks like ⌘Tab spawning the emoji picker, long after the Fn press that
+  actually caused it. The system setting is the only off switch:
+
+  ```bash
+  defaults write com.apple.HIToolbox AppleFnUsageType -int 0
+  ```
+
+  The pref is normally **unset** on a fresh Mac, and unset does not mean "Do
+  Nothing" — that is why the default state of an `fn` binding is the racy one.
 
 `enabled` and `alias` only mean something for things the palette lists, so a
 `mode:` entry carries just a hotkey.
