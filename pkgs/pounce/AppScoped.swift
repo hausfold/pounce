@@ -57,9 +57,12 @@ final class AppScopedKeys {
     // The walk session. Candidates are frozen at the first tap — the MRU file
     // moves underneath us as the walk itself focuses workspaces (the hook
     // pushes every visit), and re-reading mid-walk would shuffle the ring.
+    // walkRaw is the file's UNfiltered head from the same moment, kept so the
+    // release can put the file back (see endWalk).
     private var walking = false
     private var walkPages: [String] = []
     private var walkIndex = 0
+    private var walkRaw: [String] = []
 
     init?(settings: AppHotkeysSettings, pages: PageSwitcherSettings,
           tracker: WindowTracker?, runTarget: @escaping (String) -> Void) {
@@ -147,9 +150,8 @@ final class AppScopedKeys {
 
         case .flagsChanged:
             // Modifier transitions are never swallowed. Dropping the walk
-            // modifier ends the walk — nothing to commit, the last step already
-            // focused where we are; the MRU file's own hook records it.
-            if walking, !event.flags.contains(pageFlags) { walking = false; walkPages = [] }
+            // modifier ends the walk.
+            if walking, !event.flags.contains(pageFlags) { endWalk() }
             return Unmanaged.passUnretained(event)
 
         case .keyDown:
@@ -230,6 +232,7 @@ final class AppScopedKeys {
                 if let data, let text = String(data: data, encoding: .utf8) {
                     let lines = text.split(separator: "\n").map(String.init)
                     current = lines.first
+                    walkRaw = lines
                     // Dedup keeping the FIRST (most recent) occurrence — a
                     // hook that appends rather than rewrites must not make the
                     // ring visit a page twice per cycle.
@@ -263,5 +266,29 @@ final class AppScopedKeys {
             Aerospace.focusWorkspace(walkPages[walkIndex])
         }
         return true
+    }
+
+    // Release. The walk's own steps polluted the MRU file — the WM hook pushed
+    // every page we merely passed THROUGH, so without repair a three-step walk
+    // leaves the intermediates ranked above the page we came from, and the next
+    // single tap lands on a corridor instead of "back where I was" (the classic
+    // alt-tab degeneration). Rewrite the file as it looked when the walk began,
+    // with only the landing page promoted. The hook's own push for the landing
+    // page can race this write; both orderings produce the same list, because
+    // the landing page heads it either way.
+    private func endWalk() {
+        let landed = walkPages.indices.contains(walkIndex) ? walkPages[walkIndex] : nil
+        let raw = walkRaw
+        let file = pages.mruFile
+        walking = false
+        walkPages = []
+        walkRaw = []
+        guard let landed, let file, !raw.isEmpty, raw.first != landed else { return }
+        // Off the tap path — a file write has no business in the callback.
+        DispatchQueue.main.async {
+            let repaired = ([landed] + raw.filter { $0 != landed })
+                .joined(separator: "\n") + "\n"
+            try? repaired.write(toFile: file, atomically: true, encoding: .utf8)
+        }
     }
 }
