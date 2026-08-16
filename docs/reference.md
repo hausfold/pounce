@@ -18,7 +18,7 @@ authoritative flag list; this is the prose version.
 | `drafts <key> <op>` | read back what `--draft` kept: `save` (stdin) / `list` / `get <i>` / `rm <i>` / `clear` |
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
 | `--transform '<filter>'` | act on the current selection: copy it (⌘C), pipe the text through the shell `<filter>`, paste back (⌘V) — e.g. `--transform 'tr "[:lower:]" "[:upper:]"'`. Forwarded to the daemon, which holds the grant. |
-| `focus <op>` | Focus/DND (hush): `focus status\|toggle\|on\|off`, forwarded to the daemon |
+| `focus <op>` | Focus/DND (haus's Focus room): `focus status\|toggle\|on\|off`, forwarded to the daemon |
 | `run <item-key>` | run one item by the key `items` uses — `cmd:emoji`, `mode:clipboard`, `app:/Applications/Foo.app`. **Also how the built-in windows are opened**: `mode:clipboard` / `mode:emoji` / `mode:screenshots` / `mode:camera` / `mode:filesearch` / `mode:launcher` (they had a flag each until 2026-07-30). For binders that already own the keystroke; see [Driving pounce from another binder](#driving-pounce-from-another-binder) |
 | `--copy-file <path>` | copy a file (contents) to the clipboard |
 | `--daemon` | run the resident daemon (what `launchd` starts; also hosts the ⌘Tab window switcher) |
