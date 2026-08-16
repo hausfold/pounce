@@ -103,26 +103,43 @@ enum DoctorMode {
             }
         }
 
-        // macOS's own Globe/Fn action, whenever anything here binds `fn`. It is a
-        // SECOND handler for the same physical key and pounce cannot take it away:
-        // the tap suppresses Fn's flagsChanged CGEvent, but the Character Viewer is
-        // summoned through a private path (TextInputUI's per-app HUD) that no tap
-        // sees. Both then fire on one tap, and the native picker latches onto the
-        // frontmost app — so it reappears on every later app switch, which reads as
-        // "Cmd-Tab spawns the macOS emoji picker" long after the Fn press that
-        // actually caused it. The system setting is the only off switch.
+        // Whenever anything binds `fn`, report which of the two mechanisms is
+        // actually carrying it — they fail in completely different ways and the
+        // symptom (macOS's own picker appears) looks identical from outside.
         if settings.items.bindings.contains(where: {
             $0.sequence.steps.count == 1 && FunctionKeyHotKey.matches($0.sequence.steps[0].key)
         }) {
-            let action = globeKeyAction()
-            if action == 0 {
-                ok("macOS's own \u{1F310} key action is off")
+            if settings.fnKey == .remap {
+                // The reliable one. It can still fail silently: a keyboard that
+                // doesn't expose Fn to IOHID, or another tool rewriting
+                // UserKeyMapping out from under us, leaves Fn back with macOS.
+                if FunctionKeyRemap.isActive {
+                    ok("Fn remapped to \(FunctionKeyRemap.targetKeyName.uppercased()) at the HID layer "
+                       + "— macOS never sees a Fn key")
+                } else {
+                    bad("\"fnKey\": \"remap\" is configured but no Fn mapping is live — "
+                        + "macOS still owns the key")
+                    problems.append("The HID remap isn't installed (daemon restarted without it, "
+                                    + "another tool rewrote UserKeyMapping, or this keyboard doesn't "
+                                    + "expose Fn). Check `hidutil property --get UserKeyMapping`.")
+                }
             } else {
-                warn("macOS's own \u{1F310} key action is \(globeActionName(action)) — it fires "
-                     + "alongside your Fn binding, and pounce can't suppress it")
-                problems.append("Turn off macOS's own Globe action: System Settings \u{2192} Keyboard "
-                                + "\u{2192} \u{201C}Press \u{1F310} key to\u{201D} \u{2192} Do Nothing. "
-                                + "Pounce's event tap cannot suppress it.")
+                // The tap route shares the key with HIToolbox's own Globe handler,
+                // which lives in every process and reads Fn below the event stream
+                // — so pounce cannot suppress it, and turning the system action off
+                // is the user's only lever. Even that is unreliable: the value is
+                // read from login-session state, so it needs a logout to take.
+                let action = globeKeyAction()
+                if action == 0 {
+                    ok("macOS's own \u{1F310} key action is off")
+                } else {
+                    warn("macOS's own \u{1F310} key action is \(globeActionName(action)) — it fires "
+                         + "alongside your Fn binding, and the tap can't suppress it")
+                    problems.append("Turn off macOS's own Globe action: System Settings \u{2192} Keyboard "
+                                    + "\u{2192} \u{201C}Press \u{1F310} key to\u{201D} \u{2192} Do Nothing "
+                                    + "(then log out — it's read from session state). For a binding that "
+                                    + "can't be raced at all, set \"fnKey\": \"remap\".")
+                }
             }
         }
 

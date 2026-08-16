@@ -827,6 +827,24 @@ enum DaemonMode {
                     bindingReport.append("\(label) — conflicts with \(existing.label)")
                     continue
                 }
+                // `"fnKey": "remap"` takes Fn away from macOS at the HID layer,
+                // which turns it into an ordinary F19 — so it registers through
+                // the Carbon path below like any other key, with no tap and no
+                // Accessibility grant. Fall through to the tap only if the remap
+                // didn't take (an external keyboard that doesn't expose Fn to
+                // IOHID), so the binding still works as well as it used to.
+                if settings.fnKey == .remap, FunctionKeyRemap.apply() {
+                    let target = FunctionKeyRemap.targetKeyName
+                    guard let keyCode = HotKeyParser.keyCode(for: target),
+                          manager.register(keyCode: keyCode, modifiers: 0, onFire: fire) else {
+                        NSLog("pounce daemon: binding \(label) could not register \(target) after the Fn remap")
+                        bindingReport.append("\(label) — FAILED, \(target) already taken")
+                        continue
+                    }
+                    NSLog("pounce daemon: binding \(label) registered (Fn remapped to \(target) at the HID layer)")
+                    bindingReport.append("\(label) — via HID remap to \(target)")
+                    continue
+                }
                 functionKeyRequest = (label, fire)
                 updateFunctionKeyReport("\(label) — waiting for Accessibility")
                 continue
@@ -897,7 +915,14 @@ enum DaemonMode {
             }
         }
 
+        // Give Fn back on the way out. It's a no-op unless `"fnKey": "remap"`
+        // actually installed a mapping, and it restores the list as it stood
+        // before we touched it rather than clearing UserKeyMapping outright —
+        // other tools (Karabiner, a Caps→F18 leader) live in that same list.
+        // A hard kill skips this, which is why the mapping is deliberately the
+        // non-persistent kind: a reboot undoes it regardless.
         let cleanupAndExit: @convention(c) (Int32) -> Void = { _ in
+            FunctionKeyRemap.removeSync()
             unlink(SocketConfig.path); _exit(0)
         }
         signal(SIGTERM, cleanupAndExit)

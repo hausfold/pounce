@@ -303,6 +303,7 @@ struct AutoQuitSettings {
 
 struct Settings {
     enum WindowMode: String { case standard = "default", compact }
+    enum FnKeyMode: String { case tap, remap }
 
     var windowMode: WindowMode = .standard
     // Multiplies every size in the UI (see `UIScale`). `windowMode` picks the
@@ -326,6 +327,12 @@ struct Settings {
     // See ItemSettings.swift. Empty by default: an untouched config behaves
     // exactly as it did before this key existed.
     var items = ItemSettings()
+    // How a `"hotkey": "fn"` item binding gets the key. `.tap` is the historical
+    // event-tap route and loses races it cannot see (FunctionKeyRemap.swift
+    // documents the capture); `.remap` takes Fn away from macOS at the HID layer
+    // and binds an ordinary F19, at the cost of Fn's other jobs. Default stays
+    // `.tap` because `.remap` changes a key the user didn't ask us to change.
+    var fnKey: FnKeyMode = .tap
     // Color palette: a built-in name, or a ~/.config/pounce/themes/<name>.json
     // (see Palette.named).
     //
@@ -468,6 +475,9 @@ struct Settings {
             if let x = q["exclude"] as? [String] { s.autoQuit.exclude = x }
         }
         s.items = ItemSettings.parse(obj["items"])
+        if let f = obj["fnKey"] as? String, let mode = Settings.FnKeyMode(rawValue: f.lowercased()) {
+            s.fnKey = mode
+        }
         return s
     }
 }
