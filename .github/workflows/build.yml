@@ -19,7 +19,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
-      - run: nix build .#pounce .#pounce-commands --print-build-logs
+      - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
 
   test:
     name: frecency unit tests (swift)

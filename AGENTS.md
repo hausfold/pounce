@@ -76,12 +76,19 @@ it — on a stranger's Mac, with no checkout. It is bound by the family standard
 names **the phrases a user says**, not the features pounce has.
 
 **The capability it leads with is not the launcher — it's `pounce` as a picker
-an agent can put in front of a human.** Pipe it lines, get the chosen one back
-on stdout, exit 1 on dismissal. Every other palette on the Mac is something a
-person opens; this is the one an agent can hand a decision to, and it is the
-reason this skill is worth loading at all. Keep that contract stable
-(`Entry.swift`'s `resultSink` and the daemon's socket path both end in
-`print(result); exit(0)` / `exit(1)`) — a skill has now published it.
+an agent can put in front of a human.** Pipe it lines, get `"<action>\t<the
+whole raw line>"` back on stdout, exit 1 with no output on dismissal. Every
+other palette on the Mac is something a person opens; this is the one an agent
+can hand a decision to, and it is the reason this skill is worth loading at all.
+
+**That output shape is now published surface — keep it stable.** Both exit sites
+are in `Entry.swift`: `ClientMode.run` (the socket client, `print(result);
+exit(0)` / `exit(1)`) and `ClientMode.runDirect` (the no-daemon fallback). The
+`action\traw` string itself is built in `State.swift`'s commit path and fired
+through `Window.swift`'s `resultSink`. The repo's own command scripts already
+depend on it — `pkgs/pounce-commands/commands/force-quit.sh` and
+`brew-services.sh` both document "action&lt;TAB&gt;raw_line" — so the skill is the
+third consumer, not the first.
 
 The file also states plainly that pounce has **no `--json` anywhere**, so an
 agent stops rather than writes a parser against human text. That sentence comes

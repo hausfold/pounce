@@ -19,25 +19,31 @@ better than asking.
 ## Ask the user to choose
 
 ```sh
-printf 'staging\nproduction\n' | pounce -p "Deploy where?" -i shieldedwindow
+printf 'staging\nproduction\n' | pounce -p "Deploy where?" -i shippingbox
 ```
 
-Prints the chosen line on stdout and exits. Exit non-zero (or empty output) if
-they dismissed it — **always handle that**; a dismissed picker is a "no", not a
-retry.
+**Read the output carefully — it is not the bare line.** Every commit prints
+`"<action>\t<what they committed>"`, so choosing `production` gives you
+`enter⇥production`. Split on the first tab: the left half is `enter`, `cmd`,
+`opt` or `ctrl` (so one step can offer several verbs), the right half is the
+**whole stdin line** they picked — if you fed it TSV rows, you get every column
+back, not just the label. Free-typed text that matched no row comes back in
+exactly the same shape.
+
+Dismissal is **exit 1 with no output**. Always handle it: a dismissed picker is
+the user saying no, not a reason to retry.
 
 | flag | what it does |
 |---|---|
 | `-p <prompt>` | the placeholder text in the box |
-| `-i <sf-symbol>` | the icon beside it |
+| `-i <sf-symbol>` | the icon beside it — a **real** SF Symbol name; an unknown one silently draws nothing |
 | `--query <text>` | open with the box pre-filled, caret at the end |
-| `--actions <spec>` | label the action bar: `"Spawn\|cmd:Screenshot\|opt:Drafts"` |
+| `--actions <spec>` | label the action bar — **only when there are no rows**: `"Spawn\|cmd:Screenshot\|opt:Drafts"` |
 | `--chain [keys]` | this commit feeds *another* pounce step — holds the window up instead of fading |
 | `--draft <key>` | keep typed text on dismissal, filed under `<key>` |
 
-If the user commits text that matched no row, you get `"<action>\t<text>"` —
-`enter`, `cmd`, `opt` or `ctrl` — so one step can offer several verbs. Split on
-the tab.
+The picker works whether or not the daemon is running — it falls back to
+drawing the window itself.
 
 ## Other verbs
 
@@ -94,9 +100,16 @@ ready to turn back into picker rows.
 
 ## Traps
 
+- **The picker's output is `action⇥line`, never the bare line.** This is the
+  single most common way to misuse pounce: you compare the result to
+  `production`, it is actually `enter⇥production`, no branch matches, and you
+  re-prompt a user who already answered. Split on the first tab, every time.
 - **A dismissed picker is a real outcome.** Esc, click-away and empty stdin all
-  end with nothing chosen. Treat it as "the user declined", never as a reason to
-  re-prompt.
+  end with nothing chosen — exit 1, no output. Treat it as "the user declined",
+  never as a reason to re-prompt.
+- **`pounce run …` needs the daemon; the picker doesn't.** Every `mode:`,
+  `cmd:`, `app:` and `shortcut:` row exits 1 with "daemon not running" if it
+  isn't up. That is a different failure from the user dismissing something.
 - **Never put a picker in a loop or a background script.** It takes the screen.
   One decision, then get out of the way.
 - **`--transform` acts on whatever is selected *right now*.** It copies, filters

@@ -7,7 +7,7 @@
 //
 // Pounce is installable on its own (Homebrew, a drag-install), and standalone is
 // the case this is FOR: inside the haus desktop the settings are written from
-// `haus.pounce.*` and this file isn't yours to edit — see the guard below.
+// `haus.launcher.*` and this file isn't yours to edit — see the guard below.
 
 import Foundation
 
@@ -52,7 +52,7 @@ enum ConfigMode {
     }
 
     /// True when config.json is a symlink into the Nix store — i.e. home-manager
-    /// wrote it from `haus.pounce.*`. Writing there fails (the store is
+    /// wrote it from `haus.launcher.*`. Writing there fails (the store is
     /// read-only) and would be wrong even if it didn't: the next `haus rebuild`
     /// puts the generated file straight back, so an edit isn't lost so much as
     /// silently reverted, which is worse.
@@ -68,7 +68,7 @@ enum ConfigMode {
         if isNixManaged(path) {
             FileHandle.standardError.write(Data("""
             \(path.path) is managed by Nix — it's a symlink into the store, written
-            from your host file's `haus.pounce.*` options.
+            from your host file's `haus.launcher.*` options.
 
             Change it there and run `haus rebuild`; a copy written here would be
             replaced by the next rebuild without saying so.

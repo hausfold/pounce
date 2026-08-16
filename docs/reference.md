@@ -344,7 +344,7 @@ commented out — so the file changes nothing until you uncomment a line, and yo
 make it minimal by deleting the lines you never touched. It never overwrites a
 config you already have (it writes `config.json.new` beside it instead; `--force`
 replaces). On a machine managed by the haus desktop it refuses outright: that
-config.json is generated from `haus.pounce.*`, and the next rebuild would
+config.json is generated from `haus.launcher.*`, and the next rebuild would
 put the generated one straight back.
 
 **Comments and trailing commas are fine** — pounce parses config.json as JSON5,
