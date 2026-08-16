@@ -11,7 +11,7 @@ import Carbon
 // tapped alone. If another keyboard event arrives while it is held, this tap
 // leaves that event untouched and suppresses only Fn's own flag transitions —
 // the hardware-produced Fn combination still reaches the frontmost app, while
-// a lone tap replaces macOS's configured Globe action instead of opening both.
+// a lone tap fires pounce's binding.
 //
 // That suppression only covers the ordinary flagsChanged CGEvent this tap
 // watches. macOS's own Globe action reads Fn through a private per-app HUD
@@ -93,8 +93,10 @@ final class FunctionKeyHotKey {
             // Presenting a mode can do layout and disk reads. Leave the tap
             // callback first so macOS never disables it for taking too long.
             if shouldFire { DispatchQueue.main.async { self.onFire() } }
-            // Own Fn's transitions while configured, which prevents the stock
-            // Globe action from firing too. Other events in an Fn chord pass.
+            // Own Fn's transitions while configured. That stops anything
+            // downstream of this tap from seeing Fn at all, but NOT macOS's own
+            // Globe action, which never looks at this event stream (see the
+            // header). Other events in an Fn chord pass.
             return nil
 
         case .keyDown, .keyUp:

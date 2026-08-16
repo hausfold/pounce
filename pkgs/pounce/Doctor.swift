@@ -118,8 +118,8 @@ enum DoctorMode {
             if action == 0 {
                 ok("macOS's own \u{1F310} key action is off")
             } else {
-                warn("macOS's own \u{1F310} key action is \(globeActionName(action)) — it fires alongside "
-                     + "your Fn binding and opens the native Character Viewer")
+                warn("macOS's own \u{1F310} key action is \(globeActionName(action)) — it fires "
+                     + "alongside your Fn binding, and pounce can't suppress it")
                 problems.append("Turn off macOS's own Globe action: System Settings \u{2192} Keyboard "
                                 + "\u{2192} \u{201C}Press \u{1F310} key to\u{201D} \u{2192} Do Nothing. "
                                 + "Pounce's event tap cannot suppress it.")
@@ -241,7 +241,7 @@ enum DoctorMode {
         case 2:  return "\u{201C}Show Emoji & Symbols\u{201D}"
         case 3:  return "\u{201C}Start Dictation\u{201D}"
         case nil: return "unset (macOS's default, which isn't Do Nothing)"
-        default: return "set to \(value!)"
+        default: return value.map { "set to \($0)" } ?? "unset"
         }
     }
 

@@ -534,11 +534,15 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   actually caused it. The system setting is the only off switch:
 
   ```bash
-  defaults write com.apple.HIToolbox AppleFnUsageType -int 0
+  defaults write com.apple.HIToolbox AppleFnUsageType -int 0   # log out after
   ```
 
-  The pref is normally **unset** on a fresh Mac, and unset does not mean "Do
-  Nothing" — that is why the default state of an `fn` binding is the racy one.
+  Prefer the System Settings toggle: it broadcasts the change, whereas the
+  `defaults write` only lands for processes that re-read the pref, so already
+  running apps keep the old behavior until you log out. (`pounce doctor` reads
+  the pref directly and will go green immediately either way.) The pref is
+  normally **unset** on a fresh Mac, and unset does not mean "Do Nothing" —
+  which is why the default state of an `fn` binding is the racy one.
 
 `enabled` and `alias` only mean something for things the palette lists, so a
 `mode:` entry carries just a hotkey.
