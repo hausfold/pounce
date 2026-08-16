@@ -91,6 +91,10 @@ final class AppScopedKeys {
                 let flags = WindowSwitcher.eventFlags(for: pages.modifiers)
                 if flags.isEmpty {
                     NSLog("pounce pages: refusing to walk without a modifier")
+                } else if flags.contains(.maskShift) {
+                    // ⇧ is the walk's own reverse gear — a chord that includes
+                    // it would make backwards the only direction.
+                    NSLog("pounce pages: refusing shift in pages.modifiers — shift reverses the walk")
                 } else {
                     pageKey = CGKeyCode(code)
                     pageFlags = flags
@@ -138,6 +142,7 @@ final class AppScopedKeys {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             walking = false
+            walkPages = []
             return Unmanaged.passUnretained(event)
 
         case .flagsChanged:
@@ -150,22 +155,41 @@ final class AppScopedKeys {
         case .keyDown:
             let code = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
             let held = event.flags.intersection(Self.relevantFlags)
-            let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            // Frontmost is a LaunchServices lookup — resolved lazily, only once
+            // a keycode+flags candidate matches, so ordinary machine-wide
+            // typing never pays for it.
+            var frontCache: String??
+            func front() -> String? {
+                if let cached = frontCache { return cached }
+                let now = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+                frontCache = .some(now)
+                return now
+            }
 
-            // The walk key: exact chord, or the chord + ⇧ for backwards.
+            // The walk key: exact chord, or the chord + ⇧ for backwards. The
+            // scope check applies only to the FIRST step: stepping live-focuses
+            // other workspaces, so mid-walk the frontmost app is whatever
+            // fronts the page we just landed on — re-checking would hand the
+            // chord to that app and wedge the walk until the modifier release.
             if let pageKey, code == pageKey {
                 let backFlags = pageFlags.union(.maskShift)
                 let chordHeld = (held == pageFlags) || (held == backFlags)
-                let inScope = pages.bundleId == nil || pages.bundleId == front
+                let inScope = walking || pages.bundleId == nil || pages.bundleId == front()
                 if chordHeld && inScope {
                     if step(back: held.contains(.maskShift)) { return nil }
                     return Unmanaged.passUnretained(event)   // no pages → falls through
                 }
             }
 
-            if !walking, let hit = scoped.first(where: { entry in
-                entry.keyCode == code && entry.flags == held && entry.bundleId == front
-            }) {
+            // One-shot chords must not machine-gun on key autorepeat — holding
+            // ⌘P should spawn one shell, not fifteen a second. (The walk key
+            // above deliberately keeps repeats: holding ⌃⇥ keeps walking, the
+            // same feel as ⌘Tab.)
+            if !walking,
+               event.getIntegerValueField(.keyboardEventAutorepeat) == 0,
+               let hit = scoped.first(where: { entry in
+                   entry.keyCode == code && entry.flags == held && entry.bundleId == front()
+               }) {
                 // Off the tap path: runTarget may refresh the command registry
                 // (stats a directory) before spawning, and the callback must
                 // return now.
@@ -196,11 +220,22 @@ final class AppScopedKeys {
 
             var ordered: [String] = []
             var current: String?
-            if let file = pages.mruFile,
-               let text = try? String(contentsOfFile: file, encoding: .utf8) {
-                let lines = text.split(separator: "\n").map(String.init)
-                current = lines.first
-                ordered = lines.filter { live.contains($0) }
+            if let file = pages.mruFile, let handle = FileHandle(forReadingAtPath: file) {
+                // Head only, hard-capped: this read is on the tap path, and a
+                // tap that stalls ~1s is killed by macOS. The hook keeps the
+                // file to ~50 short lines; the cap is for the day the path
+                // points somewhere it shouldn't.
+                let data = (try? handle.read(upToCount: 8192)) ?? nil
+                try? handle.close()
+                if let data, let text = String(data: data, encoding: .utf8) {
+                    let lines = text.split(separator: "\n").map(String.init)
+                    current = lines.first
+                    // Dedup keeping the FIRST (most recent) occurrence — a
+                    // hook that appends rather than rewrites must not make the
+                    // ring visit a page twice per cycle.
+                    var seen = Set<String>()
+                    ordered = lines.filter { live.contains($0) && seen.insert($0).inserted }
+                }
             }
             // Pages the file hasn't seen yet (fresh lane, wiped state) still
             // deserve to be reachable; they queue behind the known ones.
