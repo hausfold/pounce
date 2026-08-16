@@ -513,21 +513,66 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   below.
 
   The laptop **Fn/Globe key** is a special one-step binding: for example,
-  `"mode:emoji": { "hotkey": "fn" }`. Because Fn is modifier-only, that opt-in
-  binding uses a keyboard event tap and needs Pounce's Accessibility grant
-  (`pounce --request-accessibility`). It fires only when Fn is tapped alone, so
-  Fn combinations keep working. `"globe"` and `"function"` are accepted
-  aliases. Ordinary chords and leader sequences stay permission-free.
+  `"mode:emoji": { "hotkey": "fn" }`. `"globe"` and `"function"` are accepted
+  aliases, and only a bare one-step `fn` is supported — no modifiers, not as a
+  leader. There are two ways Pounce can carry it, chosen by the top-level
+  **`"fnKey"`** setting.
 
-  **Turn off macOS's own Globe action** (System Settings → Keyboard → "Press 🌐
-  key to" → **Do Nothing**) once you bind it here — otherwise the two can race.
-  Holding Fn down (rather than a quick tap) can trigger macOS's native
-  Character Viewer even though Pounce's tap suppresses every Fn transition it
-  sees: that native picker is driven by a private per-app HUD controller
-  (`TUINSCursorUIController` / `TextInputUI.framework`) that watches Fn on its
-  own, not via the ordinary keyboard event stream a tap can intercept. There is
-  no code-level fix on Pounce's side for that path — the system setting is the
-  only thing that removes the second handler.
+  #### `"fnKey": "tap"` (default) — shares the key with macOS
+
+  Reads Fn with a keyboard event tap, so it needs Pounce's Accessibility grant
+  (`pounce --request-accessibility`), and it fires only when Fn is tapped alone,
+  leaving Fn combinations to the hardware.
+
+  **It cannot be made exclusive**, and it's worth being precise about why, since
+  the symptom (macOS's Character Viewer opening too, seemingly at random) has
+  cost real debugging time. HIToolbox is linked into *every* process and carries
+  its own Globe handler, which reads the key **below** the CGEvent stream a tap
+  can see. Captured with the tap installed and healthy — zero `tapDisabled`
+  events across a whole session's log:
+
+  ```
+  05:18:27.713  pounce    [HIToolbox:CharacterPalette] TSMLaunchCharacterPalette called
+  05:18:33.890  ghostty   [HIToolbox:CharacterPalette] TSMLaunchCharacterPalette called
+  05:18:40.187  Obsidian  [HIToolbox:CharacterPalette] TSMLaunchCharacterPalette called
+  ```
+
+  Four native pickers, and **zero** corresponding Fn transitions in the tap —
+  one of them launched by HIToolbox inside Pounce's own process. There was
+  nothing for the tap to suppress, because the press never reached it. No
+  CGEventTap placement changes that.
+
+  Turning off macOS's own action (System Settings → Keyboard → "Press 🌐 key
+  to" → **Do Nothing**) is the only lever this mode has, and it is a partial
+  one: that value is read from **login-session state**, so `defaults write
+  com.apple.HIToolbox AppleFnUsageType -int 0` is honored by nothing already
+  running — use the System Settings toggle, and log out once. The pref is
+  normally *unset* on a fresh Mac, and unset does not mean "Do Nothing", which
+  is why a new `fn` binding starts out racy. `pounce doctor` flags it.
+
+  #### `"fnKey": "remap"` — takes the key away from macOS
+
+  ```jsonc
+  { "fnKey": "remap", "items": { "mode:emoji": { "hotkey": "fn" } } }
+  ```
+
+  Remaps Fn to **F19** at the HID layer (IOKit's `UserKeyMapping`, the same
+  thing `hidutil` writes), so it stops being Fn before HIToolbox — or anything
+  else — can see it. Pounce then binds F19 with the ordinary Carbon call it uses
+  for every other hotkey. **No Accessibility grant, and nothing left to race.**
+
+  The cost, and the reason this is opt-in: Fn stops being Fn *everywhere*. No
+  Fn+arrows (Home/End/PageUp/PageDown), no Fn+Delete, no Fn+F1–F12.
+
+  The mapping is applied while the daemon runs and removed when it exits, and it
+  merges into whatever is already in `UserKeyMapping` (a Karabiner mapping, a
+  Caps→F18 leader) rather than replacing it. It is never persistent: a reboot
+  clears it even if the daemon dies badly. To check or clear it by hand:
+
+  ```bash
+  hidutil property --get UserKeyMapping
+  hidutil property --set '{"UserKeyMapping":[]}'   # clears ALL mappings, not just ours
+  ```
 
 `enabled` and `alias` only mean something for things the palette lists, so a
 `mode:` entry carries just a hotkey.

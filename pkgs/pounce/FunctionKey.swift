@@ -11,16 +11,20 @@ import Carbon
 // tapped alone. If another keyboard event arrives while it is held, this tap
 // leaves that event untouched and suppresses only Fn's own flag transitions —
 // the hardware-produced Fn combination still reaches the frontmost app, while
-// a lone tap replaces macOS's configured Globe action instead of opening both.
+// a lone tap fires pounce's binding.
 //
 // That suppression only covers the ordinary flagsChanged CGEvent this tap
-// watches. HOLDING Fn can additionally trigger macOS's native Character
-// Viewer via a private per-app HUD controller (TUINSCursorUIController /
-// TextInputUI.framework) that reads Fn on its own — confirmed by log capture
-// showing that HUD's activate/hide cycle fire with zero corresponding
-// DIAG "fn down/up" lines from this tap. No CGEventTap placement suppresses
-// that path; see docs/reference.md's Fn/Globe section for the System
-// Settings workaround.
+// watches. macOS's own Globe action reads Fn through a private per-app HUD
+// controller (TUINSCursorUIController / TextInputUI.framework) that no tap
+// sees, so while "Press 🌐 key to" is anything but Do Nothing the SAME tap
+// can also open the native Character Viewer — a plain ~100ms tap does it,
+// not just a held press: log capture shows CharacterPalette's "First
+// activateServer" landing 15ms after a DIAG "fn up -> FIRE" line from this
+// tap. And once it fires, the Character Palette latches onto the frontmost
+// app, so it re-shows on every later app switch, which is why the symptom
+// gets misread as ⌘Tab spawning the picker. No CGEventTap placement
+// suppresses that path; `pounce doctor` flags the system setting instead
+// (see docs/reference.md's Fn/Globe section).
 final class FunctionKeyHotKey {
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -89,8 +93,10 @@ final class FunctionKeyHotKey {
             // Presenting a mode can do layout and disk reads. Leave the tap
             // callback first so macOS never disables it for taking too long.
             if shouldFire { DispatchQueue.main.async { self.onFire() } }
-            // Own Fn's transitions while configured, which prevents the stock
-            // Globe action from firing too. Other events in an Fn chord pass.
+            // Own Fn's transitions while configured. That stops anything
+            // downstream of this tap from seeing Fn at all, but NOT macOS's own
+            // Globe action, which never looks at this event stream (see the
+            // header). Other events in an Fn chord pass.
             return nil
 
         case .keyDown, .keyUp:

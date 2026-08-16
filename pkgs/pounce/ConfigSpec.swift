@@ -219,6 +219,16 @@ enum ConfigSpec {
                         json: json(s.autoQuit.exclude)),
                 ]),
 
+            ConfigSection(
+                name: nil,
+                doc: "How a \"hotkey\": \"fn\" item binding (below) gets the Fn/Globe key.",
+                fields: [
+                    ConfigField(
+                        name: "fnKey",
+                        doc: "\"tap\" reads Fn with an event tap: it needs Accessibility, and it SHARES the key with macOS — HIToolbox carries its own Globe handler inside every process, below the event stream, so macOS's Emoji & Symbols picker can still open alongside pounce's (turning off System Settings > Keyboard > \"Press 🌐 key to\" helps, but that value is read from login-session state, so it wants a logout). \"remap\" instead takes Fn away at the HID layer — it becomes F19, which pounce binds like any ordinary key: no Accessibility, and nothing left for macOS to race. The cost is that Fn stops being Fn everywhere: no Fn+arrows, Fn+Delete, or Fn+F1-F12. Applied while the daemon runs, removed when it exits, and never persistent — a reboot clears it.",
+                        json: json(s.fnKey.rawValue)),
+                ]),
+
             // `items` is the one setting with no fixed key list — it's keyed by
             // pounce's own stable item keys, of which there are dozens, and which
             // you discover with `pounce --help`. Enumerating them here would be a
@@ -226,7 +236,7 @@ enum ConfigSpec {
             // per-item fields is the honest documentation.
             ConfigSection(
                 name: "items",
-                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\", \"shortcut:<uuid>\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too; because it is a modifier-only key, that opt-in binding needs Accessibility — and turn off System Settings > Keyboard > \"Press 🌐 key to\" (set it to Do Nothing), or macOS's own Emoji & Symbols HUD can still pop up alongside it.",
+                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\", \"shortcut:<uuid>\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too — see \"fnKey\" above for the two ways it can be carried.",
                 // Three fields, and only three — see ItemSettings.parse.
                 raw: """
                 // "cmd:emoji": {

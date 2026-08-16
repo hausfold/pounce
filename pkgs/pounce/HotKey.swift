@@ -138,6 +138,12 @@ enum HotKeyParser {
         "0": kVK_ANSI_0, "1": kVK_ANSI_1, "2": kVK_ANSI_2, "3": kVK_ANSI_3,
         "4": kVK_ANSI_4, "5": kVK_ANSI_5, "6": kVK_ANSI_6, "7": kVK_ANSI_7,
         "8": kVK_ANSI_8, "9": kVK_ANSI_9,
+        // F13–F20 exist on no Mac keyboard, which is exactly what makes them
+        // useful: they're where a HID remap sends a key it wants nobody else to
+        // see (FunctionKeyRemap sends Fn to F19), and where hardware macro keys
+        // land. F1–F12 stay out — they're the media row, already spoken for.
+        "f13": kVK_F13, "f14": kVK_F14, "f15": kVK_F15, "f16": kVK_F16,
+        "f17": kVK_F17, "f18": kVK_F18, "f19": kVK_F19, "f20": kVK_F20,
     ]
 }
 

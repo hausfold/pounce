@@ -103,6 +103,46 @@ enum DoctorMode {
             }
         }
 
+        // Whenever anything binds `fn`, report which of the two mechanisms is
+        // actually carrying it — they fail in completely different ways and the
+        // symptom (macOS's own picker appears) looks identical from outside.
+        if settings.items.bindings.contains(where: {
+            $0.sequence.steps.count == 1 && FunctionKeyHotKey.matches($0.sequence.steps[0].key)
+        }) {
+            if settings.fnKey == .remap {
+                // The reliable one. It can still fail silently: a keyboard that
+                // doesn't expose Fn to IOHID, or another tool rewriting
+                // UserKeyMapping out from under us, leaves Fn back with macOS.
+                if FunctionKeyRemap.isActive {
+                    ok("Fn remapped to \(FunctionKeyRemap.targetKeyName.uppercased()) at the HID layer "
+                       + "— macOS never sees a Fn key")
+                } else {
+                    bad("\"fnKey\": \"remap\" is configured but no Fn mapping is live — "
+                        + "macOS still owns the key")
+                    problems.append("The HID remap isn't installed (daemon restarted without it, "
+                                    + "another tool rewrote UserKeyMapping, or this keyboard doesn't "
+                                    + "expose Fn). Check `hidutil property --get UserKeyMapping`.")
+                }
+            } else {
+                // The tap route shares the key with HIToolbox's own Globe handler,
+                // which lives in every process and reads Fn below the event stream
+                // — so pounce cannot suppress it, and turning the system action off
+                // is the user's only lever. Even that is unreliable: the value is
+                // read from login-session state, so it needs a logout to take.
+                let action = globeKeyAction()
+                if action == 0 {
+                    ok("macOS's own \u{1F310} key action is off")
+                } else {
+                    warn("macOS's own \u{1F310} key action is \(globeActionName(action)) — it fires "
+                         + "alongside your Fn binding, and the tap can't suppress it")
+                    problems.append("Turn off macOS's own Globe action: System Settings \u{2192} Keyboard "
+                                    + "\u{2192} \u{201C}Press \u{1F310} key to\u{201D} \u{2192} Do Nothing "
+                                    + "(then log out — it's read from session state). For a binding that "
+                                    + "can't be raced at all, set \"fnKey\": \"remap\".")
+                }
+            }
+        }
+
         // A macOS system shortcut on the same combo (Spotlight, input sources, …).
         if let conflict = HotKeyConflict.systemConflict(keyName: settings.hotkey.key,
                                                         modifierNames: settings.hotkey.modifiers) {
@@ -202,6 +242,24 @@ enum DoctorMode {
         do { try p.run() } catch { return false }
         p.waitUntilExit()
         return p.terminationStatus == 0
+    }
+
+    // System Settings → Keyboard → "Press 🌐 key to". Unset means the macOS
+    // default, which on a Mac with a Globe key is NOT "Do Nothing" — so a nil
+    // read is a warning, not a pass.
+    private static func globeKeyAction() -> Int? {
+        CFPreferencesCopyAppValue("AppleFnUsageType" as CFString,
+                                  "com.apple.HIToolbox" as CFString) as? Int
+    }
+
+    private static func globeActionName(_ value: Int?) -> String {
+        switch value {
+        case 1:  return "\u{201C}Change Input Source\u{201D}"
+        case 2:  return "\u{201C}Show Emoji & Symbols\u{201D}"
+        case 3:  return "\u{201C}Start Dictation\u{201D}"
+        case nil: return "unset (macOS's default, which isn't Do Nothing)"
+        default: return value.map { "set to \($0)" } ?? "unset"
+        }
     }
 
     private struct Binding { let file: String; let line: Int; let text: String }
