@@ -32,6 +32,13 @@
           nebelungLattePalette = nebelung.palettes.nebelung-latte;
         };
         pounce-commands = final.callPackage ./pkgs/pounce-commands { };
+
+        # The agent skill (ai/SKILL.md), so a consumer can install it without
+        # installing pounce — haus's AI room will drop it into every agent client
+        # on the machine once its side lands. Its own package rather than a file inside `pounce`:
+        # that one compiles Swift and bakes in a palette, and a sentence of
+        # prose has no business invalidating it.
+        pounce-skill = final.callPackage ./pkgs/pounce-skill { };
       };
 
       packages = forAll (
@@ -43,6 +50,7 @@
           default = pkgs.pounce;
           pounce = pkgs.pounce;
           pounce-commands = pkgs.pounce-commands;
+          pounce-skill = pkgs.pounce-skill;
         }
       );
 
