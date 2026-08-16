@@ -175,7 +175,7 @@ enum ConfigSpec {
                         json: json(s.hotkey.enabled)),
                     ConfigField(
                         name: "key",
-                        doc: "A named key: \"space\", \"return\", a letter.",
+                        doc: "A named key: \"space\", \"return\", \"tab\", \"escape\", a letter, a digit, or \"f13\"-\"f20\" (the F-keys no laptop has, where a hardware macro key or a HID remap lands).",
                         json: json(s.hotkey.key)),
                     ConfigField(
                         name: "modifiers",

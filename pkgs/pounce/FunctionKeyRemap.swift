@@ -32,15 +32,19 @@ import Foundation
 // Fn+Delete, no Fn+F1…F12. That is the whole trade, and it belongs to the user.
 //
 // The mapping is applied to the live IOHID services only; it is NOT persistent,
-// so a reboot clears it even if pounce dies badly. On a clean exit the daemon
-// restores exactly the list it found (see `restorePayload`), which is what keeps
-// this composable with the other tools that write UserKeyMapping — Karabiner, a
-// Caps→F18 leader from a dotfiles rebuild — instead of clobbering them.
+// so a reboot clears it even if pounce dies badly. UserKeyMapping is one SHARED
+// list — a Karabiner rule, a Caps→F18 leader from a dotfiles rebuild — and
+// `--set` writes all of it at once, so every path here reads the live list first
+// and refuses to write when it couldn't read one. That single rule is what keeps
+// this from eating a key the user never asked us to touch.
 enum FunctionKeyRemap {
     // AppleVendor Top Case page (0xFF), usage 0x03: the Fn/Globe key itself.
     static let fnUsage: Int64 = 0xFF00000003
-    // Keyboard page (0x07), usage 0x6E: F19. Chosen because no Mac keyboard has
-    // one physically, so nothing else can be typing it.
+    // Keyboard page (0x07), usage 0x6E: F19. Chosen because no laptop or compact
+    // Magic Keyboard has it — the full-size Magic Keyboard with a numeric keypad
+    // DOES, where it's the last key of the F-row, so on that keyboard pressing
+    // F19 fires this binding too. That's the least-bad option: every key below
+    // F13 is one people actually bind.
     static let targetUsage: Int64 = 0x70000006E
     static let targetKeyName = "f19"
 
@@ -77,8 +81,9 @@ enum FunctionKeyRemap {
         existing.filter { $0.src != fnUsage } + [Entry(src: fnUsage, dst: targetUsage)]
     }
 
-    // Everything except the Fn mapping — used to restore on exit. Note this drops
-    // a foreign Fn mapping too, but by the time we're here we already replaced it.
+    // Everything except the Fn mapping — the shape of a restore. Any Fn mapping
+    // we displaced is put back by the caller (`displacedFn`), so this drops it
+    // rather than trying to guess which Fn entry was whose.
     static func removing(from existing: [Entry]) -> [Entry] {
         existing.filter { $0.src != fnUsage }
     }
@@ -96,48 +101,66 @@ enum FunctionKeyRemap {
 
     // MARK: Live IOHID state
 
-    // The list hidutil reports right now, or [] if it has never been set.
-    static func current() -> [Entry] {
-        parse(hidutil(["property", "--get", "UserKeyMapping"]) ?? "")
+    // The list hidutil reports right now — or nil when we couldn't read it, which
+    // is emphatically NOT the same as "there are no mappings". Conflating the two
+    // is how a `--set` built from an empty list silently deletes every OTHER
+    // tool's entry, so every writer here refuses to act on nil.
+    static func current() -> [Entry]? {
+        interpret(hidutil(["property", "--get", "UserKeyMapping"]))
     }
 
-    static var isActive: Bool { isMapped(current()) }
+    // Split from current() so the distinction that matters — "no mappings" vs
+    // "couldn't read the mappings" — is unit-testable without an IOHID service.
+    static func interpret(_ output: String?) -> [Entry]? {
+        guard let output else { return nil }
+        // What hidutil prints when nothing has ever been set. Whitespace-stripped
+        // because the multi-line form is the same list.
+        let dense = output.filter { !$0.isWhitespace }
+        if dense.isEmpty || dense == "()" || dense == "(null)" { return [] }
+        let entries = parse(output)
+        return entries.isEmpty ? nil : entries
+    }
 
-    // What `remove()` will write: the list as it stood BEFORE we touched it.
-    // Captured at apply time so teardown needs no reads — it runs from a signal
-    // handler, where spawning a pipe-reading child would be the unsafe part.
-    private static var restorePayload: String?
+    static var isActive: Bool { current().map(isMapped) ?? false }
+
+    // An Fn mapping that was already there when we arrived — someone's persistent
+    // hidutil script, a Karabiner rule. We had to displace it to take the key;
+    // restore() puts it back, which is the difference between borrowing the key
+    // and quietly eating a mapping the user set up themselves.
+    private static var displacedFn: Entry?
+    private static var installed = false
 
     @discardableResult
     static func apply() -> Bool {
-        let existing = current()
+        guard let existing = current() else {
+            NSLog("pounce daemon: could not read UserKeyMapping; Fn remap not attempted (Fn left to macOS)")
+            return false
+        }
         guard !isMapped(existing) else {
-            restorePayload = restorePayload ?? payload(removing(from: existing))
+            installed = true
             return true
         }
-        restorePayload = payload(removing(from: existing))
+        displacedFn = existing.first { $0.src == fnUsage }
         guard hidutil(["property", "--set", payload(adding(to: existing))]) != nil else {
             NSLog("pounce daemon: hidutil could not set the Fn remap; Fn left to macOS")
             return false
         }
-        let ok = isActive
-        if !ok { NSLog("pounce daemon: Fn remap did not take — this keyboard may not expose Fn to IOHID") }
-        return ok
+        installed = isActive
+        if !installed {
+            NSLog("pounce daemon: Fn remap did not take — this keyboard may not expose Fn to IOHID")
+        }
+        return installed
     }
 
-    // Best effort, and deliberately fire-and-forget: called from the SIGTERM
-    // handler, so it must not allocate a Foundation Process or read a pipe.
-    // posix_spawn + waitpid of a pre-rendered argv is the whole of it.
-    static func removeSync() {
-        guard let payload = restorePayload else { return }
-        let argv: [String] = ["/usr/bin/hidutil", "property", "--set", payload]
-        var cargv: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) }
-        cargv.append(nil)
-        defer { for p in cargv where p != nil { free(p) } }
-        var pid: pid_t = 0
-        guard posix_spawn(&pid, argv[0], nil, nil, &cargv, environ) == 0 else { return }
-        var status: Int32 = 0
-        waitpid(pid, &status, 0)
+    // Give Fn back. Re-reads the live list rather than replaying a snapshot taken
+    // at startup: anything added while the daemon ran (a rice rebuild reapplying
+    // its own UserKeyMapping, someone plugging in Karabiner) has to survive us
+    // leaving, and a stale snapshot would delete exactly those.
+    static func restore() {
+        guard installed, let live = current(), isMapped(live) else { return }
+        let restored = removing(from: live) + (displacedFn.map { [$0] } ?? [])
+        _ = hidutil(["property", "--set", payload(restored)])
+        installed = false
     }
 
     // MARK: Plumbing
