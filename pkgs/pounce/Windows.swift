@@ -483,6 +483,14 @@ enum Aerospace {
         }
     }
 
+    // Focus a workspace by name. Fire-and-forget: the page walk (AppScoped.swift)
+    // steps live from an event-tap callback that can't wait on anything, and a
+    // step that fails (workspace evaporated mid-walk) simply leaves focus where
+    // it was — the next tap moves on.
+    static func focusWorkspace(_ name: String) {
+        run(["workspace", name]) { _, _ in }
+    }
+
     // window-id → workspace name, for the switcher's grouping. Blocking, so it
     // may ONLY be called off the main thread — WindowTracker.refresh()'s
     // background pass is the single caller. nil means "no answer this pass"

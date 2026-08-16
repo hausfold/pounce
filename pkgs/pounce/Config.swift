@@ -278,6 +278,48 @@ struct WindowSwitcherSettings {
     var modifiers: [String] = ["cmd"]
 }
 
+// App-scoped hotkeys (AppScoped.swift): chords consumed ONLY while a named app
+// is frontmost, passed through untouched everywhere else. This is what a Carbon
+// hotkey can't do — RegisterEventHotKey swallows globally or not at all — so
+// these ride a session event tap and need the same Accessibility grant as the
+// window switcher. Each scope names a bundle id and the chords it claims; each
+// chord fires an ItemTarget ("cmd:shell-here"), the same grammar as an item
+// hotkey, so a scoped chord and a palette row are the same address. Default
+// off, read once at daemon start.
+struct AppHotkeysSettings {
+    struct Key {
+        var key: String
+        var modifiers: [String]
+        var target: String
+    }
+    struct Scope {
+        var bundleId: String
+        var keys: [Key]
+    }
+    var enabled: Bool = false
+    var scopes: [Scope] = []
+}
+
+// The MRU workspace-page walk (AppScoped.swift): hold `modifiers`, tap `key` to
+// walk the non-empty AeroSpace workspaces named `prefix` or `prefix`/… by
+// recency, ⇧ to walk backwards, release to stay. Recency comes from `mruFile` —
+// one workspace per line, most recent first, maintained by whatever the WM's
+// workspace-change hook writes (haus: windows/scripts/workspace-mru.sh) —
+// because pounce only ever OBSERVES workspace focus after the fact; the hook is
+// told about every change. `bundleId`, when set, scopes the chord like an
+// appHotkeys scope: consumed over that app, passed through everywhere else (a
+// browser keeps its ⌃⇥ tabs). Default off, read once at daemon start, and
+// non-empty is judged from the window tracker's cached workspace map so the
+// event tap never waits on a subprocess.
+struct PageSwitcherSettings {
+    var enabled: Bool = false
+    var key: String = "tab"
+    var modifiers: [String] = ["ctrl"]
+    var prefix: String = "T"
+    var bundleId: String?
+    var mruFile: String?
+}
+
 // Quit an app when its last window closes (AutoQuit.swift) — the Windows-style
 // behaviour macOS deliberately doesn't have. Default off, and it stays off even
 // in opinionated setups until someone asks for it: a windowless app is a normal
@@ -315,6 +357,8 @@ struct Settings {
     var appLauncher = AppLauncherSettings()
     var hotkey = HotKeyConfig()
     var windows = WindowSwitcherSettings()
+    var appHotkeys = AppHotkeysSettings()
+    var pages = PageSwitcherSettings()
     var autoQuit = AutoQuitSettings()
     var quickAnswers = QuickAnswerSettings()
     // Daily latest-release check that nudges (palette row + one notification)
@@ -459,6 +503,35 @@ struct Settings {
             if let e = w["enabled"] as? Bool { s.windows.enabled = e }
             if let k = w["key"] as? String, !k.isEmpty { s.windows.key = k }
             if let m = w["modifiers"] as? [String], !m.isEmpty { s.windows.modifiers = m }
+        }
+        if let ah = obj["appHotkeys"] as? [String: Any] {
+            if let e = ah["enabled"] as? Bool { s.appHotkeys.enabled = e }
+            if let scopes = ah["scopes"] as? [[String: Any]] {
+                s.appHotkeys.scopes = scopes.compactMap { scope in
+                    guard let bundle = scope["bundleId"] as? String, !bundle.isEmpty
+                    else { return nil }
+                    let keys = (scope["keys"] as? [[String: Any]] ?? []).compactMap {
+                        entry -> AppHotkeysSettings.Key? in
+                        guard let k = entry["key"] as? String, !k.isEmpty,
+                              let t = entry["target"] as? String, !t.isEmpty
+                        else { return nil }
+                        return AppHotkeysSettings.Key(
+                            key: k,
+                            modifiers: entry["modifiers"] as? [String] ?? [],
+                            target: t)
+                    }
+                    guard !keys.isEmpty else { return nil }
+                    return AppHotkeysSettings.Scope(bundleId: bundle, keys: keys)
+                }
+            }
+        }
+        if let pg = obj["pages"] as? [String: Any] {
+            if let e = pg["enabled"] as? Bool { s.pages.enabled = e }
+            if let k = pg["key"] as? String, !k.isEmpty { s.pages.key = k }
+            if let m = pg["modifiers"] as? [String], !m.isEmpty { s.pages.modifiers = m }
+            if let p = pg["prefix"] as? String, !p.isEmpty { s.pages.prefix = p }
+            if let b = pg["bundleId"] as? String, !b.isEmpty { s.pages.bundleId = b }
+            if let f = pg["mruFile"] as? String, !f.isEmpty { s.pages.mruFile = f }
         }
         if let q = obj["autoQuit"] as? [String: Any] {
             if let e = q["enabled"] as? Bool { s.autoQuit.enabled = e }
