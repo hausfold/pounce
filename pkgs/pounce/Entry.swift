@@ -339,6 +339,8 @@ enum DaemonMode {
     static var hotKey: HotKeyManager?
     // Retained so the ⌘Tab event tap stays alive.
     static var windowSwitcher: WindowSwitcher?
+    // Retained so the app-scoped chords + page-walk tap stays alive (AppScoped.swift).
+    static var appScoped: AppScopedKeys?
     // Teardown on SIGTERM/SIGINT (see run()). Off the main queue on purpose, so
     // the exit path doesn't depend on the UI thread being responsive.
     static let exitQueue = DispatchQueue(label: "co.hausfold.pounce.exit")
@@ -419,8 +421,35 @@ enum DaemonMode {
     // take it before they know whether they'll succeed (the switcher needs it to
     // construct), so whoever fails hands it back.
     static func releaseWindowTrackerIfUnused() {
-        guard windowSwitcher == nil, autoQuit == nil else { return }
+        guard windowSwitcher == nil, autoQuit == nil, appScoped == nil else { return }
         windowTracker = nil
+    }
+
+    // Arms the app-scoped chords + workspace-page walk (AppScoped.swift). Same
+    // Accessibility gate and live re-arming as the switcher: without the grant
+    // the chords keep their stock meanings everywhere, which is exactly the
+    // pass-through these features promise for every OTHER app anyway.
+    static func armAppScoped(hotkeys: AppHotkeysSettings, pages: PageSwitcherSettings) {
+        guard hotkeys.enabled || pages.enabled, appScoped == nil else { return }
+        guard let run = runTargetHook else { return }
+        guard AXIsProcessTrusted() else {
+            NSLog("pounce daemon: appHotkeys/pages are set but Accessibility is not granted; scoped chords off (grant via `pounce --request-accessibility`)")
+            return
+        }
+        // The tracker is only for the walk's "which pages are non-empty" read;
+        // hotkeys alone shouldn't pay for AX observers on every app.
+        let tracker = pages.enabled ? sharedWindowTracker() : nil
+        if let keys = AppScopedKeys(settings: hotkeys, pages: pages,
+                                    tracker: tracker, runTarget: run) {
+            appScoped = keys
+            let what = [hotkeys.enabled ? "\(hotkeys.scopes.count) scope(s)" : nil,
+                        pages.enabled ? "page walk on \(pages.modifiers.joined(separator: "+"))+\(pages.key)" : nil]
+                .compactMap { $0 }.joined(separator: ", ")
+            NSLog("pounce daemon: app-scoped keys armed (\(what))")
+        } else {
+            NSLog("pounce daemon: app-scoped keys event tap failed to install; chords keep their stock meanings")
+            releaseWindowTrackerIfUnused()
+        }
     }
 
     // Arms auto-quit (AutoQuit.swift). Idempotent and Accessibility-gated exactly
@@ -482,7 +511,8 @@ enum DaemonMode {
     // tap couldn't install without Accessibility (so no daemon restart is needed);
     // on revoke it drops the now-dead tap so the stock switcher resumes and a
     // later re-grant re-arms from a clean slate.
-    static func watchAccessibility(windows: WindowSwitcherSettings, autoQuit quit: AutoQuitSettings) {
+    static func watchAccessibility(windows: WindowSwitcherSettings, autoQuit quit: AutoQuitSettings,
+                                   appHotkeys: AppHotkeysSettings, pages: PageSwitcherSettings) {
         accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
             let now = AXIsProcessTrusted()
             if now != lastTrusted {
@@ -492,6 +522,7 @@ enum DaemonMode {
                     armWindowSwitcher(windows)
                     armAutoQuit(quit)
                     armFunctionKeyBinding()
+                    armAppScoped(hotkeys: appHotkeys, pages: pages)
                 } else if windowSwitcher != nil {
                     windowSwitcher = nil   // deinit disables the tap + removes the run-loop source
                     NSLog("pounce daemon: Accessibility revoked; window switcher disarmed, stock switcher restored")
@@ -505,6 +536,10 @@ enum DaemonMode {
                     if autoQuit != nil {
                         autoQuit = nil
                         NSLog("pounce daemon: Accessibility revoked; auto-quit disarmed")
+                    }
+                    if appScoped != nil {
+                        appScoped = nil   // deinit disables the tap; chords fall back to stock
+                        NSLog("pounce daemon: Accessibility revoked; app-scoped keys disarmed")
                     }
                     releaseWindowTrackerIfUnused()
                 }
@@ -916,6 +951,12 @@ enum DaemonMode {
         // so with both on there is still only one tracker.
         armAutoQuit(settings.autoQuit)
 
+        // App-scoped chords + the workspace-page walk (AppScoped.swift). Same
+        // grant and live-arming story again; runTargetHook is already set above,
+        // which is what lets a scoped chord fire the same dispatch a Carbon
+        // binding does.
+        armAppScoped(hotkeys: settings.appHotkeys, pages: settings.pages)
+
         // Clipboard history watcher: poll the pasteboard while the daemon lives.
         if settings.clipboard.enabled {
             Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
@@ -954,7 +995,8 @@ enum DaemonMode {
         // value that happened to hold the instant the daemon launched.
         lastTrusted = AXIsProcessTrusted()
         NSLog("pounce daemon accessibility trusted=\(lastTrusted!) (startup snapshot)")
-        watchAccessibility(windows: settings.windows, autoQuit: settings.autoQuit)
+        watchAccessibility(windows: settings.windows, autoQuit: settings.autoQuit,
+                           appHotkeys: settings.appHotkeys, pages: settings.pages)
         app.run()
     }
 

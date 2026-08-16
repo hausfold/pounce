@@ -329,8 +329,9 @@ on Nix? Every plugin is still just one script: copy it into
 
 Optional settings live in `~/.config/pounce/config.json`. The file is re-read on
 every open, so edits apply on the next launch — no restart needed. (The
-exceptions are the things the daemon sets up at startup: `windows`, `autoQuit`
-and the `items` hotkeys.) Every key is optional and falls back to a default.
+exceptions are the things the daemon sets up at startup: `windows`, `autoQuit`,
+`appHotkeys`, `pages` and the `items` hotkeys.) Every key is optional and falls
+back to a default.
 
 **Start from a config that documents itself:**
 
@@ -377,6 +378,21 @@ config written by a newer one.
     "enabled": false,       // quit an app when you close its last window
     "delay": 2,             // seconds to wait, then look again before quitting
     "exclude": ["com.apple.finder"]  // never auto-quit these; REPLACES the default
+  },
+  "appHotkeys": {
+    "enabled": false,       // chords consumed only over named apps (needs Accessibility)
+    "scopes": [             // per app: which chords, and what each one runs
+      // { "bundleId": "com.mitchellh.ghostty",
+      //   "keys": [ { "key": "p", "modifiers": ["cmd"], "target": "cmd:shell-here" } ] }
+    ]
+  },
+  "pages": {
+    "enabled": false,       // MRU walk over prefix/* AeroSpace workspaces (needs Accessibility)
+    "key": "tab",
+    "modifiers": ["ctrl"],
+    "prefix": "T",          // walks workspaces named prefix or prefix/…
+    "bundleId": null,       // scope the chord to one app; null = anywhere
+    "mruFile": null         // recency file your WM hook maintains, newest first
   },
   "clipboard": {
     "enabled": true,
