@@ -202,6 +202,55 @@ enum ConfigSpec {
                 ]),
 
             ConfigSection(
+                name: "appHotkeys",
+                doc: "Chords consumed ONLY while a named app is frontmost, passed through untouched everywhere else — what a plain global hotkey can't do (it swallows the chord machine-wide or not at all). Each scope is {\"bundleId\": …, \"keys\": [{\"key\": …, \"modifiers\": […], \"target\": \"cmd:…\"}]}; targets use the same grammar as \"items\" keys. Needs the Accessibility grant, and is read once at daemon start.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Turn scoped chords on.",
+                        json: json(s.appHotkeys.enabled)),
+                    ConfigField(
+                        name: "scopes",
+                        doc: "The apps and their chords. Empty means nothing is consumed anywhere.",
+                        json: json(s.appHotkeys.scopes.map { scope in
+                            ["bundleId": scope.bundleId,
+                             "keys": scope.keys.map {
+                                 ["key": $0.key, "modifiers": $0.modifiers, "target": $0.target]
+                             }] as [String: Any]
+                        })),
+                ]),
+
+            ConfigSection(
+                name: "pages",
+                doc: "A most-recently-used walk over the AeroSpace workspaces named \"prefix\" or \"prefix/…\": hold the modifiers, tap the key to step focus through the non-empty ones newest-first (add shift to walk backwards), release to stay. No panel — every step focuses the workspace live. Recency comes from \"mruFile\", a newest-first list your window manager's workspace-change hook maintains; pounce only reads it. Needs the Accessibility grant, and is read once at daemon start.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Turn the page walk on.",
+                        json: json(s.pages.enabled)),
+                    ConfigField(
+                        name: "key",
+                        doc: "The key you tap to advance.",
+                        json: json(s.pages.key)),
+                    ConfigField(
+                        name: "modifiers",
+                        doc: "The modifiers you hold. Releasing them ends the walk where it stands.",
+                        json: json(s.pages.modifiers)),
+                    ConfigField(
+                        name: "prefix",
+                        doc: "Only workspaces named exactly this, or this + \"/…\", are walked.",
+                        json: json(s.pages.prefix)),
+                    ConfigField(
+                        name: "bundleId",
+                        doc: "Scope the chord to one app, like an appHotkeys scope — over any other app it passes through untouched (a browser keeps its ⌃⇥ tabs). null means the chord is consumed everywhere.",
+                        json: json(s.pages.bundleId as Any)),
+                    ConfigField(
+                        name: "mruFile",
+                        doc: "Path to the newest-first workspace list your WM hook writes. null means no recency — the walk still works, ordered by name.",
+                        json: json(s.pages.mruFile as Any)),
+                ]),
+
+            ConfigSection(
                 name: "autoQuit",
                 doc: "Quit an app when you close its last window — what Windows does and macOS doesn't. Off by default. Reads the same window snapshot as \"windows\", so it wants the same Accessibility grant, and is read once at daemon start. The quit is the polite one ⌘Q sends: an app with unsaved work puts its sheet up and stays.",
                 fields: [
