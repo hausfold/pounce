@@ -70,6 +70,17 @@ func runFunctionKeyRemapTests() -> Int {
     expect(FunctionKeyRemap.parse(output) == FunctionKeyRemap.adding(to: [caps]),
            "parse ∘ add round-trips against real hidutil output")
 
+    // The distinction the whole safety of this feature rests on. "I read the list
+    // and it was empty" licenses a --set built from []; "I could not read the
+    // list" must not, or that --set deletes every other tool's mapping.
+    expect(FunctionKeyRemap.interpret(nil) == nil, "a failed hidutil call is nil, not empty")
+    expect(FunctionKeyRemap.interpret("") ?? [caps] == [], "no output means genuinely no mappings")
+    expect(FunctionKeyRemap.interpret("(null)") ?? [caps] == [], "hidutil's (null) means no mappings")
+    expect(FunctionKeyRemap.interpret("(\n)") ?? [caps] == [], "an empty list means no mappings")
+    expect(FunctionKeyRemap.interpret("some unexpected shape") == nil,
+           "output we can't parse is unreadable, NOT an empty mapping list")
+    expect(FunctionKeyRemap.interpret(output) == [caps, ours], "real output parses through")
+
     if failures == 0 { print("ok — all Fn remap tests passed") }
     return failures
 }

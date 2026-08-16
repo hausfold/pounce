@@ -116,12 +116,17 @@ enum DoctorMode {
                 if FunctionKeyRemap.isActive {
                     ok("Fn remapped to \(FunctionKeyRemap.targetKeyName.uppercased()) at the HID layer "
                        + "— macOS never sees a Fn key")
-                } else {
+                } else if status != nil {
+                    // Only a problem when a daemon is actually up to have installed
+                    // it; with the daemon down this is the same single fault as the
+                    // "not running" line above, and saying it twice reads as two.
                     bad("\"fnKey\": \"remap\" is configured but no Fn mapping is live — "
                         + "macOS still owns the key")
-                    problems.append("The HID remap isn't installed (daemon restarted without it, "
-                                    + "another tool rewrote UserKeyMapping, or this keyboard doesn't "
-                                    + "expose Fn). Check `hidutil property --get UserKeyMapping`.")
+                    problems.append("The HID remap isn't installed (another tool rewrote "
+                                    + "UserKeyMapping, the keyboard re-enumerated after a "
+                                    + "replug or sleep, or it doesn't expose Fn to IOHID). "
+                                    + "Check `hidutil property --get UserKeyMapping`; "
+                                    + "restarting the daemon reinstalls it.")
                 }
             } else {
                 // The tap route shares the key with HIToolbox's own Globe handler,
@@ -131,7 +136,11 @@ enum DoctorMode {
                 // read from login-session state, so it needs a logout to take.
                 let action = globeKeyAction()
                 if action == 0 {
-                    ok("macOS's own \u{1F310} key action is off")
+                    // Deliberately hedged: this reads the stored pref, while the
+                    // handler reads login-session state. Set-but-not-logged-out
+                    // looks exactly like this line and still races.
+                    ok("macOS's own \u{1F310} key action is set to Do Nothing "
+                       + "(needs one logout to take effect if you just changed it)")
                 } else {
                     warn("macOS's own \u{1F310} key action is \(globeActionName(action)) — it fires "
                          + "alongside your Fn binding, and the tap can't suppress it")

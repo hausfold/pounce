@@ -364,7 +364,8 @@ config written by a newer one.
   "scale": 1.0,             // 0.8–2.0 — how BIG the whole UI is drawn
   "hotkey": {
     "enabled": true,        // daemon grabs a global hotkey in-process
-    "key": "space",         // "space", "return", "a"…"z", "0"…"9"
+    "key": "space",         // "space", "return", "tab", "esc",
+                            // "a"…"z", "0"…"9", "f13"…"f20"
     "modifiers": ["cmd"]    // any of "cmd" / "shift" / "opt" / "ctrl"
   },
   "windows": {
@@ -564,10 +565,28 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   The cost, and the reason this is opt-in: Fn stops being Fn *everywhere*. No
   Fn+arrows (Home/End/PageUp/PageDown), no Fn+Delete, no Fn+F1–F12.
 
-  The mapping is applied while the daemon runs and removed when it exits, and it
-  merges into whatever is already in `UserKeyMapping` (a Karabiner mapping, a
-  Caps→F18 leader) rather than replacing it. It is never persistent: a reboot
-  clears it even if the daemon dies badly. To check or clear it by hand:
+  Three things worth knowing before you turn it on:
+
+  - **F19 is a real key on the full-size Magic Keyboard** (the one with a numeric
+    keypad), where it's the last key of the F-row — on that keyboard, pressing
+    F19 fires this binding too. Every key below F13 is one people actually bind,
+    so this is the least-bad choice rather than a free one.
+  - **A keyboard that re-enumerates loses the mapping.** `hidutil` attaches to
+    the HID services present when it runs, so unplugging and replugging an
+    external keyboard (and some sleep/wake cycles) drops it — the binding then
+    quietly stops working. `pounce doctor` says so; restarting the daemon
+    reinstalls it.
+  - **`UserKeyMapping` is one shared list.** Pounce merges into whatever is
+    already there (a Karabiner rule, a Caps→F18 leader) and puts back what it
+    found on exit, including an Fn mapping of your own that it had to displace.
+    It refuses to write at all if it couldn't read the list first. What it can't
+    do is notice a mapping added by something *else* while the daemon was
+    running and preserve that too — if you add one mid-session, re-apply it
+    after pounce exits.
+
+  The mapping is applied while the daemon runs and removed when it exits. It is
+  never persistent: a reboot clears it even if the daemon dies badly. To check or
+  clear it by hand:
 
   ```bash
   hidutil property --get UserKeyMapping

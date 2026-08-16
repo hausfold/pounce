@@ -475,8 +475,15 @@ struct Settings {
             if let x = q["exclude"] as? [String] { s.autoQuit.exclude = x }
         }
         s.items = ItemSettings.parse(obj["items"])
-        if let f = obj["fnKey"] as? String, let mode = Settings.FnKeyMode(rawValue: f.lowercased()) {
-            s.fnKey = mode
+        if let f = obj["fnKey"] as? String {
+            // Say so rather than falling back silently: the fallback is the mode
+            // that shares the key with macOS, so a typo here looks exactly like
+            // "the remap doesn't work".
+            if let mode = Settings.FnKeyMode(rawValue: f.lowercased()) {
+                s.fnKey = mode
+            } else {
+                NSLog("pounce: config.json has \"fnKey\": \"\(f)\", which isn't \"tap\" or \"remap\"; using \"tap\"")
+            }
         }
         return s
     }

@@ -339,6 +339,10 @@ enum DaemonMode {
     static var hotKey: HotKeyManager?
     // Retained so the ⌘Tab event tap stays alive.
     static var windowSwitcher: WindowSwitcher?
+    // Teardown on SIGTERM/SIGINT (see run()). Off the main queue on purpose, so
+    // the exit path doesn't depend on the UI thread being responsive.
+    static let exitQueue = DispatchQueue(label: "co.hausfold.pounce.exit")
+    static var exitSignalSources: [DispatchSourceSignal] = []
     // The AX window snapshot, shared by every feature that reads it (the ⌘Tab
     // switcher, auto-quit). One instance on purpose: the tracker keeps an
     // AXObserver on every running app, and a second copy would double that for no
@@ -835,15 +839,19 @@ enum DaemonMode {
                 // IOHID), so the binding still works as well as it used to.
                 if settings.fnKey == .remap, FunctionKeyRemap.apply() {
                     let target = FunctionKeyRemap.targetKeyName
-                    guard let keyCode = HotKeyParser.keyCode(for: target),
-                          manager.register(keyCode: keyCode, modifiers: 0, onFire: fire) else {
-                        NSLog("pounce daemon: binding \(label) could not register \(target) after the Fn remap")
-                        bindingReport.append("\(label) — FAILED, \(target) already taken")
+                    if let keyCode = HotKeyParser.keyCode(for: target),
+                       manager.register(keyCode: keyCode, modifiers: 0, onFire: fire) {
+                        NSLog("pounce daemon: binding \(label) registered (Fn remapped to \(target) at the HID layer)")
+                        bindingReport.append("\(label) — via HID remap to \(target)")
                         continue
                     }
-                    NSLog("pounce daemon: binding \(label) registered (Fn remapped to \(target) at the HID layer)")
-                    bindingReport.append("\(label) — via HID remap to \(target)")
-                    continue
+                    // Another app already holds F19. Hand Fn back before falling
+                    // through to the tap: keeping the remap here would be the
+                    // worst of both worlds — Fn+arrows gone AND nothing bound.
+                    FunctionKeyRemap.restore()
+                    NSLog("pounce daemon: \(target) is already taken, so the Fn remap was undone; falling back to the event tap for \(label)")
+                    // No report line here: the tap path below owns this binding's
+                    // line from now on, and two would look like two bindings.
                 }
                 functionKeyRequest = (label, fire)
                 updateFunctionKeyReport("\(label) — waiting for Accessibility")
@@ -915,18 +923,26 @@ enum DaemonMode {
             }
         }
 
-        // Give Fn back on the way out. It's a no-op unless `"fnKey": "remap"`
-        // actually installed a mapping, and it restores the list as it stood
-        // before we touched it rather than clearing UserKeyMapping outright —
-        // other tools (Karabiner, a Caps→F18 leader) live in that same list.
-        // A hard kill skips this, which is why the mapping is deliberately the
-        // non-persistent kind: a reboot undoes it regardless.
-        let cleanupAndExit: @convention(c) (Int32) -> Void = { _ in
-            FunctionKeyRemap.removeSync()
-            unlink(SocketConfig.path); _exit(0)
+        // Give Fn back on the way out. A no-op unless `"fnKey": "remap"` actually
+        // installed a mapping; a hard kill skips it, which is why the mapping is
+        // deliberately the non-persistent kind (a reboot undoes it regardless).
+        //
+        // Handled through a DispatchSource rather than a C signal handler because
+        // the restore has to run hidutil and read its output: malloc, Foundation,
+        // and a blocking wait are all illegal in a real handler, and the one time
+        // they'd deadlock is the one time we need them. The source runs on its own
+        // queue so a wedged main thread can't hold up the exit either.
+        for sig in [SIGTERM, SIGINT] {
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: exitQueue)
+            source.setEventHandler {
+                FunctionKeyRemap.restore()
+                unlink(SocketConfig.path)
+                _exit(0)
+            }
+            source.resume()
+            exitSignalSources.append(source)
         }
-        signal(SIGTERM, cleanupAndExit)
-        signal(SIGINT, cleanupAndExit)
 
         DispatchQueue.global(qos: .userInitiated).async {
             startSocketServer(state: state, ui: ui)
