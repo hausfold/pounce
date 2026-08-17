@@ -103,12 +103,15 @@ until you name them.
 
 ## more
 
-- [hausfold.co/pounce](https://hausfold.co/pounce/) — the product page
+- [hausfold.co/docs/pounce](https://hausfold.co/docs/pounce/) — the manual:
+  [installing](https://hausfold.co/docs/pounce/install/),
+  [using it](https://hausfold.co/docs/pounce/using/),
+  [every config key](https://hausfold.co/docs/pounce/config/),
+  [writing a command](https://hausfold.co/docs/pounce/writing-commands/)
 - [`docs/reference.md`](./docs/reference.md) — config, command discovery,
   plugins, the hotkey, building from source
-- [The pounce guide](https://hausfold.co/docs/haus/guides/pounce/) · [config &
-  CLI reference](https://hausfold.co/docs/haus/reference/pounce/) — pounce
-  inside the haus rice
+- [The Launcher room](https://hausfold.co/docs/haus/rooms/launcher/) — pounce
+  inside haus: how the layer installs, signs and configures it
 - `pounce --help` — the authoritative flag list
 
 <p align="center"><a href="https://hausfold.co">⌂ hausfold</a></p>
