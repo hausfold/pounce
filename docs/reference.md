@@ -330,7 +330,7 @@ on Nix? Every plugin is still just one script: copy it into
 Optional settings live in `~/.config/pounce/config.json`. The file is re-read on
 every open, so edits apply on the next launch — no restart needed. (The
 exceptions are the things the daemon sets up at startup: `windows`, `autoQuit`,
-`appHotkeys`, `pages` and the `items` hotkeys.) Every key is optional and falls
+`appHotkeys`, `pages`, `mouseChords` and the `items` hotkeys.) Every key is optional and falls
 back to a default.
 
 **Start from a config that documents itself:**
@@ -790,6 +790,44 @@ Headers appear only when there are two or more groups to tell apart; with
 everything on one workspace the list is plain. Filtered results are ranked by
 score rather than gathered, so they drop the headers and carry a per-row
 workspace badge instead.
+
+## Mouse chords (opt-in)
+
+A window-manager keybind can only reach the window you are already in. A **mouse
+chord** — a modifier plus a click — acts on the window **under the pointer**, so
+"zoom that one over there" is one gesture instead of focus-then-zoom.
+
+```json
+"mouseChords": {
+  "enabled": true,
+  "chords": [
+    { "button": "right", "modifiers": ["alt"], "action": "fullscreen" }
+  ]
+}
+```
+
+That makes **⌥ + right-click** zoom whichever window you clicked to fill its own
+workspace, focusing it on the way. `fullscreen` is a toggle, so the same chord
+puts it back. Needs [AeroSpace](https://github.com/nikitabobko/AeroSpace) (the
+action runs `aerospace fullscreen --window-id`) and the Accessibility grant every
+consuming event tap needs; read once at daemon start.
+
+**Choosing a chord.** The click is consumed over *every* app, so pick one nothing
+else claims:
+
+| chord | what it costs |
+|---|---|
+| **⌥ + right-click** | the least of the three: macOS's ⌥ *variant* of a context menu (in Finder, "Copy as Pathname"), and ⌥ + right-drag where an app uses it |
+| ⌥ + left-click | multi-cursor in GUI editors, ⌥-click-a-link to download, ⌥-click a menu extra, and every ⌥-drag (the down is swallowed, so the drag never starts) |
+| ctrl + click | context menus machine-wide — macOS's own secondary click |
+
+A chord with no modifier is refused outright and logged: it would swallow every
+click on the machine, including the ones you'd need to fix the config.
+
+Clicking the desktop passes through untouched, so ⌥ + right-click still gets
+Finder's menu there, and anything drawn above ordinary windows — the menu bar,
+the Dock, a status bar like SketchyBar — is transparent to the chord rather than
+being "clicked".
 
 ## Quit on last window close (opt-in)
 

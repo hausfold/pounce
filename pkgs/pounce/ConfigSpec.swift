@@ -251,6 +251,24 @@ enum ConfigSpec {
                 ]),
 
             ConfigSection(
+                name: "mouseChords",
+                doc: "A modifier plus a click, acting on the window UNDER THE POINTER — what a window-manager keybind can't do, since a keybind can only reach the window you are already in. Each chord is {\"button\": \"left\"|\"right\", \"modifiers\": […], \"action\": \"fullscreen\"}. Every chord must carry a modifier (a bare one would swallow every click on the machine), and the click is consumed over every app, so pick a chord nothing else claims — ⌥ + right-click is the quietest (it costs only macOS's ⌥ variant of a context menu); ctrl + click is macOS's own secondary-click and would cost you context menus everywhere. Needs AeroSpace and the Accessibility grant, and is read once at daemon start.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Turn mouse chords on.",
+                        json: json(s.mouseChords.enabled)),
+                    ConfigField(
+                        name: "chords",
+                        doc: "The chords. Empty means no click is consumed anywhere.",
+                        json: json(s.mouseChords.chords.map { chord in
+                            ["button": chord.button.rawValue,
+                             "modifiers": chord.modifiers,
+                             "action": chord.action.rawValue] as [String: Any]
+                        })),
+                ]),
+
+            ConfigSection(
                 name: "autoQuit",
                 doc: "Quit an app when you close its last window — what Windows does and macOS doesn't. Off by default. Reads the same window snapshot as \"windows\", so it wants the same Accessibility grant, and is read once at daemon start. The quit is the polite one ⌘Q sends: an app with unsaved work puts its sheet up and stays.",
                 fields: [

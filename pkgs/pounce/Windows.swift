@@ -483,6 +483,18 @@ enum Aerospace {
         }
     }
 
+    // Zoom a window to fill its own workspace — AeroSpace's `fullscreen` is a
+    // toggle, so the same chord restores it. Names the window explicitly, so it
+    // neither needs nor causes a focus change: the mouse chord (MouseChords.swift)
+    // focuses separately, and deliberately.
+    //
+    // Fire-and-forget for the same reason focusWorkspace is: the caller is a
+    // gesture, and a window that evaporated between the click and the spawn
+    // should leave the screen alone rather than report anything.
+    static func fullscreen(windowID: CGWindowID) {
+        run(["fullscreen", "--window-id", String(windowID)]) { _, _ in }
+    }
+
     // Focus a workspace by name. Fire-and-forget: the page walk (AppScoped.swift)
     // steps live from an event-tap callback that can't wait on anything, and a
     // step that fails (workspace evaporated mid-walk) simply leaves focus where

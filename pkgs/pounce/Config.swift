@@ -320,6 +320,44 @@ struct PageSwitcherSettings {
     var mruFile: String?
 }
 
+// A modifier + a click, acting on the window under the POINTER (MouseChords.swift).
+// The pointer twin of a WM keybind: a key chord can only reach the window you
+// are already in, so "zoom that one over there" needs the mouse. Off by default.
+//
+// Needs AeroSpace (the action shells out to its CLI) and the Accessibility grant
+// a consuming event tap requires, and is read once at daemon start. Every chord
+// must carry a modifier — see MouseChords.swift for why a bare one is refused.
+struct MouseChordsSettings {
+    enum Button: String {
+        case left, right
+
+        // The down that arms the chord, plus the drag and up that have to be
+        // swallowed with it so the app under the pointer never sees half a
+        // click. Order is irrelevant; the set is what builds the tap mask.
+        var eventTypes: [CGEventType] {
+            switch self {
+            case .left:  return [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            case .right: return [.rightMouseDown, .rightMouseDragged, .rightMouseUp]
+            }
+        }
+    }
+
+    // One case today. It is an enum rather than a bool so a typo is rejected
+    // loudly (the `fnKey` pattern) instead of silently meaning "fullscreen".
+    enum Action: String {
+        case fullscreen
+    }
+
+    struct Chord {
+        var button: Button
+        var modifiers: [String]
+        var action: Action
+    }
+
+    var enabled: Bool = false
+    var chords: [Chord] = []
+}
+
 // Quit an app when its last window closes (AutoQuit.swift) — the Windows-style
 // behaviour macOS deliberately doesn't have. Default off, and it stays off even
 // in opinionated setups until someone asks for it: a windowless app is a normal
@@ -359,6 +397,7 @@ struct Settings {
     var windows = WindowSwitcherSettings()
     var appHotkeys = AppHotkeysSettings()
     var pages = PageSwitcherSettings()
+    var mouseChords = MouseChordsSettings()
     var autoQuit = AutoQuitSettings()
     var quickAnswers = QuickAnswerSettings()
     // Daily latest-release check that nudges (palette row + one notification)
@@ -532,6 +571,30 @@ struct Settings {
             if let p = pg["prefix"] as? String, !p.isEmpty { s.pages.prefix = p }
             if let b = pg["bundleId"] as? String, !b.isEmpty { s.pages.bundleId = b }
             if let f = pg["mruFile"] as? String, !f.isEmpty { s.pages.mruFile = f }
+        }
+        if let mc = obj["mouseChords"] as? [String: Any] {
+            if let e = mc["enabled"] as? Bool { s.mouseChords.enabled = e }
+            if let chords = mc["chords"] as? [[String: Any]] {
+                s.mouseChords.chords = chords.compactMap { entry in
+                    // Both enums say so rather than defaulting: a chord that
+                    // silently became "right"/"fullscreen" after a typo is a
+                    // gesture firing on a button you didn't bind.
+                    let rawButton = (entry["button"] as? String)?.lowercased() ?? "right"
+                    guard let button = MouseChordsSettings.Button(rawValue: rawButton) else {
+                        NSLog("pounce mouseChords: \"button\": \"\(rawButton)\" isn't \"left\" or \"right\"; chord skipped")
+                        return nil
+                    }
+                    let rawAction = (entry["action"] as? String)?.lowercased() ?? "fullscreen"
+                    guard let action = MouseChordsSettings.Action(rawValue: rawAction) else {
+                        NSLog("pounce mouseChords: \"action\": \"\(rawAction)\" isn't a known action; chord skipped")
+                        return nil
+                    }
+                    return MouseChordsSettings.Chord(
+                        button: button,
+                        modifiers: entry["modifiers"] as? [String] ?? [],
+                        action: action)
+                }
+            }
         }
         if let q = obj["autoQuit"] as? [String: Any] {
             if let e = q["enabled"] as? Bool { s.autoQuit.enabled = e }

@@ -341,6 +341,7 @@ enum DaemonMode {
     static var windowSwitcher: WindowSwitcher?
     // Retained so the app-scoped chords + page-walk tap stays alive (AppScoped.swift).
     static var appScoped: AppScopedKeys?
+    static var mouseChords: MouseChords?
     // Teardown on SIGTERM/SIGINT (see run()). Off the main queue on purpose, so
     // the exit path doesn't depend on the UI thread being responsive.
     static let exitQueue = DispatchQueue(label: "co.hausfold.pounce.exit")
@@ -452,6 +453,28 @@ enum DaemonMode {
         }
     }
 
+    // Arms the mouse chords (MouseChords.swift). Same grant and live re-arming
+    // story as the chords above — and the same graceful failure: without the
+    // grant the click keeps whatever it meant to the app under the pointer,
+    // which is the pass-through this feature already promises for every chord
+    // it isn't bound to.
+    static func armMouseChords(_ settings: MouseChordsSettings) {
+        guard settings.enabled, mouseChords == nil else { return }
+        guard AXIsProcessTrusted() else {
+            NSLog("pounce daemon: mouseChords is set but Accessibility is not granted; mouse chords off (grant via `pounce --request-accessibility`)")
+            return
+        }
+        if let chords = MouseChords(settings: settings) {
+            mouseChords = chords
+            let what = settings.chords
+                .map { "\($0.modifiers.joined(separator: "+"))+\($0.button.rawValue)-click → \($0.action.rawValue)" }
+                .joined(separator: ", ")
+            NSLog("pounce daemon: mouse chords armed (\(what))")
+        } else {
+            NSLog("pounce daemon: mouse chords event tap failed to install; clicks keep their stock meanings")
+        }
+    }
+
     // Arms auto-quit (AutoQuit.swift). Idempotent and Accessibility-gated exactly
     // like the switcher above, and for the same reason: the grant may be ticked
     // after the daemon booted, and watchAccessibility calls this again when it is.
@@ -512,7 +535,8 @@ enum DaemonMode {
     // on revoke it drops the now-dead tap so the stock switcher resumes and a
     // later re-grant re-arms from a clean slate.
     static func watchAccessibility(windows: WindowSwitcherSettings, autoQuit quit: AutoQuitSettings,
-                                   appHotkeys: AppHotkeysSettings, pages: PageSwitcherSettings) {
+                                   appHotkeys: AppHotkeysSettings, pages: PageSwitcherSettings,
+                                   mouseChords chords: MouseChordsSettings) {
         accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
             let now = AXIsProcessTrusted()
             if now != lastTrusted {
@@ -523,6 +547,7 @@ enum DaemonMode {
                     armAutoQuit(quit)
                     armFunctionKeyBinding()
                     armAppScoped(hotkeys: appHotkeys, pages: pages)
+                    armMouseChords(chords)
                 } else if windowSwitcher != nil {
                     windowSwitcher = nil   // deinit disables the tap + removes the run-loop source
                     NSLog("pounce daemon: Accessibility revoked; window switcher disarmed, stock switcher restored")
@@ -540,6 +565,10 @@ enum DaemonMode {
                     if appScoped != nil {
                         appScoped = nil   // deinit disables the tap; chords fall back to stock
                         NSLog("pounce daemon: Accessibility revoked; app-scoped keys disarmed")
+                    }
+                    if mouseChords != nil {
+                        mouseChords = nil   // ditto — the click reaches the app again
+                        NSLog("pounce daemon: Accessibility revoked; mouse chords disarmed")
                     }
                     releaseWindowTrackerIfUnused()
                 }
@@ -957,6 +986,12 @@ enum DaemonMode {
         // binding does.
         armAppScoped(hotkeys: settings.appHotkeys, pages: settings.pages)
 
+        // Modifier+click on the window under the pointer (MouseChords.swift).
+        // Its own tap, not the one above: the event masks are disjoint and so
+        // are the switches, so a machine that wants one shouldn't install the
+        // other.
+        armMouseChords(settings.mouseChords)
+
         // Clipboard history watcher: poll the pasteboard while the daemon lives.
         if settings.clipboard.enabled {
             Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
@@ -996,7 +1031,8 @@ enum DaemonMode {
         lastTrusted = AXIsProcessTrusted()
         NSLog("pounce daemon accessibility trusted=\(lastTrusted!) (startup snapshot)")
         watchAccessibility(windows: settings.windows, autoQuit: settings.autoQuit,
-                           appHotkeys: settings.appHotkeys, pages: settings.pages)
+                           appHotkeys: settings.appHotkeys, pages: settings.pages,
+                           mouseChords: settings.mouseChords)
         app.run()
     }
 
