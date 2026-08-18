@@ -49,7 +49,7 @@ in
 
 stdenvNoCC.mkDerivation {
   pname = "pounce";
-  version = "2026.08.17";
+  version = "2026.08.17-1";
 
   src = ./.;
 
