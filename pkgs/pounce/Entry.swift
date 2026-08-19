@@ -780,7 +780,7 @@ enum DaemonMode {
                 // The target IS the tail of the URL — "<bundle-id>?<anchor>" —
                 // so a hotkey bound to setting:…?Privacy_AllFiles lands on Full
                 // Disk Access itself, not the top of Privacy & Security.
-                if let url = URL(string: SettingsPaneStore.urlScheme + pane) {
+                if let url = URL(string: SettingsPaneStore.url(forTarget: pane)) {
                     NSWorkspace.shared.open(url)
                 } else {
                     NSLog("pounce daemon: target '\(target)' does not form a URL; ignored")

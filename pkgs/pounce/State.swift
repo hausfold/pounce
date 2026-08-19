@@ -458,9 +458,15 @@ final class DaemonState: ObservableObject {
         let sub = item.subtitle.flatMap { Fuzzy.score(query, $0.lowercased()) }
         // Apple's synonyms for a settings row, scored one TERM at a time — the
         // words a person types ("full disk access") are usually only in here,
-        // never in the title. Slightly discounted so a row that matches on its
-        // own name still beats one that matches on a keyword. Scoring the joined
-        // blob instead would match nearly everything; see SystemSettings.swift.
+        // never in the title. Discounted, because these are synonyms and not
+        // names: at full weight an exact hit on one of the ~3300 settings
+        // keywords ties an exact hit on an app's own name, and there are a lot
+        // more keywords than apps (typing "safari" started returning a settings
+        // row that lists Safari among its synonyms, ahead of Safari). A settings
+        // row's real alternate NAMES go through `searchAlias`, which is
+        // undiscounted. Scoring the joined blob instead would make a
+        // 200-character string a subsequence of any query — see
+        // SystemSettings.swift.
         let keyword = item.searchKeywords.isEmpty ? nil
             : item.searchKeywords.compactMap { Fuzzy.score(query, $0) }.max().map { $0 * 0.9 }
         let candidates = [title, alias, user, keyword, sub.map { $0 * 0.5 }].compactMap { $0 }

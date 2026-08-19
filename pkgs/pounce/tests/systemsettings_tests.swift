@@ -22,6 +22,33 @@ func runSystemSettingsTests() -> Int {
           "keywords split, trim, lowercase and dedupe")
     check(SettingsPaneStore.keywords(nil).isEmpty, "no index → no keywords")
     check(SettingsPaneStore.keywords(" , ,").isEmpty, "an index of separators yields nothing")
+    check(!SettingsPaneStore.keywords("sound, Volume", title: "Volume").contains("volume"),
+          "a keyword that just repeats the title is dropped — the title already scores")
+    // Apple spells the Wi-Fi pane with a non-breaking hyphen; nobody types one.
+    check(SettingsPaneStore.alternateName(for: "Wi\u{2011}Fi") == "Wi-Fi",
+          "a title's non-breaking hyphen gets an ASCII twin, matched at full weight")
+    check(SettingsPaneStore.alternateName(for: "Menu Bar", derived: "Control Center")
+            == "Control Center",
+          "a renamed pane keeps answering to the name in its bundle id")
+    check(SettingsPaneStore.alternateName(for: "Bluetooth", derived: "Bluetooth") == nil,
+          "…and a pane whose name matches its id has no second name")
+    check(SettingsPaneStore.keywords(nil, title: "Menu Bar", extra: ["Control Center", "Menu Bar"])
+            == ["control center"],
+          "extra names (the bundle id's, the Info.plist's) join the keywords, deduped")
+
+    // MARK: pane names macOS doesn't localize
+
+    check(SettingsPaneStore.isInternalName("PowerPreferences"), "a build target's name is not a pane name")
+    check(SettingsPaneStore.isInternalName("HeadphoneSettingsExtension"), "nor is this one")
+    check(!SettingsPaneStore.isInternalName("Touch ID & Password"), "a real name has a space")
+    check(!SettingsPaneStore.isInternalName("Bluetooth"), "…or doesn't end in a target-name word")
+    check(SettingsPaneStore.nameFromBundleID("com.apple.Battery-Settings.extension") == "Battery",
+          "the bundle id is the last-resort pane name")
+    check(SettingsPaneStore.nameFromBundleID("com.apple.HeadphoneSettings") == "Headphone",
+          "…camel-cased ids split into words")
+    check(SettingsPaneStore.nameFromBundleID("com.apple.ControlCenter-Settings.extension")
+            == "Control Center",
+          "…which is also how \"control center\" still finds the pane macOS renamed to Menu Bar")
 
     // MARK: searchTerms parsing
 
@@ -39,6 +66,14 @@ func runSystemSettingsTests() -> Int {
                 ["title": "FileVault", "index": "disk, encrypt, filevault"],
             ],
         ],
+        // One anchor backing several settings — the shape Appearance's `Main`
+        // has. Each needs its own item key.
+        "Shared": [
+            "localizableStrings": [
+                ["title": "Accent color", "index": "color"],
+                ["title": "Highlight color", "index": "color"],
+            ],
+        ],
         // A pane whose sub-item just restates the pane name — dropped, since the
         // always-visible pane row already goes there.
         "Main": [
@@ -54,9 +89,22 @@ func runSystemSettingsTests() -> Int {
         plist, paneID: "com.apple.settings.PrivacySecurity.extension", pane: "Privacy & Security",
         icon: "/System/Library/ExtensionKit/Extensions/SecurityPrivacyExtension.appex")
 
-    check(entries.count == 2, "titled entries only, and never the pane's own name again")
-    check(entries.map(\.title) == ["FileVault", "Allow applications to access all user files"],
+    check(entries.count == 4, "titled entries only, and never the pane's own name again")
+    check(entries.map(\.title).prefix(2) == ["FileVault", "Allow applications to access all user files"],
           "anchors are walked in a stable (sorted) order")
+
+    // MARK: one anchor, several settings
+
+    let shared = entries.filter { $0.anchor == "Shared" }
+    check(shared.count == 2, "both settings under a shared anchor become rows")
+    check(Set(shared.map(\.itemKey)).count == 2, "…with DISTINCT item keys, or an alias would hit both")
+    check(shared.contains { $0.itemKey.hasSuffix("?Shared#accent-color") },
+          "the uniquifier is the title, not the array index Apple reorders")
+    check(shared.allSatisfy { $0.url.hasSuffix("?Shared") },
+          "but the URL keeps the bare anchor — macOS has never heard of the uniquifier")
+    check(SettingsPaneStore.url(forTarget: "com.apple.x?Shared#accent-color")
+            == "x-apple.systempreferences:com.apple.x?Shared",
+          "…and `pounce run` strips it through the same one place")
 
     guard let fda = entries.first(where: { $0.anchor == "Privacy_AllFiles" }) else {
         check(false, "the Full Disk Access anchor survives parsing"); return failures
@@ -78,8 +126,8 @@ func runSystemSettingsTests() -> Int {
     check(ItemTarget.parse(fda.itemKey) == .setting(fda.target), "which ItemTarget parses back")
 
     let pane = SettingsPaneEntry(paneID: "com.apple.Appearance-Settings.extension", anchor: nil,
-                                 title: "Appearance", pane: "Appearance", keywords: [],
-                                 iconPath: SettingsPaneStore.iconPath)
+                                 discriminator: nil, title: "Appearance", pane: "Appearance",
+                                 keywords: [], iconPath: SettingsPaneStore.iconPath, alias: nil)
     check(pane.itemKey == "setting:com.apple.Appearance-Settings.extension",
           "a pane's item key has no anchor")
     check(pane.url == "x-apple.systempreferences:com.apple.Appearance-Settings.extension",
@@ -96,15 +144,15 @@ func runSystemSettingsTests() -> Int {
     // MARK: the per-pane cap
 
     func sub(_ pane: String, _ anchor: String) -> PounceItem {
-        PounceItem.setting(SettingsPaneEntry(paneID: pane, anchor: anchor, title: anchor,
-                                             pane: pane, keywords: [],
-                                             iconPath: SettingsPaneStore.iconPath),
+        PounceItem.setting(SettingsPaneEntry(paneID: pane, anchor: anchor, discriminator: nil,
+                                             title: anchor, pane: pane, keywords: [],
+                                             iconPath: SettingsPaneStore.iconPath, alias: nil),
                            subItemMinQuery: 3)
     }
     func paneRow(_ pane: String) -> PounceItem {
-        PounceItem.setting(SettingsPaneEntry(paneID: pane, anchor: nil, title: pane,
-                                             pane: pane, keywords: [],
-                                             iconPath: SettingsPaneStore.iconPath),
+        PounceItem.setting(SettingsPaneEntry(paneID: pane, anchor: nil, discriminator: nil,
+                                             title: pane, pane: pane, keywords: [],
+                                             iconPath: SettingsPaneStore.iconPath, alias: nil),
                            subItemMinQuery: 3)
     }
     let app = PounceItem.app(name: "Safari", path: "/Applications/Safari.app", boost: 0)
@@ -124,6 +172,8 @@ func runSystemSettingsTests() -> Int {
           "and keeps the FIRST ones, i.e. the highest-scoring — the list arrives sorted")
     check(SettingsPaneStore.capPerPane(list, limit: 0).count == list.count,
           "limit 0 is no cap, which is how config.json spells `maxPerPane: 0`")
+    check(SettingsPaneStore.capPerPane(list, limit: Int.max).count == list.count,
+          "…and Int.max is the no-cap every non-launcher mode passes")
 
     // MARK: the query gate
 

@@ -162,7 +162,7 @@ struct PounceItem: Identifiable {
     // why both are searched.
     static func setting(_ entry: SettingsPaneEntry, subItemMinQuery: Int) -> PounceItem {
         let isPane = entry.anchor == nil
-        return PounceItem(raw: entry.url, title: entry.title, searchAlias: nil,
+        return PounceItem(raw: entry.url, title: entry.title, searchAlias: entry.alias,
                           subtitle: isPane ? "System Settings" : entry.pane,
                           icon: "app:\(entry.iconPath)",
                           actions: [ItemAction(key: "enter", label: "Open")],

@@ -332,8 +332,8 @@ same way shortcuts do.
 command scripts keyed `cmd:settings-<slug>`. They're now native rows keyed
 `setting:<pane-bundle-id>[?<anchor>]`, so an `items` override or hotkey pointed
 at the old key needs repointing — `pounce doctor` reports a binding whose target
-no longer exists. `pounce run setting:com.apple.Displays-Settings.extension`
-lists the shape; the frecency history under the old keys is not carried over.
+no longer exists. `pounce run setting:com.apple.Displays-Settings.extension` opens a pane by the
+new key; the frecency history under the old keys is not carried over.
 
 ### Optional plugins (off by default)
 
@@ -540,7 +540,7 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
 | `cmd:<id>` | a command script, by filename without `.sh` |
 | `app:/Applications/Foo.app` | an application, by path |
 | `shortcut:<uuid>` | a Shortcuts-library entry, by its identifier (`shortcuts list --show-identifiers`) |
-| `setting:<pane>[?<anchor>]` | a System Settings pane, or one setting in it — `setting:com.apple.Displays-Settings.extension?nightShiftSection` |
+| `setting:<pane>[?<anchor>]` | a System Settings pane, or one setting in it — `setting:com.apple.Displays-Settings.extension?nightShiftSection`. Where one anchor backs several settings the key gains a `#<slug>` tail to stay unique; the URL still uses the bare anchor. `pounce doctor` prints the exact key. |
 | `mode:<name>` | a built-in window: `launcher`, `clipboard`, `emoji`, `screenshots`, `camera`, `filesearch` |
 
 ```jsonc
