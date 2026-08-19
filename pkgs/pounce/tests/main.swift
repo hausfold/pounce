@@ -63,6 +63,7 @@ failures += runDraftsTests()
 failures += runAutoQuitTests()
 failures += runAppScannerTests()
 failures += runShortcutsTests()
+failures += runSystemSettingsTests()
 
 if failures == 0 {
     exit(0)

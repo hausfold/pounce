@@ -173,6 +173,17 @@ changes `ai/SKILL.md` in the same PR.
   daemon-side for exactly that reason. Note the pounce/Spotlight asymmetry
   Shortcuts.swift documents: an app's **App Intents** are discoverable but not
   invocable by anyone but the system, so there is nothing to add there.
+- **A launcher source that reads Apple's own data** (`SystemSettings.swift`): the
+  System Settings rows are parsed out of each pane extension's `.searchTerms`
+  plist — macOS's index behind its own settings search — never a table in this
+  repo. That's deliberate: anchors and pane names change between macOS releases,
+  and the hand-curated `settings-panes.tsv` this replaced went stale by design.
+  Two traps if you touch it: the `title` is Apple's sentence, not the UI label
+  ("Allow applications to access all user files" is Full Disk Access), so the
+  synonym list is half the searchable surface and is matched term by term, never
+  as one joined blob; and the ~700 sub-items are gated behind
+  `systemSettings.subItemMinQuery` plus a per-pane cap, because Accessibility
+  alone ships 342 of them.
 - **Leader sequences** (`"opt+space e"`, `Leader.swift`): whitespace separates steps,
   `+` separates modifiers. Sequences sharing a leader share a `HotKeyNode`, so the
   leader is registered once and owns a map of next steps. **Do not reach for a

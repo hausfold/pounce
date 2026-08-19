@@ -28,6 +28,11 @@ struct Commit {
     // fallback), and only the first of those could interpret a new verb. Acting
     // here makes ⏎ run the shortcut on all three.
     var shortcutRun: String? = nil
+    // A System Settings deep link to open (`x-apple.systempreferences:…`).
+    // Daemon-side for the same reason shortcutRun is: only the in-process hotkey
+    // path could interpret a new clientString verb, and this has to work from
+    // the socket client and the no-daemon fallback too.
+    var settingOpen: String? = nil
 }
 
 // MARK: - State
@@ -62,6 +67,11 @@ final class DaemonState: ObservableObject {
 
     var isLauncher = false
     var maxEmpty = Int.max
+    // How many settings a single System Settings pane may contribute to one
+    // result list (ContentView.filtered). Read off config on every summon like
+    // everything else; Int.max outside the launcher, where there are no
+    // settings rows to cap.
+    var settingsMaxPerPane = Int.max
     // --chain: which free-text commits the caller answers by running another
     // `pounce`, so those commits hold the window in the loading state instead of
     // fading out and re-opening. Keyed by action ("enter", "cmd", "opt", "ctrl")
@@ -136,6 +146,7 @@ final class DaemonState: ObservableObject {
         globalIcon = nil
         isLauncher = false
         maxEmpty = Int.max
+        settingsMaxPerPane = Int.max
         chainActions = []
         freeTextActions = []
         draftKey = nil
@@ -377,6 +388,16 @@ final class DaemonState: ObservableObject {
             if settings.shortcuts.enabled {
                 built.append(contentsOf: ShortcutsStore.shared.items())
             }
+            // System Settings: every pane, plus the ~700 individual settings
+            // inside them, read out of the panes' own search index (see
+            // SystemSettings.swift). The sub-items carry a minQueryLength so
+            // they stay out of the way until you've typed enough to mean one.
+            SettingsPaneStore.shared.setEnabled(settings.systemSettings.enabled)
+            settingsMaxPerPane = settings.systemSettings.maxPerPane
+            if settings.systemSettings.enabled {
+                built.append(contentsOf: SettingsPaneStore.shared.items(
+                    subItemMinQuery: settings.systemSettings.subItemMinQuery))
+            }
             // Apply the per-item overrides from config.json's `items` map. Both
             // passes key off frecencyKey ("cmd:<id>" / "app:<path>"), which is
             // exactly how the map is addressed — see ItemSetting. Done here, on
@@ -413,8 +434,19 @@ final class DaemonState: ObservableObject {
 
     private func frecency(for item: PounceItem) -> Double { frecencyScores[item.id] ?? 0 }
 
+    // The empty-query list. Rows that ask for a minimum query length (the
+    // individual macOS settings — see SettingsPaneStore) are not eligible here
+    // by definition: this IS the no-query case.
+    var emptyQueryRows: [PounceItem] {
+        Array(itemsSorted.lazy.filter { $0.minQueryLength == 0 }.prefix(maxEmpty))
+    }
+
     // Combined relevance for a typed query. nil → no match.
     func matchScore(_ item: PounceItem, query: [Character]) -> Double? {
+        // Gated rows (a setting inside a System Settings pane) join the list
+        // only once the query is specific enough to be asking for one. The
+        // panes themselves are ungated and always searchable.
+        guard query.count >= item.minQueryLength else { return nil }
         let title = Fuzzy.score(query, item.title.lowercased())
         // An app's bundle name (e.g. "Live" for Ableton) scores at full weight —
         // it's a legitimate name for the app, just not the one we display.
@@ -424,7 +456,14 @@ final class DaemonState: ObservableObject {
         // happens to fuzzy-match the same letters more tightly.
         let user = item.userAlias.flatMap { Fuzzy.score(query, $0.lowercased()).map { $0 + 4.0 } }
         let sub = item.subtitle.flatMap { Fuzzy.score(query, $0.lowercased()) }
-        let candidates = [title, alias, user, sub.map { $0 * 0.5 }].compactMap { $0 }
+        // Apple's synonyms for a settings row, scored one TERM at a time — the
+        // words a person types ("full disk access") are usually only in here,
+        // never in the title. Slightly discounted so a row that matches on its
+        // own name still beats one that matches on a keyword. Scoring the joined
+        // blob instead would match nearly everything; see SystemSettings.swift.
+        let keyword = item.searchKeywords.isEmpty ? nil
+            : item.searchKeywords.compactMap { Fuzzy.score(query, $0) }.max().map { $0 * 0.9 }
+        let candidates = [title, alias, user, keyword, sub.map { $0 * 0.5 }].compactMap { $0 }
         guard let best = candidates.max() else { return nil }
         let frec = frecency(for: item)
         let normFrec = frec / (frec + 5)                 // 0..1
@@ -531,6 +570,12 @@ final class DaemonState: ObservableObject {
             // pipe-consuming script to act on.
             return Commit(clientString: "", disposition: .hideNow, appLaunch: nil,
                           shortcutRun: item.payload)
+        case .setting:
+            // Opened natively (see Commit.settingOpen) and nothing handed to the
+            // client: System Settings takes focus, so there's nothing to linger
+            // for, exactly like an app launch.
+            return Commit(clientString: "", disposition: .hideNow, appLaunch: nil,
+                          settingOpen: item.payload)
         case .plain:
             let a = item.action(for: action) != nil ? action : "enter"
             return Commit(clientString: "\(a)\t\(item.raw)", disposition: .linger, appLaunch: nil)

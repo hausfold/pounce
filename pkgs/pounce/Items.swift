@@ -8,6 +8,7 @@ enum ItemKind {
     case app       // launcher app: the daemon launches it natively
     case answer    // inline quick answer (calculator etc.): ⏎ copies it
     case shortcut  // Shortcuts-library entry: the daemon runs it via the CLI
+    case setting   // a System Settings pane or one setting in it: opened by URL
 }
 
 struct ItemAction {
@@ -70,6 +71,20 @@ struct PounceItem: Identifiable {
     // DaemonState.matchScore) — typing your own shorthand should win outright.
     // Stamped in DaemonState.load after the items are built, hence `var`.
     var userAlias: String? = nil
+
+    // Extra search terms matched ONE AT A TIME, unlike `searchAlias`. Apple's
+    // synonym lists for a settings row are comma-separated blobs of a couple of
+    // hundred characters ("files, full disk access, complete, full, disk"), and
+    // fuzzy-matching the joined string would make it a subsequence of almost any
+    // query. Empty for everything that isn't a settings row.
+    var searchKeywords: [String] = []
+
+    // Rows that stay out of the list until the query is at least this long. 0 —
+    // everything except the settings INSIDE a pane — means "always eligible".
+    // Enforced in DaemonState.matchScore and in the empty-query list, so the
+    // 700-odd individual macOS settings can't drown the apps you actually
+    // launch. See SettingsPaneStore.
+    var minQueryLength: Int = 0
 
     // Generic stdin line: title \t subtitle \t icon \t actions \t group
     // The trailing `group` field is optional; when any line carries one the list
@@ -138,6 +153,25 @@ struct PounceItem: Identifiable {
                           kind: .shortcut, payload: id,
                           frecencyKey: "shortcut:\(id)",
                           baseBoost: -ShortcutsStore.emptyQueryPenalty, group: nil, submenu: false)
+    }
+
+    // A System Settings pane, or one setting inside it (see SystemSettings.swift).
+    // The pane's row is always eligible; a sub-item waits for `subItemMinQuery`
+    // characters. Its title is Apple's own sentence for the setting — the words
+    // people actually type ("full disk access") live in the keywords, which is
+    // why both are searched.
+    static func setting(_ entry: SettingsPaneEntry, subItemMinQuery: Int) -> PounceItem {
+        let isPane = entry.anchor == nil
+        return PounceItem(raw: entry.url, title: entry.title, searchAlias: nil,
+                          subtitle: isPane ? "System Settings" : entry.pane,
+                          icon: "app:\(entry.iconPath)",
+                          actions: [ItemAction(key: "enter", label: "Open")],
+                          kind: .setting, payload: entry.url,
+                          frecencyKey: entry.itemKey,
+                          baseBoost: isPane ? -SettingsPaneStore.emptyQueryPenalty : 0,
+                          group: nil, submenu: false,
+                          searchKeywords: entry.keywords,
+                          minQueryLength: isPane ? 0 : subItemMinQuery)
     }
 
     // A file/folder hit for the Find Files mode. Display-only: FileSearchView

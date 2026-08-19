@@ -188,6 +188,11 @@ enum ItemTarget: Equatable {
     case app(String)       // "app:/Applications/Foo.app"
     case mode(String)      // "mode:clipboard"   — a built-in window
     case shortcut(String)  // "shortcut:<uuid>"  — a Shortcuts-library entry
+    // "setting:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles"
+    // — a System Settings pane, or one setting inside it. The payload is the
+    // pane's bundle id plus an optional `?anchor`, which is also exactly what
+    // follows `x-apple.systempreferences:` when it opens (see SettingsPaneStore).
+    case setting(String)
 
     // The built-in windows a "mode:" target may name. Single-sourced here so the
     // daemon's dispatch, the CLI's validation and the error text can't drift.
@@ -198,6 +203,9 @@ enum ItemTarget: Equatable {
         if target.hasPrefix("app:"), target.count > 4 { return .app(String(target.dropFirst(4))) }
         if target.hasPrefix("shortcut:"), target.count > 9 {
             return .shortcut(String(target.dropFirst(9)))
+        }
+        if target.hasPrefix("setting:"), target.count > 8 {
+            return .setting(String(target.dropFirst(8)))
         }
         if target.hasPrefix("mode:") {
             let name = String(target.dropFirst(5))
@@ -220,7 +228,8 @@ enum ItemTarget: Equatable {
                 + modes.map { "mode:" + $0 }.joined(separator: ", ") + ")"
         }
         return "'\(target)' is not an item key "
-            + "(expected cmd:<id>, app:<path>, shortcut:<uuid> or mode:<name>)"
+            + "(expected cmd:<id>, app:<path>, shortcut:<uuid>, setting:<pane>[?<anchor>] "
+            + "or mode:<name>)"
     }
 }
 

@@ -65,6 +65,10 @@ or skip that version with ⌘⏎.
 - **the stuff you'd otherwise hunt for** — clipboard history, screenshot
   browser, file search, camera preview, and every System Settings pane as a
   first-class row that opens *that* pane, not just Settings.
+- **every setting, not just every pane** — type `full disk access`, `night
+  shift` or `device management` and land on that screen with the pane already
+  scrolled to it. Read from macOS's own Settings search index, synonyms and
+  all, so it follows the OS instead of a list pounce keeps.
 - **your Shortcuts, as rows** — every entry in your Shortcuts library is a
   first-class row; ⏎ runs it. It's also the way to reach an app's
   Shortcuts/Spotlight action: wrap it in a one-action shortcut once and it's a
