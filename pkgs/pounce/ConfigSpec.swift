@@ -152,6 +152,24 @@ enum ConfigSpec {
                 ]),
 
             ConfigSection(
+                name: "systemSettings",
+                doc: "System Settings, opened by the setting rather than the pane.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "List every System Settings pane as a launcher row, plus the individual settings inside them; ⏎ opens the pane already scrolled to the one you picked. The titles and their synonyms are read from the panes' own search index, so \"full disk access\", \"device management\" and \"night shift\" find the right screen even when that isn't what the row is called. Panes start ranked below everything at an empty query and climb by use.",
+                        json: json(s.systemSettings.enabled)),
+                    ConfigField(
+                        name: "subItemMinQuery",
+                        doc: "How many characters you have to type before the settings INSIDE a pane join the results. Panes themselves are always searchable; this only holds back the ~700 individual settings, so short queries stay about your apps. 0 shows everything from the first keystroke.",
+                        json: json(s.systemSettings.subItemMinQuery)),
+                    ConfigField(
+                        name: "maxPerPane",
+                        doc: "How many settings a single pane may contribute to one result list. Accessibility alone ships 342 of them, which would otherwise be the entire answer to a short query. The ones kept are that pane's best matches. 0 means no cap.",
+                        json: json(s.systemSettings.maxPerPane == Int.max ? 0 : s.systemSettings.maxPerPane)),
+                ]),
+
+            ConfigSection(
                 name: "apps",
                 doc: "The app launcher's opinions about which apps matter.",
                 fields: [

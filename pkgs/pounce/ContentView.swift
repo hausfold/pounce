@@ -54,14 +54,20 @@ struct ContentView: View {
         let trimmed = state.query.trimmingCharacters(in: .whitespacesAndNewlines)
         let base: [PounceItem]
         if queryIsEmpty {
-            base = Array(state.itemsSorted.prefix(state.maxEmpty))
+            base = state.emptyQueryRows
         } else {
             let q = Array(trimmed.lowercased())
             let scored = state.items.compactMap { item -> (PounceItem, Double)? in
                 guard let s = state.matchScore(item, query: q) else { return nil }
                 return (item, s)
             }
-            base = scored.sorted { $0.1 > $1.1 }.map { $0.0 }
+            // One System Settings pane can hold hundreds of settings
+            // (Accessibility alone ships 342), so a short query would otherwise
+            // return one pane's worth of rows and nothing else. Applied after
+            // sorting, so what survives is that pane's best matches — and it
+            // touches nothing but settings sub-items.
+            base = SettingsPaneStore.capPerPane(scored.sorted { $0.1 > $1.1 }.map { $0.0 },
+                                                limit: state.settingsMaxPerPane)
         }
         var rows = grouped(base)
         // A pending update rides the launcher's first row until it's taken —

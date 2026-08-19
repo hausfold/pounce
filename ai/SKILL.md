@@ -55,6 +55,7 @@ drawing the window itself.
 | open the emoji / screenshot / file-search window | `pounce run mode:emoji` · `mode:screenshots` · `mode:filesearch` |
 | open the launcher itself | `pounce run mode:launcher` |
 | run one configured item | `pounce run cmd:emoji` · `app:/Applications/Foo.app` · `shortcut:<uuid>` |
+| open a System Settings pane, or one setting in it | `pounce run setting:com.apple.Displays-Settings.extension[?<anchor>]` |
 | transform the user's current selection | `pounce --transform 'tr "[:lower:]" "[:upper:]"'` |
 | put a file on the clipboard | `pounce --copy-file <path>` |
 | list / read / drop drafts | `pounce drafts <key> list \| get <n> \| rm <n> \| clear` |
@@ -108,7 +109,7 @@ ready to turn back into picker rows.
   end with nothing chosen — exit 1, no output. Treat it as "the user declined",
   never as a reason to re-prompt.
 - **`pounce run …` needs the daemon; the picker doesn't.** Every `mode:`,
-  `cmd:`, `app:` and `shortcut:` row exits 1 with "daemon not running" if it
+  `cmd:`, `app:`, `shortcut:` and `setting:` row exits 1 with "daemon not running" if it
   isn't up. That is a different failure from the user dismissing something.
 - **Never put a picker in a loop or a background script.** It takes the screen.
   One decision, then get out of the way.

@@ -637,6 +637,12 @@ enum DaemonMode {
         ShortcutsStore.shared.setEnabled(settings.shortcuts.enabled)
         ShortcutsStore.shared.warm()
 
+        // System Settings' panes and their contents, off the main thread. Same
+        // unconditional-warm reasoning; the scan happens once, since the pane
+        // list can only change with a macOS update (see SettingsPaneStore.warm).
+        SettingsPaneStore.shared.setEnabled(settings.systemSettings.enabled)
+        SettingsPaneStore.shared.warm()
+
         // Currency rates for the quick-answer engine: hydrate from the disk
         // cache now, refresh from the network when stale, re-check every 6h.
         // Keystrokes only ever read the warmed in-memory table.
@@ -770,6 +776,15 @@ enum DaemonMode {
                 NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: cfg)
             case .shortcut(let id):
                 ShortcutsStore.run(id: id)
+            case .setting(let pane):
+                // The target IS the tail of the URL — "<bundle-id>?<anchor>" —
+                // so a hotkey bound to setting:…?Privacy_AllFiles lands on Full
+                // Disk Access itself, not the top of Privacy & Security.
+                if let url = URL(string: SettingsPaneStore.url(forTarget: pane)) {
+                    NSWorkspace.shared.open(url)
+                } else {
+                    NSLog("pounce daemon: target '\(target)' does not form a URL; ignored")
+                }
             case nil:
                 NSLog("pounce daemon: \(ItemTarget.problem(with: target) ?? "bad target '\(target)'"); ignored")
             }

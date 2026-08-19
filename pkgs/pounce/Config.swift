@@ -242,6 +242,24 @@ struct ShortcutsSettings {
     var enabled: Bool = true
 }
 
+// System Settings as launcher rows: every pane, plus the individual settings
+// inside them read out of the panes' own search index (see SystemSettings.swift).
+//
+// The two numbers are what keep ~700 sub-items from swamping a launcher whose
+// other job is opening apps. `subItemMinQuery` is the gate — panes are always
+// searchable, a setting inside one joins the list only once the query is this
+// long, so "sa" still means Safari and "saf" can mean Safe Mode. `maxPerPane`
+// then caps how many settings any ONE pane contributes to a result list, which
+// exists because Accessibility alone ships 342 of them and would otherwise be
+// the entire answer to a three-letter query. Set `subItemMinQuery: 0` to drop
+// the gate (panes and settings compete from the first keystroke), or
+// `maxPerPane: 0` for no cap.
+struct SystemSettingsSettings {
+    var enabled: Bool = true
+    var subItemMinQuery: Int = 3
+    var maxPerPane: Int = 8
+}
+
 // App-launcher tuning. `demoteBundleIds` lists apps that should sink below
 // everything at an empty query and rely on frecency (actual use) to climb back —
 // the fix for junk like Feedback Assistant squatting the top slot. Defaults to a
@@ -406,6 +424,7 @@ struct Settings {
     var updates = UpdateSettings()
     var fileSearch = FileSearchSettings()
     var shortcuts = ShortcutsSettings()
+    var systemSettings = SystemSettingsSettings()
     // Per-item overrides (enable / alias / hotkey), keyed by stable item key.
     // See ItemSettings.swift. Empty by default: an untouched config behaves
     // exactly as it did before this key existed.
@@ -528,6 +547,16 @@ struct Settings {
         }
         if let sc = obj["shortcuts"] as? [String: Any] {
             if let e = sc["enabled"] as? Bool { s.shortcuts.enabled = e }
+        }
+        if let ss = obj["systemSettings"] as? [String: Any] {
+            if let e = ss["enabled"] as? Bool { s.systemSettings.enabled = e }
+            // Clamped rather than trusted: a negative minimum would be a gate
+            // that never closes, and `maxPerPane: 0` is the documented way to
+            // ask for no cap at all (capPerPane treats <= 0 as unlimited).
+            if let m = ss["subItemMinQuery"] as? Int { s.systemSettings.subItemMinQuery = max(0, m) }
+            if let c = ss["maxPerPane"] as? Int {
+                s.systemSettings.maxPerPane = c <= 0 ? Int.max : c
+            }
         }
         if let ap = obj["apps"] as? [String: Any] {
             if let d = ap["demoteBundleIds"] as? [String] { s.appLauncher.demoteBundleIds = Set(d) }

@@ -284,17 +284,56 @@ lock, force-quit, …) all live in `commands/` as worked examples — copy one a
 go. (The `ports` command is the exception: it ships from `pkgs/pounce/ports`,
 installed as `$out/bin/ports`.)
 
-### System Settings deeplinks
+### System Settings, down to the individual setting
 
-Every macOS System Settings pane is its own top-level palette item — typing
-"Displays", "Bluetooth", or "Accessibility" jumps straight to that pane via its
-`x-apple.systempreferences:` URL, skipping the Settings window's sidebar
-entirely. There is no per-pane script: the commands are generated at build time
-from [`pkgs/pounce-commands/settings-panes.tsv`](../pkgs/pounce-commands/settings-panes.tsv),
-one row per pane (real ExtensionKit bundle ids, verified against the OS — the
-file's header documents how to re-dump the authoritative list on a new macOS).
-Like any built-in, a pane command can be shadowed from
-`~/.config/pounce/commands` by reusing its filename (`settings-<slug>.sh`).
+Every System Settings pane is a first-class row — typing "Displays",
+"Bluetooth" or "Device Management" opens that pane directly, skipping the
+sidebar. So is every setting *inside* a pane: "full disk access", "night shift"
+and "login items" each open the pane already scrolled to the thing you named,
+about 700 of them in total.
+
+None of it is a table pounce maintains. macOS ships its own search index for
+Settings — each pane's ExtensionKit bundle carries a `.searchTerms` plist keyed
+by the anchor that `x-apple.systempreferences:<pane>?<anchor>` takes, holding
+the setting's title and Apple's own synonyms. Pounce reads that at startup, in
+your language, so a macOS update that adds, renames or moves a setting is
+picked up on the next launch rather than in a later release of pounce.
+
+**The synonyms are why it finds things.** Apple's title for the Full Disk Access
+screen is *"Allow applications to access all user files"* — the words you'd
+actually type live only in the keyword list. Pounce searches both, which is how
+"full disk access" gets you there and why some rows are worded like sentences.
+
+Rows carry their pane's real icon, and sub-items inherit it, so a list of
+settings stays scannable.
+
+```jsonc
+{
+  "systemSettings": {
+    "enabled": true,
+    "subItemMinQuery": 3,   // panes always show; settings inside them wait for 3 characters
+    "maxPerPane": 8         // …and no single pane may flood one result list
+  }
+}
+```
+
+Both numbers exist to keep a palette whose main job is opening apps from being
+taken over by 700 settings. Panes are always searchable; the settings inside
+them join the list only once your query is `subItemMinQuery` characters long,
+so "sa" still means Safari. `maxPerPane` then caps how many settings any one
+pane contributes to a single result list — Accessibility alone ships 342 of
+them. Set `subItemMinQuery: 0` to drop the gate, `maxPerPane: 0` to drop the
+cap, or `enabled: false` to drop the whole source.
+
+Panes start ranked below everything at an empty query and climb by use, the
+same way shortcuts do.
+
+**Upgrading from the generated pane commands.** Panes used to ship as generated
+command scripts keyed `cmd:settings-<slug>`. They're now native rows keyed
+`setting:<pane-bundle-id>[?<anchor>]`, so an `items` override or hotkey pointed
+at the old key needs repointing — `pounce doctor` reports a binding whose target
+no longer exists. `pounce run setting:com.apple.Displays-Settings.extension` opens a pane by the
+new key; the frecency history under the old keys is not carried over.
 
 ### Optional plugins (off by default)
 
@@ -501,6 +540,7 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
 | `cmd:<id>` | a command script, by filename without `.sh` |
 | `app:/Applications/Foo.app` | an application, by path |
 | `shortcut:<uuid>` | a Shortcuts-library entry, by its identifier (`shortcuts list --show-identifiers`) |
+| `setting:<pane>[?<anchor>]` | a System Settings pane, or one setting in it — `setting:com.apple.Displays-Settings.extension?nightShiftSection`. Where one anchor backs several settings the key gains a `#<slug>` tail to stay unique; the URL still uses the bare anchor. `pounce doctor` prints the exact key. |
 | `mode:<name>` | a built-in window: `launcher`, `clipboard`, `emoji`, `screenshots`, `camera`, `filesearch` |
 
 ```jsonc
@@ -510,6 +550,7 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
     "cmd:brew-services":             { "enabled": false },
     "app:/Applications/Ghostty.app": { "alias": "term", "hotkey": "opt+t" },
     "shortcut:0ECC8F7A-3A52-467A-84C0-511CCE1CB9B7": { "alias": "shelf" },
+    "setting:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles": { "alias": "fda" },
     "mode:clipboard":                { "hotkey": "cmd+shift+v" }
   }
 }

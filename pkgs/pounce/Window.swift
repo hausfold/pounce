@@ -363,6 +363,17 @@ final class PounceUI {
         // focus, so the app you summoned pounce from should get it back.
         if let id = commit.shortcutRun { ShortcutsStore.run(id: id) }
 
+        // A System Settings pane or one setting inside it. The anchor after `?`
+        // is what scrolls it to (say) Full Disk Access rather than the top of
+        // Privacy & Security — see SystemSettings.swift.
+        if let link = commit.settingOpen {
+            if let url = URL(string: link) {
+                NSWorkspace.shared.open(url)
+            } else {
+                NSLog("pounce daemon: '\(link)' is not a URL; settings row ignored")
+            }
+        }
+
         resultSink?(commit.clientString ?? "")
 
         switch commit.disposition {
@@ -371,10 +382,11 @@ final class PounceUI {
             hideNow()
             if commit.pasteAfter {
                 restoreFocusAndPaste()
-            } else if commit.appLaunch == nil && commit.fileOpen == nil {
+            } else if commit.appLaunch == nil && commit.fileOpen == nil
+                        && commit.settingOpen == nil {
                 refocusCaptured(wasKey: wasKey)
             } else {
-                capturedApp = nil   // the launched app / opened file / Finder takes focus
+                capturedApp = nil   // the launched app / file / Finder / System Settings takes focus
             }
         case .linger:
             state.isVisible = false
