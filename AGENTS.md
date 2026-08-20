@@ -108,7 +108,15 @@ changes `ai/SKILL.md` in the same PR.
   lives in a `# pounce: key = value` comment header (`name` / `description` / SF
   Symbol `icon`; `submenu = true` for a two-step command that re-invokes `pounce`).
   Official ones go in `pkgs/pounce-commands/commands/<id>.sh`; there is no registry
-  to edit. At runtime the palette also discovers user commands from
+  to edit. One key the registry ACTS on rather than passes through: `whenFile =
+  <path>` names a file that vetoes the row while its first line is `0` — the "is
+  there anything to act on" question `items`' `workspaces`/`bundleIds` cannot ask.
+  A FILE and not a command, because `CommandRegistry.refresh()` runs synchronously
+  on the ⌘Space keystroke; and only a literal `0` vetoes, so a missing, empty or
+  unreadable file lists the row rather than hiding it forever. It lives in BOTH
+  registry parsers — `CommandRegistry.swift` (what ⌘Space uses) and the bash
+  `pounce-palette` (what a machine without the daemon runs) — and `pounce doctor`
+  names every row it hides. At runtime the palette also discovers user commands from
   `~/.config/pounce/commands`, `$POUNCE_COMMAND_PATH`, and Nix `extraCommandDirs`
   (later wins on filename clash, so users can shadow built-ins).
 - **New quick-answer engine (inline calculator)**: the launcher answers

@@ -57,22 +57,76 @@ scan "${XDG_CONFIG_HOME:-$HOME/.config}/pounce/commands"
 # Registry lines from each script's `# pounce: key = value` header.
 # Missing name falls back to the id, missing icon to "sparkles".
 # (The glob is sorted by bash, so the registry is stable.)
+#
+# `whenFile` is the one key this loop ACTS on rather than passes through: the
+# named file is a veto, and a command whose file says `0` is left out. The daemon
+# does the same in CommandRegistry.listed() — the two parsers have to agree, since
+# ⌘Space goes through that one and this script is what a machine without the
+# daemon (or the bar's logo pill) still runs. Only a literal `0` vetoes: no file,
+# an unreadable one and an empty one all LIST the row, because a row that hides
+# when nobody is answering hides forever with nothing in any log.
+#
+# It rides in FRONT of the registry line and is stripped here, so what pounce
+# reads is the same five fields it always was. Tabs are removed from the value in
+# awk for that reason — one in a header would otherwise shift every field.
 registry=$(
   for entry in "$MAP"/*; do
     [ -e "$entry" ] || continue
     id="${entry##*/}"
-    awk -v id="$id" '
+    # `NR > 30` comes FIRST so line 31 is not matched and then abandoned: the
+    # daemon's parser breaks before processing it, and a `whenFile` on line 31
+    # deciding a row here and not there is a row that is present on one path and
+    # missing on the other. Values are right-trimmed for the same reason —
+    # CommandRegistry's `field()` ends in `.trimmingCharacters`, and a trailing
+    # space in a hand-written header is exactly what that is there for.
+    line=$(awk -v id="$id" '
+      NR > 30 { exit }   # headers live at the top; do not read whole files
       /^# pounce: name *=/        && n == "" { sub(/^# pounce: name *= */, "");        n = $0 }
       /^# pounce: description *=/ && d == "" { sub(/^# pounce: description *= */, ""); d = $0 }
       /^# pounce: icon *=/        && i == "" { sub(/^# pounce: icon *= */, "");        i = $0 }
       /^# pounce: submenu *=/     && s == "" { sub(/^# pounce: submenu *= */, "");     s = $0 }
-      NR > 30 { exit }   # headers live at the top; do not read whole files
+      /^# pounce: whenFile *=/    && w == "" { sub(/^# pounce: whenFile *= */, "");    w = $0 }
       END {
         if (n == "") n = id
         if (i == "") i = "sparkles"
-        printf "%s\t%s\t%s\t%s\t%s\n", n, d, i, id, (s == "true" || s == "1") ? "1" : "0"
+        sub(/[ \t]+$/, "", w); sub(/[ \t]+$/, "", n)
+        sub(/[ \t]+$/, "", d); sub(/[ \t]+$/, "", i)
+        gsub(/\t/, "", w); gsub(/\t/, " ", n); gsub(/\t/, " ", d); gsub(/\t/, "", i)
+        printf "%s\t%s\t%s\t%s\t%s\t%s\n", w, n, d, i, id, (s == "true" || s == "1") ? "1" : "0"
       }
-    ' "$entry"
+    ' "$entry")
+    # An unreadable script produces nothing at all rather than a blank row.
+    [ -n "$line" ] || continue
+    when="${line%%$'\t'*}"
+    if [ -n "$when" ]; then
+      # The leading `(` on each pattern is REQUIRED, not style: bash 3.2 —
+      # /bin/bash on macOS, and this script's shebang — mis-parses a bare `case`
+      # pattern inside a `$( )`, and the whole file then dies with a syntax
+      # error at load. `tests/run.sh` runs `/bin/bash -n` over this file for
+      # exactly that reason; a `bash -n` from a modern bash on $PATH passes it.
+      # Backslash-escaped rather than quoted. A quoted `~` is what SC2088 warns
+      # about, and here the literal IS the point: the character arrived in a
+      # header and this is the only thing that expands it.
+      case "$when" in
+        (\~) when="$HOME" ;;
+        (\~/*) when="$HOME/${when#\~/}" ;;
+      esac
+      # `[ -f ]` and not just existence: a FIFO would block the read forever, and
+      # `[ -r ]` keeps an unreadable one from writing to stderr (the redirection
+      # order can't suppress it — `<"$file"` is applied before `2>/dev/null`).
+      # Both are "cannot tell", so both list the row.
+      if [ -f "$when" ] && [ -r "$when" ]; then
+        # `read` over `head`: this loop is already a fork per command. One
+        # variable, so the whole line lands in it with the surrounding
+        # whitespace stripped — which is what `.trimmingCharacters` does on the
+        # daemon's side. NOT `IFS=`, and NOT `%%[[:space:]]*`: either one makes
+        # `0 pages` or ` 0` mean something different here than there.
+        first=""
+        read -r first <"$when"
+        [ "$first" = 0 ] && continue
+      fi
+    fi
+    printf '%s\n' "${line#*$'\t'}"
   done
 )
 
