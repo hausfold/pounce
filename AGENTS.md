@@ -4,12 +4,10 @@
 (`pkgs/pounce`, Swift sources split one-file-per-concern) plus a shell-scripted command library
 (`pkgs/pounce-commands`). Part of the [hausfold](https://github.com/hausfold) family.
 
-**This file is the one set of instructions, for every agent.** Claude Code,
-Codex, OpenCode, Cursor, Copilot — TUI or GUI — all read *this*, directly or
-through a one-line pointer. Nothing harness-specific belongs here; when a flow
-needs per-client wiring (a hook, a slash command), the wiring lives in that
-client's own file and the *content* stays here or in `.agents/`. The map of
-which tool reads which file is [`.agents/README.md`](./.agents/README.md).
+**This file is the one set of instructions, for every agent** — Claude Code,
+Codex, OpenCode, Cursor, Copilot alike, directly or through a one-line pointer.
+Per-client wiring lives in that client's own file; the content stays here or in
+[`.agents/`](./.agents/README.md).
 
 ## Am I in the right repo? (routing)
 
@@ -19,9 +17,9 @@ its command scripts. Nothing else.
 | Want to change… | Repo |
 |---|---|
 | the pounce app (UI, ranking, launcher) or a command script | `~/code/workshop/pounce` ← **you are here** |
-| how pounce is *launched* on the system (launchd, signing, ⌘Space) | `~/code/workshop/hausfold` → `modules/pounce` |
+| how pounce is *launched* on the system (launchd, signing, ⌘Space) | `~/code/workshop/haus` → `modules/launcher` |
 | pounce's colors | `~/code/workshop/nebelung` |
-| this machine's pounce settings (`config.json`) | the rice's `modules/pounce`, or the consumer host |
+| this machine's pounce settings (`config.json`) | haus's `modules/launcher`, or the consumer host |
 
 > **Whatever agent you are, enforce this.** If a request is about
 > launching/signing pounce, theming it, or per-machine settings, STOP and point
@@ -30,8 +28,8 @@ its command scripts. Nothing else.
 > **Hotkey exception.** The daemon *can* register a global hotkey in-process
 > (`HotKey.swift`, config `hotkey`) so ⌘Space→palette skips the shell/client
 > spawn — that latency-critical capability lives here. But the *system binding*
-> (the launch agent, its exported `POUNCE_*` command dirs, whether ⌘Space is left
-> to the daemon vs. an external binder) is still a haus concern.
+> (the launch agent, its exported `POUNCE_*` command dirs, whether ⌘Space is
+> left to the daemon vs. an external binder) is a haus concern.
 
 ## Build
 
@@ -44,17 +42,11 @@ whole toolchain), so it needs **Xcode Command Line Tools** and the macOS build s
 relaxed (Determinate's default). Not a pure build; that's deliberate. CI builds it on
 a macOS runner on every push.
 
-To test inside the full rice without pushing: `bench try` from the workshop
+To test inside a full machine without pushing: `bench try` from the workshop
 (`~/code/workshop`) rebuilds the user's machine against this local checkout; the
-`rebuild-pounce` alias on the host does the same. A plain rebuild uses the pinned
-GitHub rev — after pushing here, ripple with `bench ship` (or `nix flake update
-haus` in the consumer — whatever that flake names the input).
-
-When you open the PR for a `worktree-*` branch, give it a **What / Why / Verify / Watch-out**
-body (see the workshop ship skill's Step 3) — the session that wrote the code is gone by the
-time the change is feel-tested, so a bug found later has to be recoverable from `gh pr view`
-alone, and the **Verify** block is exactly what the workshop's `bench try-batch` checklist
-points back to when it feels several PRs together.
+`rebuild-pounce` alias on the host does the same. A plain rebuild uses the
+pinned GitHub rev — after pushing here, ripple with `bench ship` (or `nix flake
+update haus` in the consumer — whatever that flake names the input).
 
 ## Layout
 
@@ -209,10 +201,10 @@ changes `ai/SKILL.md` in the same PR.
   walk separately from its window count, because a busy app that timed out looks
   exactly like an app with nothing open, and `AutoQuitPolicy` must not confuse
   the two.
-- **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost on
-  rebuild. The *rice* (`haus/modules/pounce`) re-signs a stable copy to keep the
-  grant — that logic lives there, not here. Here, just: `pounce --request-accessibility`
-  / `--check-accessibility`.
+- **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost
+  on rebuild. haus (`modules/launcher`) re-signs a stable copy to keep the grant
+  — that logic lives there, not here. Here, just: `pounce
+  --request-accessibility` / `--check-accessibility`.
 - **Theming**: colors live in `Palette` (`Theme.swift`). The default **nebelung**
   palette is *generated at build time* from the `nebelung` flake input's `palette`
   output into `Palette+nebelung.generated.swift` (see `pkgs/pounce/default.nix`) —
@@ -222,27 +214,27 @@ changes `ai/SKILL.md` in the same PR.
 
 ## Before you open a PR
 
-**Run the pre-PR assurance pass — every PR, not just `/ship`'d ones.** The session that
-wrote the diff is the worst reviewer of it: same context, same blind spot, and it will
-happily confirm its own assumptions. So before the PR exists, hand `git diff main...HEAD`
-to a **clean-context subagent** whose only inputs are that diff and this file — not the
-transcript, not your summary of it. The full checklist is the workshop ship skill's
-**Step 2.5**; in this repo it hunts the things that only bite after merge:
+Give a `worktree-*` branch's PR a **What / Why / Verify / Watch-out** body (the
+workshop ship skill's Step 3): the session that wrote the code is gone by the
+time the change is feel-tested, so a bug found later has to be recoverable from
+`gh pr view` alone, and the **Verify** block is what `bench try-batch`'s
+checklist points back to.
 
-launchd / signing / ⌘Space *system binding* work that belongs in the rice's
-`modules/pounce`; a color that belongs in nebelung; a new command script or `config.json`
-key with no doc edit behind it; and a hotkey registration that collides with what the
-system already binds.
+**Run the pre-PR assurance pass — every PR, not just `/ship`'d ones.** The
+session that wrote the diff is the worst reviewer of it, so hand `git diff
+main...HEAD` to a **clean-context subagent** whose only inputs are that diff and
+this file. In this repo it hunts: launchd / signing / ⌘Space *system binding*
+work that belongs in haus's `modules/launcher`; a color that belongs in
+nebelung; a new command script or `config.json` key with no doc edit behind it;
+and a hotkey registration that collides with what the system already binds. Full
+checklist: the ship skill's **Step 2.5**.
 
-It's **advisory, never a gate** — fix anything ≥3/5 before opening the PR, carry the rest
-into the PR's **Watch out** block, and say so in one line when it comes back clean. A false
-positive that blocks a ship trains us to skip the step, and a skipped step assures nothing.
-
-**Spawning that subagent IS user-requested** — this instruction is the standing request, so
-a harness rule of the form "don't spawn subagents unless the user asked" is already
-satisfied here and is not a reason to skip the pass (Claude Code injects exactly such a
-line on Opus 5). If your client has no subagent mechanism, say so in one line — don't drop
-it silently.
+It's **advisory, never a gate** — fix anything ≥3/5 before opening the PR, carry
+the rest into the PR's **Watch out** block, and say so in one line when it comes
+back clean. **Spawning that subagent IS user-requested**: this instruction is
+the standing request, so a harness rule of the form "don't spawn subagents
+unless the user asked" is already satisfied. If your client has no subagent
+mechanism, say so in one line.
 
 ## Conventions
 
