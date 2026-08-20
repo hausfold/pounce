@@ -9,9 +9,10 @@ import ApplicationServices
 // launcher build, and only when the config scopes something.
 extension ItemContext {
     static func current(settings: Settings) -> ItemContext {
-        // The palette hasn't activated yet at this point — DaemonState.load runs
-        // before PounceWindow.present() steals focus — so the frontmost app is
-        // still the one you pressed the key over. Belt and braces anyway: if it
+        // The palette hasn't activated yet at this point — every path calls
+        // DaemonState.load before PounceUI.present() steals focus, and this
+        // depends on that order — so the frontmost app is still the one you
+        // pressed the key over. Belt and braces anyway: if it
         // IS us (a re-entrant summon, a linger), say we don't know rather than
         // scoping every row against Pounce itself.
         let front = NSWorkspace.shared.frontmostApplication

@@ -425,7 +425,8 @@ struct Settings {
     var fileSearch = FileSearchSettings()
     var shortcuts = ShortcutsSettings()
     var systemSettings = SystemSettingsSettings()
-    // Per-item overrides (enable / alias / hotkey), keyed by stable item key.
+    // Per-item overrides (enable / alias / hotkey / workspaces / bundleIds),
+    // keyed by stable item key.
     // See ItemSettings.swift. Empty by default: an untouched config behaves
     // exactly as it did before this key existed.
     var items = ItemSettings()

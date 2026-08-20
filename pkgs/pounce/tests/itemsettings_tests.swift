@@ -283,6 +283,17 @@ func runItemSettingsTests() -> Int {
     try? "".write(toFile: mru, atomically: true, encoding: .utf8)
     check(WorkspaceMRU.current(file: mru) == nil, "an empty file answers nil rather than \"\"")
 
+    // A CRLF-written file must not hand back "T/pounce\r", which matches no
+    // pattern and would hide the row rather than fail open.
+    try? "T/pounce\r\nW/1\r\n".write(toFile: mru, atomically: true, encoding: .utf8)
+    check(WorkspaceMRU.current(file: mru) == "T/pounce", "a carriage return is trimmed with the rest")
+
+    // The bundle-id compare must not depend on `parse` having lowercased the
+    // list — a settings UI could build one of these directly.
+    let handBuilt = ItemSetting(bundleIds: ["com.mitchellh.Ghostty"])
+    check(handBuilt.matches(ItemContext(workspace: nil, bundleId: "com.mitchellh.ghostty")),
+          "a bundle id that skipped parse still matches case-insensitively")
+
     if failures == 0 { print("ok — all ItemSettings tests passed") }
     return failures
 }

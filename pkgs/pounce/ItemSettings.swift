@@ -2,8 +2,9 @@ import Foundation
 
 // MARK: - Per-item settings (config.json's `items` map)
 //
-// The three things you'd otherwise want three config keys for — hide it, give it
-// a shorthand, give it a key — expressed as ONE map keyed by an item key. That
+// The things you'd otherwise want a config key each for — hide it, give it a
+// shorthand, give it a key, list it only on certain pages or over certain apps —
+// expressed as ONE map keyed by an item key. That
 // keying is the point: a single entry is exactly one row of a settings list, so
 // a UI that edits these mutates one key rather than reconciling three parallel
 // arrays.
@@ -157,16 +158,22 @@ struct ItemSetting: Equatable {
             return false
         }
         if !bundleIds.isEmpty, let bundleId = context.bundleId,
-           !bundleIds.contains(bundleId.lowercased()) {
+           // Both sides lowercased HERE rather than trusting `parse` to have
+           // done it: `entries` is an ordinary var, so a settings UI building an
+           // ItemSetting directly would otherwise hide the row everywhere, with
+           // every test (all of which go through `parse`) still green.
+           !bundleIds.contains(where: { $0.lowercased() == bundleId.lowercased() }) {
             return false
         }
         return true
     }
 
     // One `workspaces` pattern against the workspace in front. The bare-name
-    // rule is deliberately the one `pages.prefix` already taught this config
-    // file — "T" is the page AND its children — because a tiling desktop names
-    // its pages that way and asking for T almost never means "T alone":
+    // shape is the one `pages.prefix` already taught this config file — "T" is
+    // the page AND its children — because a tiling desktop names its pages that
+    // way and asking for T almost never means "T alone". Not the identical
+    // predicate, though, and the difference is deliberate: AppScoped's walk
+    // matches case-SENSITIVELY and has no "/*" form, while this one adds both.
     //
     //   "T"      T, and every T/… child          (prefix, the pages.prefix rule)
     //   "T/*"    the children only, never T itself
@@ -212,15 +219,25 @@ struct ItemSetting: Equatable {
 // that never set `pages.mruFile`, answers nil, and nil filters nothing.
 enum WorkspaceMRU {
     static func current(file: String?) -> String? {
-        guard let file, !file.isEmpty,
-              let handle = FileHandle(forReadingAtPath: file) else { return nil }
+        // `~` expanded here and not at parse time: the config is a hand-written
+        // file and "~/.local/state/…" is how a person writes a path a shell hook
+        // owns. Unexpanded it simply fails to open, which under the fail-open
+        // rule below makes the whole feature a silent no-op — the one failure
+        // mode a scoped row cannot afford. (`pounce doctor` reports the same
+        // thing out loud; see Doctor's items section.)
+        guard let file, !file.isEmpty else { return nil }
+        let path = (file as NSString).expandingTildeInPath
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         // Hard-capped like AppScoped's read of the same file, for the day the
         // path points at something that isn't a 50-line list.
         let data = (try? handle.read(upToCount: 8192)) ?? nil
         try? handle.close()
         guard let data, let text = String(data: data, encoding: .utf8) else { return nil }
+        // `.whitespacesAndNewlines`, not `.whitespaces`: a CRLF-written file
+        // would otherwise yield "T/pounce\r", which matches no pattern and
+        // hides the row instead of failing open.
         return text.split(separator: "\n").lazy
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
     }
 }
@@ -277,9 +294,11 @@ struct ItemSettings {
     // dictionary lookups against the already-parsed map — no re-reading of disk.
 
     // False only when an entry explicitly says so; an unlisted item is enabled.
-    // Config alone — the answer doesn't move between summons, which is why the
-    // hotkey path (Doctor, the daemon's registration) reads this and not
-    // `isVisible`: a key must not come and go with the workspace.
+    // Config alone — the answer doesn't move between summons. Kept beside
+    // `isVisible` as the narrow question ("is this item switched off?"), which
+    // is what a caller wants when a summon isn't what it's asking about; the
+    // hotkey path asks neither, because it reads `bindings`, and a key must not
+    // come and go with the workspace.
     func isEnabled(_ itemKey: String) -> Bool { entries[itemKey]?.enabled ?? true }
 
     // Whether the palette should LIST this item right now: `enabled`, plus the

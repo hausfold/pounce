@@ -532,8 +532,9 @@ still renders as a light panel.
 
 ### Per-item settings (`items`)
 
-One map covers the three things you'd otherwise want three keys for — hide it,
-give it a shorthand, give it a key. Each entry is keyed by an **item key**:
+One map covers the things you'd otherwise want a key each for — hide it, give it
+a shorthand, give it a key, list it only where it's useful. Each entry is keyed
+by an **item key**:
 
 | Item key | What it addresses |
 |---|---|
@@ -679,7 +680,8 @@ and does something you didn't mean.
   one). `"T"` matches the page `T` **and every `T/…` child** — the same rule
   `pages.prefix` uses, because a tiling desktop names its pages that way. `"T/*"`
   matches the children only, and `"T/main"` matches exactly that page.
-  Case-insensitive.
+  Case-insensitive — unlike `pages.prefix` itself, which matches case-sensitively
+  and has no `/*` form.
 
   Which workspace you are on is read from **`pages.mruFile`** — the recency file
   the window manager's own workspace-change hook writes, head line first (the
@@ -699,6 +701,13 @@ and does something you didn't mean.
   bound, exactly as it does under `enabled: false`. Scoping a *chord* to an app
   is the `appHotkeys` block instead, which has to consume the keystroke to do
   it.
+
+- **`pounce doctor` is where a scoped row explains itself.** A row that is never
+  listed looks exactly like a row you never installed, so the report names every
+  scoped item, what it asks for, which workspace you are on, and which rows that
+  leaves out from here — and it fails outright when something asks about
+  `workspaces` while `pages.mruFile` is unset or unreadable, which is the case
+  that would otherwise look like the setting quietly doing nothing.
 
 ### Leader sequences (two-step keys)
 
