@@ -13,7 +13,7 @@ The short version:
   family.
 - **This repo owns the app and its commands, nothing else.** How pounce is
   *launched* (launchd, signing, ⌘Space, the Accessibility grant) belongs to the
-  rice's `modules/pounce`; its colors belong to `nebelung`; per-machine settings
+  haus's `modules/launcher`; its colors belong to `nebelung`; per-machine settings
   belong to the consumer. The one exception is the in-process hotkey
   (`HotKey.swift`), which is latency-critical and does live here.
 - **A command is one self-describing script.** Metadata rides in a
