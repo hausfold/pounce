@@ -171,6 +171,37 @@ Header keys (all optional — the filename is the fallback name/id):
 | `description` | subtitle |
 | `icon` | an SF Symbol name |
 | `submenu` | `true` if the script re-invokes `pounce` |
+| `whenFile` | a file that can veto the row — see below |
+
+### Listing a command only when it has something to act on
+
+`workspaces` and `bundleIds` ask **where you are**. The other question a row can
+want asked is *is there anything here for me to act on at all* — a pages picker
+on a Mac with no page on it, a lane picker with no lanes — and no name can answer
+that. `whenFile` names a file that can:
+
+```sh
+# pounce: whenFile = ~/.local/state/haus/any-page
+```
+
+The file is a **veto**, read on every summon: the row is hidden only while the
+file's first line, trimmed of surrounding whitespace, is `0`. A missing file, an unreadable one, an empty one
+and any other content all list the row — a row that hid whenever nobody was
+answering would hide forever, with nothing in any log.
+
+Whatever already knows the answer writes it. That is a hook you have, the same
+shape as `pages.mruFile`: `0` or `1`, written where a summon can stat it. **It is
+a file rather than a command on purpose** — `refresh()` runs on the keystroke,
+and the whole build phase is ~35 ms; one `aerospace` fork would be half that
+again, on every ⌘Space, for a row that is usually listed anyway.
+
+Like the `items` scoping it hides the **row**, never the command: `pounce run
+cmd:<id>` and any hotkey on it keep working. `pounce doctor` names every command
+that declares one, the file it watches and whether that file is hiding it right
+now — without that, a vetoed row is indistinguishable from a row you never
+installed. Give doctor the palette's own `POUNCE_BUILTIN_DIR` /
+`POUNCE_EXTRA_COMMAND_DIRS` if a packager sets them only for the daemon; it says
+so when it can't see them.
 
 ### Where commands come from
 
@@ -696,6 +727,11 @@ and does something you didn't mean.
   them is the frontmost app. Case-insensitive.
 
 - Both together **AND**: the row wants that page *and* that app.
+
+- They ask **where you are**, from a file, with no subprocess. *Is there anything
+  to act on at all* is a different question, and it belongs to the command script:
+  a [`whenFile`](#listing-a-command-only-when-it-has-something-to-act-on) header
+  names a file that can veto its row.
 
 - They scope the **row**, never the item's `hotkey` — a key you bound stays
   bound, exactly as it does under `enabled: false`. Scoping a *chord* to an app

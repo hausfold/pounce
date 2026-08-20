@@ -30,7 +30,16 @@ final class CommandRegistry {
         // The tab-separated line the launcher parses (PounceItem.parseCommand):
         //   name \t description \t icon \t id \t submenu(1|0)
         var registryLine: String {
-            "\(name)\t\(description)\t\(icon)\t\(id)\t\(submenu ? "1" : "0")"
+            // Tabs stripped, because this line IS the field separator: one in a
+            // header value shifts every field after it, and PounceItem
+            // .parseCommand then reads the id out of the icon's column (a row
+            // that draws wrong and cannot be run). The bash registry builder
+            // does the same, and has to.
+            func flat(_ s: String, _ replacement: String) -> String {
+                s.replacingOccurrences(of: "\t", with: replacement)
+            }
+            return "\(flat(name, " "))\t\(flat(description, " "))\t\(flat(icon, ""))"
+                + "\t\(id)\t\(submenu ? "1" : "0")"
         }
     }
 
@@ -39,6 +48,7 @@ final class CommandRegistry {
         var description = ""
         var icon = ""
         var submenu = false
+        var whenFile = ""
     }
 
     private let env: [String: String]
@@ -51,6 +61,13 @@ final class CommandRegistry {
     // spawner uses on selection.
     private(set) var entries: [Entry] = []
     private var scriptByID: [String: String] = [:]
+
+    // Every command that declares a `whenFile`, and what that file said on the
+    // last refresh. Nothing in the palette reads this — `pounce doctor` does. A
+    // vetoed row is indistinguishable from a row you never installed, so the
+    // report is the only place that can name it (the same reason the `items`
+    // scoping is reported there; see Doctor.swift).
+    private(set) var scopes: [(id: String, whenFile: String, listed: Bool)] = []
 
     init(env: [String: String] = ProcessInfo.processInfo.environment,
          home: String = FileManager.default.homeDirectoryForCurrentUser.path) {
@@ -83,9 +100,21 @@ final class CommandRegistry {
         }
 
         var built: [Entry] = []
+        var scoped: [(id: String, whenFile: String, listed: Bool)] = []
         for id in resolved.keys.sorted() {
             let path = resolved[id]!
             let header = header(forScriptAt: path)
+            // Asked ONCE. Two calls would let a file that flips between them
+            // leave `scopes` reporting the opposite of what the palette drew.
+            let listed = Self.listed(whenFile: header.whenFile, home: home)
+            if !header.whenFile.isEmpty {
+                scoped.append((id, header.whenFile, listed))
+            }
+            // `whenFile` scopes the ROW, so a vetoed command is left out of
+            // `entries` and kept in `scriptByID`: `pounce run cmd:<id>` and any
+            // hotkey on the item still work, exactly as `enabled: false` leaves a
+            // key armed (ItemSettings.swift).
+            guard listed else { continue }
             built.append(Entry(
                 id: id,
                 name: header.name.isEmpty ? id : header.name,
@@ -97,6 +126,7 @@ final class CommandRegistry {
 
         entries = built
         scriptByID = resolved
+        scopes = scoped
         // Drop cache entries for scripts that no longer resolve.
         let live = Set(resolved.values)
         headerCache = headerCache.filter { live.contains($0.key) }
@@ -161,6 +191,10 @@ final class CommandRegistry {
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }?.path
     }
 
+    // Whether the binary-relative fallback finds anything — `pounce doctor` asks,
+    // to tell "no scoped rows" from "no commands visible from this shell".
+    static var defaultBuiltinDirExists: Bool { defaultBuiltinDir() != nil }
+
     private func idFromFilename(_ name: String) -> String {
         String(name.dropLast(3))
     }
@@ -189,6 +223,7 @@ final class CommandRegistry {
             else if let v = field(value, "description"), header.description.isEmpty { header.description = v }
             else if let v = field(value, "icon"), header.icon.isEmpty { header.icon = v }
             else if let v = field(value, "submenu") { header.submenu = (v == "true" || v == "1") }
+            else if let v = field(value, "whenFile"), header.whenFile.isEmpty { header.whenFile = v }
         }
         return header
     }
@@ -197,6 +232,54 @@ final class CommandRegistry {
         let trimmed = line.drop { $0 == " " || $0 == "\t" }
         guard trimmed.hasPrefix(prefix) else { return nil }
         return trimmed.dropFirst(prefix.count)
+    }
+
+    // MARK: - `whenFile`: a row that is listed only while there is something to
+    // act on.
+    //
+    // The question `workspaces` / `bundleIds` cannot ask is not "where are you"
+    // but "is there anything here at all" — a pages picker on a Mac with no page
+    // on it, a lane picker with no lanes. The answer is not in any name, so it
+    // has to come from outside; what it must NOT come from is a subprocess.
+    // `refresh()` runs synchronously inside `presentLauncher` on every ⌘Space,
+    // and the whole build phase is ~35 ms today: one `aerospace` fork would be
+    // ~15 ms of that, on the keystroke, forever, for a row that is usually
+    // listed anyway. So a command names a FILE that some hook of yours already
+    // maintains — the same shape `pages.mruFile` has, for the same reason — and
+    // this reads it. It is a stat and at most 64 bytes.
+    //
+    // The file is a VETO and only a literal `0` vetoes: no file, an unreadable
+    // one, an empty one (which is what a truncating writer looks like for an
+    // instant) and any other content all LIST the row. A row that hides when
+    // nobody is answering hides forever, with nothing in any log — the trap
+    // `workspaces` avoids by filtering nothing without an `mruFile`, and the one
+    // thing every mechanism on this path has to get right.
+    static func listed(whenFile: String, home: String) -> Bool {
+        guard !whenFile.isEmpty else { return true }
+        let path = expandTilde(whenFile, home: home)
+        // A REGULAR file, and nothing else. Opening a FIFO with no writer blocks
+        // in open(2) — and this runs on the main thread inside presentLauncher,
+        // so the palette would simply never draw, with nothing in any log. Same
+        // for a device node or a stalled mount. `stat` follows symlinks, which
+        // `attributesOfItem` would not, and a symlinked state file is a
+        // reasonable thing for a hook to write.
+        var info = stat()
+        guard stat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { return true }
+        guard let handle = FileHandle(forReadingAtPath: path) else { return true }
+        defer { try? handle.close() }
+        guard let data = (try? handle.read(upToCount: 64)) ?? nil else { return true }
+        guard let text = String(data: data, encoding: .utf8) else { return true }
+        let first = text.split(separator: "\n", omittingEmptySubsequences: false).first ?? ""
+        return first.trimmingCharacters(in: .whitespaces) != "0"
+    }
+
+    // A leading `~` only. A header is written by hand, so `~/.local/state/…` is
+    // the spelling people reach for; anything richer would be a shell, and a
+    // shell is what this key exists to avoid.
+    static func expandTilde(_ path: String, home: String) -> String {
+        if path == "~" { return home }
+        if path.hasPrefix("~/") { return home + String(path.dropFirst(1)) }
+        return path
     }
 
     // "key = value" → value, if `rest` names `key`. Whitespace-tolerant to match

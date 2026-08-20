@@ -7,6 +7,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.." # -> pkgs/pounce
 
+# The one shipped file that is not Swift. `pounce-palette` is copied verbatim by
+# every packaging and its shebang is /bin/bash, which on macOS is 3.2.57 — a
+# shell that rejects things every modern bash accepts, so a `bash -n` from $PATH
+# proves nothing. The one that has actually bitten: a `case` whose patterns lack
+# a leading `(`, inside a `$( )`, kills the WHOLE file at load with a syntax
+# error and takes the palette with it.
+if [ -x /bin/bash ]; then
+  /bin/bash -n ../pounce-commands/pounce-palette
+  echo "ok — pounce-palette parses under macOS /bin/bash"
+fi
+
 scratch="$(mktemp -d)"
 bin="$scratch/pounce-tests"
 

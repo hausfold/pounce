@@ -156,6 +156,43 @@ enum DoctorMode {
             }
         }
 
+        // The same silence, one layer over: a command script that scopes its own
+        // row with a `whenFile` header. `items` scoping lives in config.json and
+        // is reported above; this lives in the script, so nothing the user can
+        // read explains an absent row — least of all the palette, which simply
+        // does not draw it. Report what each one asks for and what its file says
+        // right now, so "I never installed it" and "it is answering no" stop
+        // looking identical.
+        let registry = CommandRegistry()
+        registry.refresh()
+        // …when this process can see the commands at all. The command dirs come
+        // from POUNCE_BUILTIN_DIR / POUNCE_EXTRA_COMMAND_DIRS, which a packager
+        // exports to the DAEMON (and to pounce-palette) and not to your shell —
+        // so on a Nix install `pounce doctor` from a terminal scans
+        // ~/.config/pounce/commands alone and would report "no scoped rows" for a
+        // palette full of them. Say so instead, and only where it is true: a
+        // Homebrew keg resolves its built-ins from the binary's own path.
+        let env = ProcessInfo.processInfo.environment
+        let dirsInEnv = ["POUNCE_BUILTIN_DIR", "POUNCE_EXTRA_COMMAND_DIRS"]
+            .contains { !(env[$0] ?? "").isEmpty }
+        if !dirsInEnv, CommandRegistry.defaultBuiltinDirExists == false {
+            warn("command scopes not checked — this shell has no POUNCE_BUILTIN_DIR / "
+                 + "POUNCE_EXTRA_COMMAND_DIRS, so only ~/.config/pounce/commands was read. "
+                 + "Run doctor with the same environment the palette gets to include a "
+                 + "packager's commands.")
+        }
+        for scope in registry.scopes {
+            let path = CommandRegistry.expandTilde(
+                scope.whenFile, home: FileManager.default.homeDirectoryForCurrentUser.path)
+            let exists = FileManager.default.fileExists(atPath: path)
+            if scope.listed {
+                ok("cmd:\(scope.id) is listed while \(scope.whenFile) does not say 0"
+                   + (exists ? "" : " — that file does not exist yet, which is a yes"))
+            } else {
+                warn("cmd:\(scope.id) is NOT listed right now: \(scope.whenFile) says 0")
+            }
+        }
+
         // Whenever anything binds `fn`, report which of the two mechanisms is
         // actually carrying it — they fail in completely different ways and the
         // symptom (macOS's own picker appears) looks identical from outside.
