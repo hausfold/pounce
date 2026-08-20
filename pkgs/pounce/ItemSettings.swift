@@ -233,10 +233,11 @@ enum WorkspaceMRU {
         let data = (try? handle.read(upToCount: 8192)) ?? nil
         try? handle.close()
         guard let data, let text = String(data: data, encoding: .utf8) else { return nil }
-        // `.whitespacesAndNewlines`, not `.whitespaces`: a CRLF-written file
-        // would otherwise yield "T/pounce\r", which matches no pattern and
-        // hides the row instead of failing open.
-        return text.split(separator: "\n").lazy
+        // Split on the NEWLINE SET rather than on "\n": that way a CR-only or
+        // CRLF-written file can't hand back "T/pounce\r", which would match no
+        // pattern and hide every scoped row instead of failing open. (The
+        // trailing trim stays for spaces around a name.)
+        return text.components(separatedBy: .newlines).lazy
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
     }

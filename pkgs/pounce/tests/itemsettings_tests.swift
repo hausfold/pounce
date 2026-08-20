@@ -286,7 +286,16 @@ func runItemSettingsTests() -> Int {
     // A CRLF-written file must not hand back "T/pounce\r", which matches no
     // pattern and would hide the row rather than fail open.
     try? "T/pounce\r\nW/1\r\n".write(toFile: mru, atomically: true, encoding: .utf8)
-    check(WorkspaceMRU.current(file: mru) == "T/pounce", "a carriage return is trimmed with the rest")
+    let crlfHead = WorkspaceMRU.current(file: mru)
+    // Reported as SCALARS, not as the string: a stray \r prints raw and eats
+    // the line it was meant to explain.
+    let crlfScalars = (crlfHead ?? "nil").unicodeScalars.map { $0.value }
+    check(crlfHead == "T/pounce",
+          "a carriage return is trimmed with the rest (got \(crlfScalars))")
+
+    // CR-only, the other spelling the newline set covers.
+    try? "T/haus\rW/1\r".write(toFile: mru, atomically: true, encoding: .utf8)
+    check(WorkspaceMRU.current(file: mru) == "T/haus", "a lone carriage return still separates lines")
 
     // The bundle-id compare must not depend on `parse` having lowercased the
     // list — a settings UI could build one of these directly.
