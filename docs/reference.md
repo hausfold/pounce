@@ -560,6 +560,9 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   item's hotkey — binding a key to something you keep out of the list is a
   legitimate setup. (`apps.hideBundleIds` still works and hides by bundle ID
   instead of path; use whichever you have to hand.)
+- **`workspaces`** and **`bundleIds`** list the row only where it is useful — on
+  certain workspaces, or with a certain app in front. See [Scoping a row to
+  where you are](#scoping-a-row-to-where-you-are), below.
 - **`alias`** is a search shorthand. It matches at a bonus over the item's real
   name, so typing your alias lands on your item rather than on whatever app
   happens to fuzzy-match the same letters.
@@ -650,8 +653,52 @@ give it a shorthand, give it a key. Each entry is keyed by an **item key**:
   hidutil property --set '{"UserKeyMapping":[]}'   # clears ALL mappings, not just ours
   ```
 
-`enabled` and `alias` only mean something for things the palette lists, so a
-`mode:` entry carries just a hotkey.
+`enabled`, `alias`, `workspaces` and `bundleIds` only mean something for things
+the palette lists, so a `mode:` entry carries just a hotkey.
+
+#### Scoping a row to where you are
+
+`enabled` is a decision you make once. **`workspaces`** and **`bundleIds`** are
+asked again on every summon, so a row can be listed only where it means
+something — a command that acts on "the focused terminal window" is noise in a
+palette opened over a browser, and worse than noise if it falls back to `$HOME`
+and does something you didn't mean.
+
+```jsonc
+{
+  "items": {
+    // an agent lane, only from the terminal pages…
+    "cmd:lane-here":  { "workspaces": ["T"] },
+    // …or only with the terminal itself in front, wherever its window is
+    "cmd:shell-here": { "bundleIds": ["com.mitchellh.ghostty"] }
+  }
+}
+```
+
+- **`workspaces`** is a list of workspace names (a bare string is accepted for
+  one). `"T"` matches the page `T` **and every `T/…` child** — the same rule
+  `pages.prefix` uses, because a tiling desktop names its pages that way. `"T/*"`
+  matches the children only, and `"T/main"` matches exactly that page.
+  Case-insensitive.
+
+  Which workspace you are on is read from **`pages.mruFile`** — the recency file
+  the window manager's own workspace-change hook writes, head line first (the
+  `pages` block in [Configuration](#configuration)). That file is the whole
+  mechanism: set it even if you never turn the ⌃⇥ walk on. **Unset or missing,
+  `workspaces` filters nothing** — a Mac with no tiler can't answer the
+  question, and hiding a row there would hide it forever. It is read once per
+  summon, not polled, and never shells out to the window manager: the palette
+  opens on a keypress and nothing on that path may wait on a subprocess.
+
+- **`bundleIds`** is a list of bundle IDs; the row is listed only while one of
+  them is the frontmost app. Case-insensitive.
+
+- Both together **AND**: the row wants that page *and* that app.
+
+- They scope the **row**, never the item's `hotkey` — a key you bound stays
+  bound, exactly as it does under `enabled: false`. Scoping a *chord* to an app
+  is the `appHotkeys` block instead, which has to consume the keystroke to do
+  it.
 
 ### Leader sequences (two-step keys)
 

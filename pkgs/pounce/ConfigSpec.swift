@@ -321,8 +321,8 @@ enum ConfigSpec {
             // per-item fields is the honest documentation.
             ConfigSection(
                 name: "items",
-                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\", \"shortcut:<uuid>\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too — see \"fnKey\" above for the two ways it can be carried.",
-                // Three fields, and only three — see ItemSettings.parse.
+                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\", \"shortcut:<uuid>\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too — see \"fnKey\" above for the two ways it can be carried. \"workspaces\"/\"bundleIds\" scope the ROW to where you summoned the palette from — never the item's hotkey, which stays global. \"workspaces\" reads the same \"pages\".mruFile the ⌃⇥ page walk does, and filters nothing when that file is unset or missing.",
+                // Five fields, and only five — see ItemSettings.parse.
                 raw: """
                 // "cmd:emoji": {
                 //   "enabled": true,   // false removes the item from the palette
@@ -331,6 +331,10 @@ enum ConfigSpec {
                 // },
                 // "app:/Applications/Ghostty.app": { "hotkey": "opt+t" },
                 // "mode:emoji": { "hotkey": "fn" },
+                // "cmd:lane-here": {
+                //   "workspaces": ["T"],                    // only on T and its T/… pages
+                //   "bundleIds": ["com.mitchellh.ghostty"], // …and only with this app in front
+                // },
                 """),
         ]
     }
