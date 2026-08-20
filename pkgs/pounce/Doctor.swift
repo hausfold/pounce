@@ -103,6 +103,59 @@ enum DoctorMode {
             }
         }
 
+        // Rows scoped to a workspace or an app (`items`' `workspaces` /
+        // `bundleIds`). These fail QUIETLY by construction: a row that is never
+        // listed looks exactly like a row you never installed, there is no error
+        // anywhere, and the palette is the wrong place to explain itself. The
+        // report is the only place that can say it, so it says it — both what
+        // each scoped row asks for, and whether it would be listed from here.
+        let scopedItems = settings.items.entries.filter { $0.value.isScoped }.sorted { $0.key < $1.key }
+        if !scopedItems.isEmpty {
+            let here = WorkspaceMRU.current(file: settings.pages.mruFile)
+            let wantsWorkspace = scopedItems.contains { !$0.value.workspaces.isEmpty }
+
+            // The silent no-op: rows asking about a workspace on a machine that
+            // never says which one it is on. They are listed everywhere, which
+            // reads as "the setting did nothing" and is impossible to tell from
+            // a typo in the workspace name.
+            if wantsWorkspace, here == nil {
+                if let file = settings.pages.mruFile, !file.isEmpty {
+                    bad("\"pages\".mruFile (\(file)) can't be read, so pounce doesn't know which "
+                        + "workspace is in front — every `workspaces` row below is listed everywhere")
+                    problems.append("`pages.mruFile` points at a file pounce can't read (\(file)); "
+                                    + "the `workspaces` scoping in `items` is doing nothing.")
+                } else {
+                    bad("rows are scoped to workspaces, but no \"pages\".mruFile is set — pounce has "
+                        + "no way to know which workspace is in front, so they are listed everywhere")
+                    problems.append("Set `pages.mruFile` to the recency file your window manager's "
+                                    + "workspace-change hook writes; without it `workspaces` scoping "
+                                    + "in `items` does nothing.")
+                }
+            } else if let here {
+                ok("workspace in front, per \"pages\".mruFile: \(here)")
+            }
+
+            for (key, item) in scopedItems {
+                var scope: [String] = []
+                if !item.workspaces.isEmpty {
+                    scope.append("workspaces " + item.workspaces.joined(separator: ", "))
+                }
+                if !item.bundleIds.isEmpty {
+                    scope.append("apps " + item.bundleIds.joined(separator: ", "))
+                }
+                let asked = scope.joined(separator: " + ")
+                // Only the workspace half can be judged from here: `bundleIds` is
+                // about whatever was frontmost when you press the key, and the
+                // app in front right now is the terminal running this command.
+                if let here, !item.workspaces.isEmpty,
+                   !item.workspaces.contains(where: { ItemSetting.workspaceMatches($0, here) }) {
+                    warn("\(key) is listed only on \(asked) — not from \(here), where you are now")
+                } else {
+                    ok("\(key) is listed only on \(asked)")
+                }
+            }
+        }
+
         // Whenever anything binds `fn`, report which of the two mechanisms is
         // actually carrying it — they fail in completely different ways and the
         // symptom (macOS's own picker appears) looks identical from outside.

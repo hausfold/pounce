@@ -195,6 +195,114 @@ func runItemSettingsTests() -> Int {
     check(!hidden.isEnabled("cmd:lock"), "the hidden item is disabled")
     check(hidden.bindings.count == 1, "disabling an item does not disarm its hotkey")
 
+    // MARK: Context scoping — `workspaces` / `bundleIds`
+
+    // The bare-name rule is `pages.prefix`'s: a page AND its children, because
+    // a tiling desktop names pages "T/<repo>" and asking for T means the lot.
+    check(ItemSetting.workspaceMatches("T", "T"), "a bare name matches the page itself")
+    check(ItemSetting.workspaceMatches("T", "T/pounce"), "a bare name matches its children")
+    check(!ItemSetting.workspaceMatches("T", "W"), "an unrelated page does not match")
+    // The trap a plain hasPrefix would fall into: "Terminal" is not under "T".
+    check(!ItemSetting.workspaceMatches("T", "Terminal"),
+          "the child rule needs the separator, not just the letters")
+    check(ItemSetting.workspaceMatches("t", "T/pounce"), "matching is case-insensitive")
+
+    check(ItemSetting.workspaceMatches("T/*", "T/pounce"), "the /* form matches children")
+    check(!ItemSetting.workspaceMatches("T/*", "T"), "the /* form excludes the parent")
+    check(!ItemSetting.workspaceMatches("T/*", "T/"), "…and a bare separator is not a child")
+    check(ItemSetting.workspaceMatches("T/main", "T/main"), "a full name matches exactly")
+    check(!ItemSetting.workspaceMatches("T/main", "T/other"), "…and only exactly")
+
+    let scopedRaw: [String: Any] = [
+        "cmd:lane-here": ["workspaces": ["T", "T/*"]],
+        "cmd:shell-here": ["bundleIds": ["com.mitchellh.Ghostty"]],
+        // The one-string spelling, beside the list one, in the same map.
+        "cmd:both": ["workspaces": "T", "bundleIds": ["com.mitchellh.ghostty"]] as [String: Any],
+        "cmd:plain": ["alias": "p"],
+    ]
+    let scoped = ItemSettings.parse(scopedRaw)
+
+    // Both spellings, the same as HotKeySpec takes two: a hand-written config
+    // says "T", a generated one emits a list.
+    check(scoped.entries["cmd:both"]?.workspaces == ["T"], "a bare string is a one-entry list")
+    check(scoped.entries["cmd:lane-here"]?.workspaces == ["T", "T/*"], "the array form reads back")
+    check(scoped.entries["cmd:shell-here"]?.bundleIds == ["com.mitchellh.ghostty"],
+          "bundle ids are lowercased once, at parse time")
+    check(scoped.isScoped, "a map carrying a predicate is scoped")
+    check(!items.isScoped, "…and the plain map from above is not")
+    check(scoped.entries["cmd:plain"]?.isScoped == false, "an entry with no predicate is unscoped")
+
+    let onT = ItemContext(workspace: "T/pounce", bundleId: "com.mitchellh.ghostty")
+    let onW = ItemContext(workspace: "W/1", bundleId: "com.apple.Safari")
+
+    check(scoped.isVisible("cmd:lane-here", in: onT), "a workspace-scoped row shows on its page")
+    check(!scoped.isVisible("cmd:lane-here", in: onW), "…and is gone elsewhere")
+    check(scoped.isVisible("cmd:shell-here", in: onT), "an app-scoped row shows over its app")
+    check(!scoped.isVisible("cmd:shell-here", in: onW), "…and is gone over another")
+    check(scoped.isVisible("cmd:plain", in: onW), "an unscoped entry shows anywhere")
+    check(scoped.isVisible("cmd:never-mentioned", in: onW), "so does an item with no entry at all")
+
+    // The two predicates AND: an entry naming both wants both.
+    check(scoped.isVisible("cmd:both", in: onT), "both predicates satisfied → visible")
+    check(!scoped.isVisible("cmd:both", in: ItemContext(workspace: "T", bundleId: "com.apple.Safari")),
+          "right page, wrong app → hidden")
+    check(!scoped.isVisible("cmd:both", in: ItemContext(workspace: "W", bundleId: "com.mitchellh.ghostty")),
+          "right app, wrong page → hidden")
+
+    // Fail OPEN on an unknown context, per half. A Mac with no tiler can't
+    // answer "which workspace", and a row you can no longer reach is a worse
+    // outcome than a row that won't help.
+    check(scoped.isVisible("cmd:lane-here", in: .unknown), "an unknown workspace filters nothing")
+    check(scoped.isVisible("cmd:both", in: ItemContext(workspace: nil, bundleId: "com.mitchellh.ghostty")),
+          "one known half is judged, the unknown half passes")
+    check(!scoped.isVisible("cmd:both", in: ItemContext(workspace: "W", bundleId: nil)),
+          "…and the known half still decides")
+
+    // enabled and the predicates compose: `enabled: false` is unconditional.
+    let offScopedRaw: [String: Any] = ["cmd:x": ["enabled": false, "workspaces": ["T"]] as [String: Any]]
+    let offAndScoped = ItemSettings.parse(offScopedRaw)
+    check(!offAndScoped.isVisible("cmd:x", in: onT), "enabled:false wins on the matching page too")
+
+    // MARK: WorkspaceMRU — the head of the WM's recency file
+
+    let mruDir = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("pounce-mru-tests-\(getpid())")
+    try? FileManager.default.createDirectory(at: mruDir, withIntermediateDirectories: true)
+    let mru = mruDir.appendingPathComponent("workspace-mru").path
+    defer { try? FileManager.default.removeItem(at: mruDir) }
+
+    check(WorkspaceMRU.current(file: nil) == nil, "no configured file → no workspace")
+    check(WorkspaceMRU.current(file: mru) == nil, "a missing file → no workspace")
+
+    try? "T/pounce\nW/1\nT\n".write(toFile: mru, atomically: true, encoding: .utf8)
+    check(WorkspaceMRU.current(file: mru) == "T/pounce", "the head line is where you are")
+
+    try? "\n  \nT/haus\n".write(toFile: mru, atomically: true, encoding: .utf8)
+    check(WorkspaceMRU.current(file: mru) == "T/haus", "blank lines are skipped, not returned")
+
+    try? "".write(toFile: mru, atomically: true, encoding: .utf8)
+    check(WorkspaceMRU.current(file: mru) == nil, "an empty file answers nil rather than \"\"")
+
+    // A CRLF-written file must not hand back "T/pounce\r", which matches no
+    // pattern and would hide the row rather than fail open.
+    try? "T/pounce\r\nW/1\r\n".write(toFile: mru, atomically: true, encoding: .utf8)
+    let crlfHead = WorkspaceMRU.current(file: mru)
+    // Reported as SCALARS, not as the string: a stray \r prints raw and eats
+    // the line it was meant to explain.
+    let crlfScalars = (crlfHead ?? "nil").unicodeScalars.map { $0.value }
+    check(crlfHead == "T/pounce",
+          "a carriage return is trimmed with the rest (got \(crlfScalars))")
+
+    // CR-only, the other spelling the newline set covers.
+    try? "T/haus\rW/1\r".write(toFile: mru, atomically: true, encoding: .utf8)
+    check(WorkspaceMRU.current(file: mru) == "T/haus", "a lone carriage return still separates lines")
+
+    // The bundle-id compare must not depend on `parse` having lowercased the
+    // list — a settings UI could build one of these directly.
+    let handBuilt = ItemSetting(bundleIds: ["com.mitchellh.Ghostty"])
+    check(handBuilt.matches(ItemContext(workspace: nil, bundleId: "com.mitchellh.ghostty")),
+          "a bundle id that skipped parse still matches case-insensitively")
+
     if failures == 0 { print("ok — all ItemSettings tests passed") }
     return failures
 }

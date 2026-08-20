@@ -2,8 +2,9 @@ import Foundation
 
 // MARK: - Per-item settings (config.json's `items` map)
 //
-// The three things you'd otherwise want three config keys for — hide it, give it
-// a shorthand, give it a key — expressed as ONE map keyed by an item key. That
+// The things you'd otherwise want a config key each for — hide it, give it a
+// shorthand, give it a key, list it only on certain pages or over certain apps —
+// expressed as ONE map keyed by an item key. That
 // keying is the point: a single entry is exactly one row of a settings list, so
 // a UI that edits these mutates one key rather than reconciling three parallel
 // arrays.
@@ -109,13 +110,137 @@ struct HotKeySequence: Equatable {
     }
 }
 
-// One item's overrides. `enabled` and `alias` apply to things the palette
-// LISTS (commands and apps); a "mode:" entry only meaningfully carries a
-// hotkey, since no palette row corresponds to it.
+// Where the palette was summoned from, as far as a row's visibility is
+// concerned. Both fields are OPTIONAL because both can be genuinely unknown — a
+// Mac with no tiler has no workspace, and a summon that raced our own
+// activation has no other app in front — and an unknown value must not filter:
+// losing a row you can no longer reach, on a machine that simply can't answer
+// the question, is worse than showing one that won't help. So a predicate whose
+// context is nil passes. Foundation-only (the caller reads the frontmost app —
+// see State.swift's `ItemContext.current`), which is what keeps this file
+// compilable by tests/run.sh.
+struct ItemContext: Equatable {
+    var workspace: String?     // the WM workspace in front, e.g. "T/pounce"
+    var bundleId: String?      // the frontmost app, e.g. "com.mitchellh.ghostty"
+
+    // Nothing known — every scoped row passes. Also what a non-scoped config
+    // costs, since State only builds a real context when one is asked for.
+    static let unknown = ItemContext()
+}
+
+// One item's overrides. `enabled`, `alias`, `workspaces` and `bundleIds` apply
+// to things the palette LISTS (commands and apps); a "mode:" entry only
+// meaningfully carries a hotkey, since no palette row corresponds to it.
+//
+// `workspaces`/`bundleIds` are the CONTEXT-scoped pair, and they scope the ROW
+// alone — never the item's `hotkey`, which stays global exactly as `enabled:
+// false` leaves it. A key is a promise you made once; a row is a suggestion the
+// palette makes every time it opens, and only the second one is worth making
+// conditional. (Scoping a chord is `appHotkeys` — see AppScoped.swift, which
+// has to consume the event to do it.)
 struct ItemSetting: Equatable {
     var enabled: Bool = true
     var alias: String?
     var hotkey: HotKeySequence?
+    // Empty means "anywhere" for both, which is what an entry that never
+    // mentions them keeps meaning.
+    var workspaces: [String] = []
+    var bundleIds: [String] = []
+
+    var isScoped: Bool { !workspaces.isEmpty || !bundleIds.isEmpty }
+
+    // Does this row belong in a palette summoned from `context`? The two
+    // predicates AND (a row asking for both wants both), and each one passes
+    // when its half of the context is unknown — see ItemContext.
+    func matches(_ context: ItemContext) -> Bool {
+        if !workspaces.isEmpty, let workspace = context.workspace,
+           !workspaces.contains(where: { ItemSetting.workspaceMatches($0, workspace) }) {
+            return false
+        }
+        if !bundleIds.isEmpty, let bundleId = context.bundleId,
+           // Both sides lowercased HERE rather than trusting `parse` to have
+           // done it: `entries` is an ordinary var, so a settings UI building an
+           // ItemSetting directly would otherwise hide the row everywhere, with
+           // every test (all of which go through `parse`) still green.
+           !bundleIds.contains(where: { $0.lowercased() == bundleId.lowercased() }) {
+            return false
+        }
+        return true
+    }
+
+    // One `workspaces` pattern against the workspace in front. The bare-name
+    // shape is the one `pages.prefix` already taught this config file — "T" is
+    // the page AND its children — because a tiling desktop names its pages that
+    // way and asking for T almost never means "T alone". Not the identical
+    // predicate, though, and the difference is deliberate: AppScoped's walk
+    // matches case-SENSITIVELY and has no "/*" form, while this one adds both.
+    //
+    //   "T"      T, and every T/… child          (prefix, the pages.prefix rule)
+    //   "T/*"    the children only, never T itself
+    //   "T/main" that page exactly
+    //
+    // Case-insensitive: AeroSpace will focus `t` when you asked for `T`, so a
+    // config that disagreed with the MRU file's spelling by one letter would
+    // hide the row forever with nothing to see.
+    static func workspaceMatches(_ pattern: String, _ workspace: String) -> Bool {
+        let pattern = pattern.lowercased()
+        let workspace = workspace.lowercased()
+        if pattern.hasSuffix("/*") {
+            let parent = String(pattern.dropLast())      // "t/*" -> "t/"
+            return workspace.hasPrefix(parent) && workspace.count > parent.count
+        }
+        return workspace == pattern || workspace.hasPrefix(pattern + "/")
+    }
+
+    // A JSON value that may be one string or a list of them. Both spellings are
+    // accepted for the same reason HotKeySpec takes two: a hand-written config
+    // wants `"workspaces": "T"`, and a generated one emits a list.
+    static func stringList(_ any: Any?) -> [String] {
+        var raw: [String] = []
+        if let one = any as? String { raw = [one] }
+        // `[Any]` rather than `[String]`: JSONSerialization hands back an
+        // NSArray, and one stray number in the list must cost that entry alone,
+        // not the whole predicate — the same leniency `parse` gives a malformed
+        // item, for the same reason.
+        else if let many = any as? [Any] { raw = many.compactMap { $0 as? String } }
+        return raw.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+}
+
+// The workspace in front, read from the same MRU file the page walk uses
+// (`pages.mruFile`, written by the WM's own workspace-change hook — haus:
+// windows/scripts/workspace-mru.sh). Head line only: the hook keeps it
+// most-recent-first, so line 1 IS where you are.
+//
+// Reading the file rather than asking `aerospace` is the whole point. This runs
+// on the ⌘Space path, once per summon, and a subprocess there would put tens of
+// milliseconds in front of the first keystroke — the same trade Windows.swift
+// makes for the workspace map it caches. A file that doesn't exist, or a config
+// that never set `pages.mruFile`, answers nil, and nil filters nothing.
+enum WorkspaceMRU {
+    static func current(file: String?) -> String? {
+        // `~` expanded here and not at parse time: the config is a hand-written
+        // file and "~/.local/state/…" is how a person writes a path a shell hook
+        // owns. Unexpanded it simply fails to open, which under the fail-open
+        // rule below makes the whole feature a silent no-op — the one failure
+        // mode a scoped row cannot afford. (`pounce doctor` reports the same
+        // thing out loud; see Doctor's items section.)
+        guard let file, !file.isEmpty else { return nil }
+        let path = (file as NSString).expandingTildeInPath
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        // Hard-capped like AppScoped's read of the same file, for the day the
+        // path points at something that isn't a 50-line list.
+        let data = (try? handle.read(upToCount: 8192)) ?? nil
+        try? handle.close()
+        guard let data, let text = String(data: data, encoding: .utf8) else { return nil }
+        // Split on the NEWLINE SET rather than on "\n": that way a CR-only or
+        // CRLF-written file can't hand back "T/pounce\r", which would match no
+        // pattern and hide every scoped row instead of failing open. (The
+        // trailing trim stays for spaces around a name.)
+        return text.components(separatedBy: .newlines).lazy
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
 }
 
 // The whole `items` map. Entries are keyed by an item's STABLE KEY — the same
@@ -132,6 +257,8 @@ struct ItemSetting: Equatable {
 //   "items": {
 //     "cmd:emoji":                    { "alias": "emo", "hotkey": "opt+e" },
 //     "cmd:brew-services":            { "enabled": false },
+//     "cmd:lane-here":                { "workspaces": ["T"] },
+//     "cmd:shell-here":               { "bundleIds": ["com.mitchellh.ghostty"] },
 //     "app:/Applications/Ghostty.app": { "hotkey": "opt+t" },
 //     "shortcut:0ECC8F7A-3A52-467A-84C0-511CCE1CB9B7": { "alias": "shelf" },
 //     "mode:clipboard":               { "hotkey": "cmd+shift+v" }
@@ -152,6 +279,11 @@ struct ItemSettings {
             if let e = fields["enabled"] as? Bool { entry.enabled = e }
             if let a = fields["alias"] as? String, !a.isEmpty { entry.alias = a }
             entry.hotkey = HotKeySequence.parse(fields["hotkey"])
+            entry.workspaces = ItemSetting.stringList(fields["workspaces"])
+            // Lowercased at parse time so the per-summon comparison stays a
+            // plain `contains` — bundle ids are case-insensitive, and this read
+            // happens once per config load rather than once per row per open.
+            entry.bundleIds = ItemSetting.stringList(fields["bundleIds"]).map { $0.lowercased() }
             settings.entries[key] = entry
         }
         return settings
@@ -163,7 +295,26 @@ struct ItemSettings {
     // dictionary lookups against the already-parsed map — no re-reading of disk.
 
     // False only when an entry explicitly says so; an unlisted item is enabled.
+    // Config alone — the answer doesn't move between summons. Kept beside
+    // `isVisible` as the narrow question ("is this item switched off?"), which
+    // is what a caller wants when a summon isn't what it's asking about; the
+    // hotkey path asks neither, because it reads `bindings`, and a key must not
+    // come and go with the workspace.
     func isEnabled(_ itemKey: String) -> Bool { entries[itemKey]?.enabled ?? true }
+
+    // Whether the palette should LIST this item right now: `enabled`, plus the
+    // context predicates (`workspaces` / `bundleIds`). An item with no entry, or
+    // an entry that names no predicate, is visible everywhere.
+    func isVisible(_ itemKey: String, in context: ItemContext) -> Bool {
+        guard let entry = entries[itemKey] else { return true }
+        return entry.enabled && entry.matches(context)
+    }
+
+    // Does anything here ask about context at all? The launcher checks this
+    // before building an ItemContext, so a config that scopes nothing — every
+    // config until someone writes one of these keys — pays no file read and no
+    // NSWorkspace call on the summon path.
+    var isScoped: Bool { entries.values.contains { $0.isScoped } }
 
     // A user-assigned search alias ("emo" → Emoji Picker), or nil.
     func alias(for itemKey: String) -> String? { entries[itemKey]?.alias }

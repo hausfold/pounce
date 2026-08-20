@@ -2,6 +2,27 @@ import SwiftUI
 import AppKit
 import ApplicationServices
 
+// MARK: - Where a summon came from
+//
+// The AppKit half of ItemSettings' context predicates (the rest is
+// Foundation-only so tests/run.sh can compile it). Called at most once per
+// launcher build, and only when the config scopes something.
+extension ItemContext {
+    static func current(settings: Settings) -> ItemContext {
+        // The palette hasn't activated yet at this point — every path calls
+        // DaemonState.load before PounceUI.present() steals focus, and this
+        // depends on that order — so the frontmost app is still the one you
+        // pressed the key over. Belt and braces anyway: if it
+        // IS us (a re-entrant summon, a linger), say we don't know rather than
+        // scoping every row against Pounce itself.
+        let front = NSWorkspace.shared.frontmostApplication
+        let ours = front?.processIdentifier == NSRunningApplication.current.processIdentifier
+        return ItemContext(
+            workspace: WorkspaceMRU.current(file: settings.pages.mruFile),
+            bundleId: ours ? nil : front?.bundleIdentifier)
+    }
+}
+
 // MARK: - Commit
 
 // hideNow: close immediately. linger: brief fade (terminal action). loading:
@@ -404,7 +425,13 @@ final class DaemonState: ObservableObject {
             // the assembled list, so commands and apps obey the same rules and a
             // future settings UI has one place to reason about.
             if !settings.items.isEmpty {
-                built.removeAll { !settings.items.isEnabled($0.frecencyKey) }
+                // Where this summon came from, for the rows that asked to be
+                // scoped to it (`workspaces` / `bundleIds` — see ItemSetting).
+                // Built only when some entry actually asks, so an unscoped
+                // config pays nothing for the feature on the ⌘Space path.
+                let context = settings.items.isScoped
+                    ? ItemContext.current(settings: settings) : .unknown
+                built.removeAll { !settings.items.isVisible($0.frecencyKey, in: context) }
                 for i in built.indices {
                     built[i].userAlias = settings.items.alias(for: built[i].frecencyKey)
                 }
