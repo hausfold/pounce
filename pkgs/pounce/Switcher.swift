@@ -205,6 +205,10 @@ final class WindowSwitcher {
     // *known and different* keeps the default on windows AeroSpace can actually
     // reach with `focus --window-id`.
     //
+    // A workspace *family* is the unit, not the workspace name: `T`, `T/haus`
+    // and `T/main` are pages of one place (see `family(of:)`), and the page
+    // chord is what moves between them. A bare tap looks past all of them.
+    //
     // Nothing is removed from the list: the skipped siblings are still rows
     // 1..n, still reachable with ⇧⇥ or by keeping ⇥ held down.
     private func defaultSelection(_ windows: [WindowInfo], reverse: Bool) -> Int {
@@ -223,9 +227,27 @@ final class WindowSwitcher {
 
         let elsewhere = windows.dropFirst().firstIndex {
             guard !$0.isMinimized, let ws = tracker.workspace(of: $0) else { return false }
-            return ws != here
+            return Self.family(of: ws) != Self.family(of: here)
         }
         return elsewhere ?? mru()
+    }
+
+    // The workspace family a name belongs to: everything before the first `/`.
+    //
+    // AeroSpace workspace names are flat strings, but a `/` in one is the
+    // settled convention for a *page* — a sub-workspace of the base name, the
+    // ring the page switcher walks (AppScoped.swift). Pages of one base are one
+    // place: you get between them with the page chord, so a bare ⌘⇥ tap that
+    // lands on the page you just walked away from is the same non-switch as
+    // landing on a tiled sibling, and for the same reason.
+    //
+    // Deliberately not keyed on `pages.prefix`: that setting says which family
+    // the page chord walks, and ⌘⇥'s default must not change shape depending
+    // on whether an unrelated chord is configured. A name with no `/` is its
+    // own family, which is every workspace on a Mac that has no pages at all —
+    // there the comparison is the plain name equality it has always been.
+    private static func family(of workspace: String) -> Substring {
+        workspace.prefix { $0 != "/" }
     }
 
     private func cycle(_ delta: Int) {
