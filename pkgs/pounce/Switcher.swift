@@ -225,9 +225,10 @@ final class WindowSwitcher {
         // map is briefly empty at daemon start) → the unmodified rule.
         guard let here = tracker.workspace(of: windows[0]) else { return mru() }
 
+        let hereFamily = Self.family(of: here)
         let elsewhere = windows.dropFirst().firstIndex {
             guard !$0.isMinimized, let ws = tracker.workspace(of: $0) else { return false }
-            return Self.family(of: ws) != Self.family(of: here)
+            return Self.family(of: ws) != hereFamily
         }
         return elsewhere ?? mru()
     }

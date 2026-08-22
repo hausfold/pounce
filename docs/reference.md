@@ -874,7 +874,7 @@ switcher with an MRU **window** switcher:
 
 - **⌘⇥, release** — toggle straight to the last window you were in, even on
   another workspace. No HUD, no ceremony. (Under AeroSpace this means the last
-  window on a *different* workspace — see below.)
+  window on a *different* workspace family — see below.)
 - **hold ⌘, keep tapping ⇥** — walk every window, most-recently-used first
   (⌘⇧⇥ walks backwards; ↑/↓ also move).
 - **hold ⌘ and type** — fuzzy-filter the list, ranked by frecency. ↵ commits, ⎋
@@ -909,10 +909,9 @@ entirely: it starts from the far end of the list and walks forwards.)
 
 None of this engages without AeroSpace, and it also stands down when every
 window happens to be in one workspace family: the default falls back to plain
-MRU. The
-one thing a machine with no AeroSpace does feel is the HUD delay — the list
-appears after a quarter second of holding ⌘ rather than a tenth, so a quick
-bounce between two windows never flashes it.
+MRU. The one thing a machine with no AeroSpace does feel is the HUD delay — the
+list appears after a quarter second of holding ⌘ rather than a tenth, so a
+quick bounce between two windows never flashes it.
 
 macOS doesn't let ⌘Tab be rebound — the daemon takes it with an event tap, which
 the system gates behind the **Accessibility** grant. Without the grant (or during
@@ -927,7 +926,7 @@ windows by workspace, each group under its own header — workspace order is
 itself MRU, so it reads as "here, then where I was before, then before that" —
 and focusing goes through `aerospace focus --window-id` so a window parked on
 another workspace surfaces correctly. That's the pairing the
-[haus](https://hausfold.co) rice ships enabled.
+[haus](https://hausfold.co) desktop ships enabled.
 
 Headers appear only when there are two or more groups to tell apart; with
 everything on one workspace the list is plain. Filtered results are ranked by
