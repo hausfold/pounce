@@ -30,6 +30,45 @@ test -f "$table" || {
   exit 1
 }
 
+# Resolved rather than prefixed with $PWD, so POUNCE_TEST_FIXTURES works when
+# it is absolute (the Swift half handles both, and a pair of tests that read one
+# variable two ways is worse than either). A missing dir fails here, loudly,
+# instead of producing an empty registry and a diff that blames the parser.
+dir="$(cd "$fixtures/header-grammar" && pwd)" || exit 1
+
+# Some fixtures are load-bearing WHITESPACE, and an editor's "strip trailing
+# whitespace" or a bulk reformat would defuse them SILENTLY. There is no
+# .editorconfig or .gitattributes standing between them and that.
+#
+# Guarded here are exactly the ones whose whitespace loss would NOT change the
+# expected value — strip them and the table still matches while the case tests
+# nothing:
+#
+#   trailing-space   "Trailing Space   " -> "Trailing Space", already expected
+#   submenu-spaced   "true   " -> "true", still a submenu
+#   tab-hash         "#<tab>pounce:" -> "# pounce:", still canonical, still parses
+#   indented         "  # pounce:" -> "# pounce:", ditto
+#   wide-hash        "#  pounce:" -> "# pounce:", ditto
+#
+# nbsp-tail is deliberately NOT here: losing its U+00A0 changes the name, so the
+# table catches that one by itself. A guard for it would be noise pretending to
+# be rigour.
+#
+# awk rather than grep: it takes `\t` in a regex on every platform, where BSD
+# grep has no -P and a literal tab in a pattern is its own hazard.
+intact() { # intact <file> <awk regex>
+  awk -v re="$2" '$0 ~ re { hit = 1 } END { exit hit ? 0 : 1 }' "$dir/$1" && return 0
+  echo "$1 has lost the whitespace it exists to test (wanted /$2/)." >&2
+  echo "Stripped, this case still PASSES and tests nothing — which is why the" >&2
+  echo "fixtures are checked before the table is." >&2
+  return 1
+}
+intact trailing-space.sh '= Trailing Space   $'
+intact submenu-spaced.sh '= true   $'
+intact tab-hash.sh '^#\tpounce:'
+intact indented.sh '^  # pounce:'
+intact wide-hash.sh '^#  pounce:'
+
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 
@@ -50,7 +89,7 @@ printf '0\n' > "$scratch/home/state/no"
 env -i \
   PATH="$scratch/bin:/usr/bin:/bin" \
   HOME="$scratch/home" \
-  POUNCE_BUILTIN_DIR="$PWD/$fixtures/header-grammar" \
+  POUNCE_BUILTIN_DIR="$dir" \
   XDG_CONFIG_HOME="$scratch/empty-config" \
   /bin/bash "$palette"
 

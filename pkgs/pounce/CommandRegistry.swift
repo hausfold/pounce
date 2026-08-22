@@ -47,7 +47,7 @@ final class CommandRegistry {
         var name = ""
         var description = ""
         var icon = ""
-        var submenu = false
+        var submenu: Bool? = nil
         var whenFile = ""
     }
 
@@ -120,7 +120,7 @@ final class CommandRegistry {
                 name: header.name.isEmpty ? id : header.name,
                 description: header.description,
                 icon: header.icon.isEmpty ? "sparkles" : header.icon,
-                submenu: header.submenu,
+                submenu: header.submenu ?? false,
                 scriptPath: path))
         }
 
@@ -222,7 +222,14 @@ final class CommandRegistry {
             if let v = field(value, "name"), header.name.isEmpty { header.name = v }
             else if let v = field(value, "description"), header.description.isEmpty { header.description = v }
             else if let v = field(value, "icon"), header.icon.isEmpty { header.icon = v }
-            else if let v = field(value, "submenu") { header.submenu = (v == "true" || v == "1") }
+            // `submenu == nil`, matching the `isEmpty` guards on its four
+            // siblings and the awk's `&& s == ""`: FIRST wins. Without the
+            // guard a repeated key was last-wins here and first-wins there, so
+            // two `submenu` lines gave the daemon a submenu and the launcher a
+            // leaf — the trailing-space bug's shape, one field over.
+            else if let v = field(value, "submenu"), header.submenu == nil {
+                header.submenu = (v == "true" || v == "1")
+            }
             else if let v = field(value, "whenFile"), header.whenFile.isEmpty { header.whenFile = v }
         }
         return header
@@ -298,13 +305,21 @@ final class CommandRegistry {
 
     // "key = value" → value, if `rest` names `key`. Whitespace-tolerant to match
     // the awk header parser (`# pounce: name  =  Foo`).
+    //
+    // Space and tab ONLY, on both sides — deliberately narrower than
+    // `.trimmingCharacters(in: .whitespaces)`, which also trims U+00A0 and the
+    // U+2000 block. awk's `[ \t]` cannot follow it there, and ⌥Space types a
+    // non-breaking space on macOS, so trimming it here would have made
+    // `submenu = true<NBSP>` a submenu in the daemon and a leaf in the shell
+    // launcher — the same split this file's trailing-space fix just closed, in
+    // a character you cannot see. Converged-and-narrow beats forgiving-and-split.
     private func field(_ rest: Substring, _ key: String) -> String? {
         let s = rest.drop { $0 == " " || $0 == "\t" }
         guard s.hasPrefix(key) else { return nil }
         let afterKey = s.dropFirst(key.count).drop { $0 == " " || $0 == "\t" }
         guard afterKey.first == "=" else { return nil }
-        return afterKey.dropFirst().drop { $0 == " " || $0 == "\t" }
-            .trimmingCharacters(in: .whitespaces)
+        let value = afterKey.dropFirst().drop { $0 == " " || $0 == "\t" }
+        return String(value.reversed().drop { $0 == " " || $0 == "\t" }.reversed())
     }
 }
 

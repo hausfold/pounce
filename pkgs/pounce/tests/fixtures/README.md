@@ -48,6 +48,15 @@ Each is a fixture whose name says which shape it is:
   which is the sharper case: `submenu = true ` with one trailing space parsed as
   `true` in the daemon and as **false** in the shell launcher until pounce#95, so
   the same command was a submenu on one path and a leaf on the other.
+- **Trimming is space and tab ONLY** — `nbsp-tail` keeps its U+00A0, and its
+  expected name keeps it too. Swift's `.trimmingCharacters(in: .whitespaces)`
+  would have removed it and awk's `[ \t]` cannot follow, which is the
+  `submenu-spaced` split again in a character nobody can see — and ⌥Space types
+  one on macOS. The grammar stays narrow so the two stay converged.
+- **A repeated key: FIRST wins** — `submenu-repeated` declares `false` then
+  `true` and must render `0`. The awk has always been first-wins (`&& s == ""`);
+  Swift's `submenu` was the one field with no such guard, so it was last-wins
+  there until pounce#95. Under last-wins this fixture renders `1`.
 - **`whenFile` vetoes, and `~` expands the same way in both** — `listed` and
   `vetoed` name `~/state/yes` and `~/state/no`; the harnesses write those under a
   controlled `HOME`, and `vetoed` is absent from the table rather than present
@@ -60,7 +69,21 @@ one parser changes, the table is what says so. When you change the grammar
 deliberately, change the table in the same commit — a fixture whose expected line
 you had to discover by running the code is a test that ratifies a bug.
 
-haus keeps its own copy of this table for the Nix parser
-(`modules/launcher/header-grammar-table.txt`), pinned to the same fixture names.
-Once the lock moves past pounce#95 it can read these files directly instead, the
-way `pounce-item-grammar` already reads `ItemSettings.swift`.
+**If your case turns on whitespace, check whether stripping it would change the
+expected value.** If it would not, the fixture can be defused silently by any
+reformat and belongs in `palette_header_test.sh`'s `intact` list — that is what
+protects `trailing-space`, `submenu-spaced`, `tab-hash`, `indented` and
+`wide-hash`, and why `nbsp-tail` deliberately is not there.
+
+haus keeps its own table for the Nix parser — `expectedHeaderGrammarTable` in its
+`flake.nix`, checked by `pounce-header-grammar` — pinned to these same case
+names. It is a different shape (haus asks for one field; this asks for a whole
+registry line), and it is deliberately not a copy of this file: once the lock
+moves past pounce#95 that check can read these files directly instead, the way
+`pounce-item-grammar` already reads `ItemSettings.swift`.
+
+⚠️ **haus is a PRODUCER of these headers, so its tolerance is not symmetric with
+ours.** Anything haus's reader accepts that the pounce it is locked against does
+not is a header haus writes and the daemon drops — losing the row's name, its
+description and its `whenFile`. haus keeps its own shipped headers canonical for
+that reason, enforced separately by its `pounce-command-headers` check.

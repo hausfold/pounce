@@ -2,7 +2,9 @@ Canonical	The spelling every shipped command uses	star	canonical	0
 Indented		sparkles	indented	0
 key-collision		sparkles	key-collision	0
 Listed		sparkles	listed	0
+Nbsp Tail 		sparkles	nbsp-tail	0
 not-a-comment		sparkles	not-a-comment	0
+Submenu Repeated		sparkles	submenu-repeated	0
 Submenu Spaced		sparkles	submenu-spaced	1
 Tab Hash		sparkles	tab-hash	0
 Tight Colon		sparkles	tight-colon	0
