@@ -218,7 +218,7 @@ final class CommandRegistry {
         for line in contents.split(separator: "\n", omittingEmptySubsequences: false) {
             seen += 1
             if seen > 30 { break }
-            guard let value = value(of: line, after: "pounce:") else { continue }
+            guard let value = headerBody(of: line, tag: "pounce:") else { continue }
             if let v = field(value, "name"), header.name.isEmpty { header.name = v }
             else if let v = field(value, "description"), header.description.isEmpty { header.description = v }
             else if let v = field(value, "icon"), header.icon.isEmpty { header.icon = v }
@@ -228,18 +228,24 @@ final class CommandRegistry {
         return header
     }
 
-    // `# <ws>+ prefix`, whitespace-tolerant before `#` and between `#` and
-    // `prefix` — to match the awk parser in pounce-palette and haus's
-    // `commandField`. An indented header line or a stray second space after
-    // `#` used to match some of the three parsers and not the others, which a
-    // hand-typed header has no way to notice.
-    private func value(of line: Substring, after prefix: String) -> Substring? {
+    // A comment line opening `#` + whitespace + `tag`, returning what follows it.
+    // Tolerant of indentation and of extra space after the `#`, to match the awk
+    // in pounce-palette and the Nix regex in haus — all three are pinned to
+    // tests/fixtures/header-grammar.tsv, which is the only thing keeping three
+    // hand-mirrored copies of one grammar honest.
+    //
+    // The whitespace after `#` is REQUIRED, not optional: `#pounce:` has never
+    // parsed anywhere, and accepting it here would widen the grammar rather than
+    // converge it. The `tight-hash` fixture pins that decision.
+    private func headerBody(of line: Substring, tag: String) -> Substring? {
         let leading = line.drop { $0 == " " || $0 == "\t" }
         guard leading.first == "#" else { return nil }
         let afterHash = leading.dropFirst()
         let rest = afterHash.drop { $0 == " " || $0 == "\t" }
-        guard rest.count < afterHash.count, rest.hasPrefix(prefix) else { return nil }
-        return rest.dropFirst(prefix.count)
+        // Index identity rather than `count`: "at least one space was dropped",
+        // in O(1), on a path that runs per line, per script, on every ⌘Space.
+        guard rest.startIndex != afterHash.startIndex, rest.hasPrefix(tag) else { return nil }
+        return rest.dropFirst(tag.count)
     }
 
     // MARK: - `whenFile`: a row that is listed only while there is something to

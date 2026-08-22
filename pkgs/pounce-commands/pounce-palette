@@ -94,7 +94,13 @@ registry=$(
       END {
         if (n == "") n = id
         if (i == "") i = "sparkles"
-        sub(/[ \t]+$/, "", w); sub(/[ \t]+$/, "", n)
+        # `s` is trimmed with the rest even though it is never printed: it is
+        # compared to the literal "true", so a trailing space made
+        # `submenu = true ` a LEAF here and a submenu in the daemon (whose
+        # field() ends in .trimmingCharacters) — the same command behaving
+        # differently on the two paths, with nothing to see but a picker that
+        # does not open.
+        sub(/[ \t]+$/, "", w); sub(/[ \t]+$/, "", n); sub(/[ \t]+$/, "", s)
         sub(/[ \t]+$/, "", d); sub(/[ \t]+$/, "", i)
         gsub(/\t/, "", w); gsub(/\t/, " ", n); gsub(/\t/, " ", d); gsub(/\t/, "", i)
         printf "%s\t%s\t%s\t%s\t%s\t%s\n", w, n, d, i, id, (s == "true" || s == "1") ? "1" : "0"

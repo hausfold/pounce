@@ -173,6 +173,15 @@ Header keys (all optional — the filename is the fallback name/id):
 | `submenu` | `true` if the script re-invokes `pounce` |
 | `whenFile` | a file that can veto the row — see below |
 
+Spacing is forgiving, because the header is hand-typed and a header that fails to
+parse has no symptom — the row just quietly carries its filename instead of its
+name. The line may be indented, the `#` may be followed by any run of spaces or
+tabs, and `=` may have any spacing (or none) around it; the value is trimmed at
+both ends. The one thing required is *some* whitespace after the `#`, so
+`#pounce: name = x` stays an ordinary comment. Unknown keys are ignored, which is
+what lets a consumer add its own — haus writes `cheat` and `cheatWhen` into the
+same header for its cheatsheet, and pounce passes over them.
+
 ### Listing a command only when it has something to act on
 
 `workspaces` and `bundleIds` ask **where you are**. The other question a row can
