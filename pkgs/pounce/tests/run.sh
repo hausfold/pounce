@@ -18,6 +18,12 @@ if [ -x /bin/bash ]; then
   echo "ok — pounce-palette parses under macOS /bin/bash"
 fi
 
+# …and that its awk header parser still produces the golden table the daemon's
+# Swift parser is pinned to as well (tests/fixtures/README.md). It runs the real
+# script over the shared fixtures, so editing that regex in place is what makes
+# this fail — which is the only way three hand-mirrored parsers stay one grammar.
+./tests/palette_header_test.sh
+
 scratch="$(mktemp -d)"
 bin="$scratch/pounce-tests"
 

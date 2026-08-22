@@ -79,17 +79,28 @@ registry=$(
     # missing on the other. Values are right-trimmed for the same reason —
     # CommandRegistry's `field()` ends in `.trimmingCharacters`, and a trailing
     # space in a hand-written header is exactly what that is there for.
+    # Whitespace-tolerant before `#`, around `pounce:`, and around `=` — to
+    # match CommandRegistry.swift's parser (`value(of:)`/`field()`) and haus's
+    # `commandField`. An indented header line or a stray second space after
+    # `#` used to match some of the three parsers and not the others, which
+    # a hand-typed header has no way to notice.
     line=$(awk -v id="$id" '
       NR > 30 { exit }   # headers live at the top; do not read whole files
-      /^# pounce: name *=/        && n == "" { sub(/^# pounce: name *= */, "");        n = $0 }
-      /^# pounce: description *=/ && d == "" { sub(/^# pounce: description *= */, ""); d = $0 }
-      /^# pounce: icon *=/        && i == "" { sub(/^# pounce: icon *= */, "");        i = $0 }
-      /^# pounce: submenu *=/     && s == "" { sub(/^# pounce: submenu *= */, "");     s = $0 }
-      /^# pounce: whenFile *=/    && w == "" { sub(/^# pounce: whenFile *= */, "");    w = $0 }
+      /^[ \t]*#[ \t]+pounce:[ \t]*name[ \t]*=/        && n == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*name[ \t]*=[ \t]*/, "");        n = $0 }
+      /^[ \t]*#[ \t]+pounce:[ \t]*description[ \t]*=/ && d == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*description[ \t]*=[ \t]*/, ""); d = $0 }
+      /^[ \t]*#[ \t]+pounce:[ \t]*icon[ \t]*=/        && i == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*icon[ \t]*=[ \t]*/, "");        i = $0 }
+      /^[ \t]*#[ \t]+pounce:[ \t]*submenu[ \t]*=/     && s == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*submenu[ \t]*=[ \t]*/, "");     s = $0 }
+      /^[ \t]*#[ \t]+pounce:[ \t]*whenFile[ \t]*=/    && w == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*whenFile[ \t]*=[ \t]*/, "");    w = $0 }
       END {
         if (n == "") n = id
         if (i == "") i = "sparkles"
-        sub(/[ \t]+$/, "", w); sub(/[ \t]+$/, "", n)
+        # `s` is trimmed with the rest even though it is never printed: it is
+        # compared to the literal "true", so a trailing space made
+        # `submenu = true ` a LEAF here and a submenu in the daemon (whose
+        # field() ends in .trimmingCharacters) — the same command behaving
+        # differently on the two paths, with nothing to see but a picker that
+        # does not open.
+        sub(/[ \t]+$/, "", w); sub(/[ \t]+$/, "", n); sub(/[ \t]+$/, "", s)
         sub(/[ \t]+$/, "", d); sub(/[ \t]+$/, "", i)
         gsub(/\t/, "", w); gsub(/\t/, " ", n); gsub(/\t/, " ", d); gsub(/\t/, "", i)
         printf "%s\t%s\t%s\t%s\t%s\t%s\n", w, n, d, i, id, (s == "true" || s == "1") ? "1" : "0"

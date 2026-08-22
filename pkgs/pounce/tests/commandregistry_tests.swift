@@ -105,6 +105,50 @@ func runCommandRegistryTests() -> Int {
               "a leading ~ in whenFile expands to home")
         check(CommandRegistry.expandTilde("/tmp/~x", home: "/home/me") == "/tmp/~x",
               "a ~ anywhere else is left alone")
+
+        // ── the header-grammar golden table ──────────────────────────────────
+        // Three parsers read this grammar and no two are the same language (see
+        // tests/fixtures/README.md); they cannot be collapsed, because haus
+        // parses headers at Nix EVAL time where calling a pounce binary would be
+        // IFD on every rebuild. So each is pinned to one table instead, and the
+        // fixtures are shared files rather than inline strings precisely so this
+        // test and the pounce-palette harness cannot drift into testing two
+        // different grammars.
+        //
+        // `registryLine` is the comparison surface because it is already the
+        // exact TSV the awk emits — so "the two parsers agree" needs no mapping
+        // layer that could itself be wrong.
+        let fixtures = ProcessInfo.processInfo.environment["POUNCE_TEST_FIXTURES"]
+            ?? "tests/fixtures"
+        let grammarDir = fixtures + "/header-grammar"
+        let grammarTable = fixtures + "/header-grammar.tsv"
+        if let expected = try? String(contentsOfFile: grammarTable, encoding: .utf8) {
+            // `whenFile`'s two fixtures name `~/state/{yes,no}`, so the tilde has
+            // to land somewhere this test owns — which also pins that both
+            // parsers expand `~` against the same HOME.
+            let ghome = root.appendingPathComponent("grammar-home", isDirectory: true)
+            try fm.createDirectory(at: ghome.appendingPathComponent("state", isDirectory: true),
+                                   withIntermediateDirectories: true)
+            try "1\n".write(to: ghome.appendingPathComponent("state/yes"),
+                            atomically: true, encoding: .utf8)
+            try "0\n".write(to: ghome.appendingPathComponent("state/no"),
+                            atomically: true, encoding: .utf8)
+            let empty = root.appendingPathComponent("grammar-empty-config", isDirectory: true)
+            try fm.createDirectory(at: empty, withIntermediateDirectories: true)
+
+            let grammar = CommandRegistry(
+                env: ["POUNCE_BUILTIN_DIR": grammarDir, "XDG_CONFIG_HOME": empty.path],
+                home: ghome.path)
+            grammar.refresh()
+            let actual = grammar.entries.map(\.registryLine).joined(separator: "\n") + "\n"
+            check(actual == expected,
+                  "the daemon's header parser no longer produces \(grammarTable).\n"
+                  + "--- expected ---\n\(expected)--- actual ---\n\(actual)")
+        } else {
+            check(false, "header-grammar fixtures are missing (looked in \(fixtures)) — "
+                       + "restore them rather than deleting this check: a header a "
+                       + "parser silently ignores has no other symptom.")
+        }
     } catch {
         check(false, "command registry fixture setup succeeds: \(error)")
     }

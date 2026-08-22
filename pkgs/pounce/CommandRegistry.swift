@@ -47,7 +47,7 @@ final class CommandRegistry {
         var name = ""
         var description = ""
         var icon = ""
-        var submenu = false
+        var submenu: Bool? = nil
         var whenFile = ""
     }
 
@@ -120,7 +120,7 @@ final class CommandRegistry {
                 name: header.name.isEmpty ? id : header.name,
                 description: header.description,
                 icon: header.icon.isEmpty ? "sparkles" : header.icon,
-                submenu: header.submenu,
+                submenu: header.submenu ?? false,
                 scriptPath: path))
         }
 
@@ -218,20 +218,41 @@ final class CommandRegistry {
         for line in contents.split(separator: "\n", omittingEmptySubsequences: false) {
             seen += 1
             if seen > 30 { break }
-            guard let value = value(of: line, after: "# pounce:") else { continue }
+            guard let value = headerBody(of: line, tag: "pounce:") else { continue }
             if let v = field(value, "name"), header.name.isEmpty { header.name = v }
             else if let v = field(value, "description"), header.description.isEmpty { header.description = v }
             else if let v = field(value, "icon"), header.icon.isEmpty { header.icon = v }
-            else if let v = field(value, "submenu") { header.submenu = (v == "true" || v == "1") }
+            // `submenu == nil`, matching the `isEmpty` guards on its four
+            // siblings and the awk's `&& s == ""`: FIRST wins. Without the
+            // guard a repeated key was last-wins here and first-wins there, so
+            // two `submenu` lines gave the daemon a submenu and the launcher a
+            // leaf — the trailing-space bug's shape, one field over.
+            else if let v = field(value, "submenu"), header.submenu == nil {
+                header.submenu = (v == "true" || v == "1")
+            }
             else if let v = field(value, "whenFile"), header.whenFile.isEmpty { header.whenFile = v }
         }
         return header
     }
 
-    private func value(of line: Substring, after prefix: String) -> Substring? {
-        let trimmed = line.drop { $0 == " " || $0 == "\t" }
-        guard trimmed.hasPrefix(prefix) else { return nil }
-        return trimmed.dropFirst(prefix.count)
+    // A comment line opening `#` + whitespace + `tag`, returning what follows it.
+    // Tolerant of indentation and of extra space after the `#`, to match the awk
+    // in pounce-palette and the Nix regex in haus — all three are pinned to
+    // tests/fixtures/header-grammar.tsv, which is the only thing keeping three
+    // hand-mirrored copies of one grammar honest.
+    //
+    // The whitespace after `#` is REQUIRED, not optional: `#pounce:` has never
+    // parsed anywhere, and accepting it here would widen the grammar rather than
+    // converge it. The `tight-hash` fixture pins that decision.
+    private func headerBody(of line: Substring, tag: String) -> Substring? {
+        let leading = line.drop { $0 == " " || $0 == "\t" }
+        guard leading.first == "#" else { return nil }
+        let afterHash = leading.dropFirst()
+        let rest = afterHash.drop { $0 == " " || $0 == "\t" }
+        // Index identity rather than `count`: "at least one space was dropped",
+        // in O(1), on a path that runs per line, per script, on every ⌘Space.
+        guard rest.startIndex != afterHash.startIndex, rest.hasPrefix(tag) else { return nil }
+        return rest.dropFirst(tag.count)
     }
 
     // MARK: - `whenFile`: a row that is listed only while there is something to
@@ -284,13 +305,21 @@ final class CommandRegistry {
 
     // "key = value" → value, if `rest` names `key`. Whitespace-tolerant to match
     // the awk header parser (`# pounce: name  =  Foo`).
+    //
+    // Space and tab ONLY, on both sides — deliberately narrower than
+    // `.trimmingCharacters(in: .whitespaces)`, which also trims U+00A0 and the
+    // U+2000 block. awk's `[ \t]` cannot follow it there, and ⌥Space types a
+    // non-breaking space on macOS, so trimming it here would have made
+    // `submenu = true<NBSP>` a submenu in the daemon and a leaf in the shell
+    // launcher — the same split this file's trailing-space fix just closed, in
+    // a character you cannot see. Converged-and-narrow beats forgiving-and-split.
     private func field(_ rest: Substring, _ key: String) -> String? {
         let s = rest.drop { $0 == " " || $0 == "\t" }
         guard s.hasPrefix(key) else { return nil }
         let afterKey = s.dropFirst(key.count).drop { $0 == " " || $0 == "\t" }
         guard afterKey.first == "=" else { return nil }
-        return afterKey.dropFirst().drop { $0 == " " || $0 == "\t" }
-            .trimmingCharacters(in: .whitespaces)
+        let value = afterKey.dropFirst().drop { $0 == " " || $0 == "\t" }
+        return String(value.reversed().drop { $0 == " " || $0 == "\t" }.reversed())
     }
 }
 
