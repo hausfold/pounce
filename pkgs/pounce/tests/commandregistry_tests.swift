@@ -105,6 +105,21 @@ func runCommandRegistryTests() -> Int {
               "a leading ~ in whenFile expands to home")
         check(CommandRegistry.expandTilde("/tmp/~x", home: "/home/me") == "/tmp/~x",
               "a ~ anywhere else is left alone")
+
+        // A hand-typed header line can be indented or carry a stray second
+        // space after `#` — both used to be read by only some of the three
+        // parsers (this one, pounce-palette's awk, haus's commandField).
+        try """
+        #!/bin/bash
+          # pounce: name = Indented
+        #  pounce: description = Double-spaced after the hash
+        """.write(to: builtin.appendingPathComponent("scruffy.sh"),
+                  atomically: true, encoding: .utf8)
+        registry.refresh()
+        let scruffy = registry.entries.first(where: { $0.id == "scruffy" })
+        check(scruffy?.name == "Indented", "an indented header line still parses")
+        check(scruffy?.description == "Double-spaced after the hash",
+              "a stray second space after # still parses")
     } catch {
         check(false, "command registry fixture setup succeeds: \(error)")
     }
