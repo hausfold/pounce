@@ -218,29 +218,40 @@ struct ItemSetting: Equatable {
 // makes for the workspace map it caches. A file that doesn't exist, or a config
 // that never set `pages.mruFile`, answers nil, and nil filters nothing.
 enum WorkspaceMRU {
-    static func current(file: String?) -> String? {
+    // The file's workspaces, newest first. BOTH readers come through here — the
+    // ⌘Space scoped-row check below and the ⌃⇥ walk's ring (AppScoped.swift) —
+    // so a path or a line ending can never mean one thing to one of them and
+    // something else to the other. That divergence was real: the walk used to
+    // open the raw string, so a hand-written "~/…" left it walking pages in
+    // alphabetical order while `pounce doctor` cheerfully reported the same
+    // file working.
+    static func lines(file: String?) -> [String] {
         // `~` expanded here and not at parse time: the config is a hand-written
         // file and "~/.local/state/…" is how a person writes a path a shell hook
         // owns. Unexpanded it simply fails to open, which under the fail-open
         // rule below makes the whole feature a silent no-op — the one failure
         // mode a scoped row cannot afford. (`pounce doctor` reports the same
         // thing out loud; see Doctor's items section.)
-        guard let file, !file.isEmpty else { return nil }
+        guard let file, !file.isEmpty else { return [] }
         let path = (file as NSString).expandingTildeInPath
-        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
-        // Hard-capped like AppScoped's read of the same file, for the day the
-        // path points at something that isn't a 50-line list.
+        guard let handle = FileHandle(forReadingAtPath: path) else { return [] }
+        // Hard-capped: the walk reads this from inside its event tap, and a tap
+        // that stalls ~1s is killed by macOS. The hook keeps the file to ~50
+        // short lines; the cap is for the day the path points somewhere it
+        // shouldn't.
         let data = (try? handle.read(upToCount: 8192)) ?? nil
         try? handle.close()
-        guard let data, let text = String(data: data, encoding: .utf8) else { return nil }
+        guard let data, let text = String(data: data, encoding: .utf8) else { return [] }
         // Split on the NEWLINE SET rather than on "\n": that way a CR-only or
         // CRLF-written file can't hand back "T/pounce\r", which would match no
         // pattern and hide every scoped row instead of failing open. (The
         // trailing trim stays for spaces around a name.)
-        return text.components(separatedBy: .newlines).lazy
+        return text.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty }
+            .filter { !$0.isEmpty }
     }
+
+    static func current(file: String?) -> String? { lines(file: file).first }
 }
 
 // The whole `items` map. Entries are keyed by an item's STABLE KEY — the same

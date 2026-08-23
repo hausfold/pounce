@@ -79,6 +79,9 @@ or skip that version with ⌘⏎.
   Unicode; it pastes anywhere.
 - **⌘Tab across windows** *(opt-in)* — MRU, fuzzy-filterable, per *window* not
   per app. With AeroSpace it groups rows by workspace.
+- **⌃Tab across workspace pages** *(opt-in, AeroSpace)* — the same MRU gesture
+  one level up: a row per page, each showing the windows on it, so you pick the
+  page by what's on it. Lands on release; ⎋ leaves you where you were.
 - **quit on last window close** *(opt-in)* — the Windows habit macOS never had.
 - **transform the selection** — pipe whatever's highlighted through any shell
   filter and paste it back: `pounce --transform 'tr "[:lower:]" "[:upper:]"'`.

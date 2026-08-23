@@ -32,7 +32,11 @@ final class WindowSwitcher {
     // instances on one file would clobber each other's writes.
     private let frecency = Frecency(filename: "window-frecency.json")
     private let state = SwitcherState()
-    private lazy var panel = SwitcherPanel(state: state)
+    private lazy var panel: QuasimodePanel<SwitcherView> = {
+        let panel = QuasimodePanel(rootView: SwitcherView(state: state))
+        state.onResize = { [weak panel] in panel?.refitIfVisible() }
+        return panel
+    }()
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
