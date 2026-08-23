@@ -44,6 +44,10 @@ enum PageSwitcherLayout {
     static var windowRowHeight: CGFloat { pt(24) }
     static var groupBottomPadding: CGFloat { pt(6) }
     static var listVPadding: CGFloat { pt(8) }
+    // Where a window's TITLE starts: the row's leading inset, its icon, and the
+    // gap after it. The lines that have no icon (the overflow counter, the
+    // empty-page note) hang off this so they can't drift out of alignment.
+    static var textInset: CGFloat { pt(28) + pt(16) + pt(8) }
     // Past this the list scrolls to the selection instead of growing. Sized so
     // a handful of pages with a few windows each all fit; a lane machine with
     // fifteen pages is meant to scroll rather than paint over the screen.
@@ -60,8 +64,15 @@ struct PageSwitcherView: View {
     @ObservedObject var state: PageSwitcherState
 
     private func rowsShown(_ g: PageGroup) -> Int {
+        // An empty page still draws one line. The candidate pages come from
+        // AeroSpace's window map while the rows come from the tracker's AX
+        // cache, and the two can disagree for a moment (an app that timed out
+        // the AX walk looks exactly like an app with nothing open) — a header
+        // hanging over nothing would read as the page being empty, which is the
+        // one thing it can't be.
+        if g.windows.isEmpty { return 1 }
         // The overflow line takes the last slot rather than being extra height.
-        g.windows.count > PageSwitcherLayout.maxWindowsPerPage
+        return g.windows.count > PageSwitcherLayout.maxWindowsPerPage
             ? PageSwitcherLayout.maxWindowsPerPage
             : g.windows.count
     }
@@ -153,9 +164,11 @@ struct PageGroupCard: View {
                         .fill(Theme.subtext0)
                         .frame(width: pt(5), height: pt(5))
                 }
-                Text(group.windows.count == 1 ? "1 window" : "\(group.windows.count) windows")
-                    .font(.system(size: pt(10), design: .rounded))
-                    .foregroundColor(Theme.subtext0)
+                if !group.windows.isEmpty {
+                    Text(group.windows.count == 1 ? "1 window" : "\(group.windows.count) windows")
+                        .font(.system(size: pt(10), design: .rounded))
+                        .foregroundColor(Theme.subtext0)
+                }
                 Rectangle()
                     .fill(Theme.surface1.opacity(0.35))
                     .frame(height: 1)
@@ -163,6 +176,14 @@ struct PageGroupCard: View {
             .padding(.horizontal, pt(16))
             .frame(height: PageSwitcherLayout.headerHeight)
 
+            if group.windows.isEmpty {
+                Text("windows not listed yet")
+                    .font(.system(size: pt(11), design: .rounded))
+                    .foregroundColor(Theme.subtext0)
+                    .padding(.leading, PageSwitcherLayout.textInset)
+                    .frame(height: PageSwitcherLayout.windowRowHeight, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             ForEach(group.windows.prefix(shown).indices, id: \.self) { i in
                 let w = group.windows[i]
                 // The last visible slot becomes the counter when the page holds
@@ -171,7 +192,7 @@ struct PageGroupCard: View {
                     Text("+\(overflow + 1) more")
                         .font(.system(size: pt(11), design: .rounded))
                         .foregroundColor(Theme.subtext0)
-                        .padding(.leading, pt(46))
+                        .padding(.leading, PageSwitcherLayout.textInset)
                         .frame(height: PageSwitcherLayout.windowRowHeight,
                                alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)

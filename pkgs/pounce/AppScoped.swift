@@ -269,25 +269,16 @@ final class AppScopedKeys {
             }
             guard !live.isEmpty else { return false }
 
-            var ordered: [String] = []
-            var current: String?
-            if let file = pages.mruFile, let handle = FileHandle(forReadingAtPath: file) {
-                // Head only, hard-capped: this read is on the tap path, and a
-                // tap that stalls ~1s is killed by macOS. The hook keeps the
-                // file to ~50 short lines; the cap is for the day the path
-                // points somewhere it shouldn't.
-                let data = (try? handle.read(upToCount: 8192)) ?? nil
-                try? handle.close()
-                if let data, let text = String(data: data, encoding: .utf8) {
-                    let lines = text.split(separator: "\n").map(String.init)
-                    current = lines.first
-                    // Dedup keeping the FIRST (most recent) occurrence — a
-                    // hook that appends rather than rewrites must not make the
-                    // ring visit a page twice per cycle.
-                    var seen = Set<String>()
-                    ordered = lines.filter { live.contains($0) && seen.insert($0).inserted }
-                }
-            }
+            // Through WorkspaceMRU so the walk and the palette's scoped rows
+            // read this file identically — tilde expanded, any line ending,
+            // capped (the cap matters here: this is the tap path).
+            let recent = WorkspaceMRU.lines(file: pages.mruFile)
+            let current = recent.first
+            // Dedup keeping the FIRST (most recent) occurrence — a hook that
+            // appends rather than rewrites must not make the ring visit a page
+            // twice per cycle.
+            var seen = Set<String>()
+            var ordered = recent.filter { live.contains($0) && seen.insert($0).inserted }
             // Pages the file hasn't seen yet (fresh lane, wiped state) still
             // deserve to be reachable; they queue behind the known ones.
             ordered += live.subtracting(Set(ordered)).sorted()
@@ -315,9 +306,15 @@ final class AppScopedKeys {
             state.origin = walkOrigin
             state.selection = walkIndex
 
-            let show = DispatchWorkItem { [weak self] in self?.showHUD() }
-            hudTimer = show
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.hudDelay, execute: show)
+            // One candidate and it is the page under us: the gesture has
+            // nowhere to go. The chord stays swallowed (it is still the walk's,
+            // and it did mean this before the HUD existed) but a one-row panel
+            // announcing a move that cannot happen is worse than silence.
+            if ordered.count > 1 || !onIt {
+                let show = DispatchWorkItem { [weak self] in self?.showHUD() }
+                hudTimer = show
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.hudDelay, execute: show)
+            }
         } else {
             guard !walkPages.isEmpty else { return true }
             let delta = back ? -1 : 1
@@ -343,10 +340,15 @@ final class AppScopedKeys {
 
     // MARK: The HUD
 
+    // Always a hop off the tap callback, unlike the ⌘⇥ switcher's inline show:
+    // the first frame here lays out page CARDS (and asks LaunchServices for any
+    // icon not yet cached), where that one lays out nine single-line rows. A tap
+    // that stalls ~1s is disabled by macOS, so the paint waits a run loop turn.
     private func showHUDNow() {
         hudTimer?.cancel()
-        hudTimer = nil
-        showHUD()
+        let show = DispatchWorkItem { [weak self] in self?.showHUD() }
+        hudTimer = show
+        DispatchQueue.main.async(execute: show)
     }
 
     private func showHUD() {
@@ -364,6 +366,14 @@ final class AppScopedKeys {
         panel.hide()
     }
 
+    // A hidden panel has no business holding the last walk's WindowInfos (each
+    // carries an AXUIElement). Every walk rewrites them before it shows anyway.
+    private func clearRows() {
+        state.groups = []
+        state.origin = nil
+        state.selection = 0
+    }
+
     // ⎋, or the tap being pulled out from under us: leave focus exactly where
     // the walk started. Nothing to undo — the walk never moved it.
     private func cancelWalk() {
@@ -372,6 +382,7 @@ final class AppScopedKeys {
         walkPages = []
         walkOrigin = nil
         hideHUD()
+        clearRows()
     }
 
     // Release (or ↵). The one focus of the whole gesture.
@@ -382,7 +393,13 @@ final class AppScopedKeys {
         walkPages = []
         walkOrigin = nil
         hideHUD()
-        guard let landed, landed != origin else { return }
+        clearRows()
+        guard let landed else { return }
+        // Deliberately NOT skipped when it equals `origin`: that name comes from
+        // the MRU file, not from the live focus, so a stale or unreadable file
+        // would turn the one focus of the whole gesture into a no-op. Focusing
+        // the workspace you are already on costs a fire-and-forget subprocess
+        // and does nothing visible.
         Aerospace.focusWorkspace(landed)   // async under the hood; safe from the tap
     }
 }

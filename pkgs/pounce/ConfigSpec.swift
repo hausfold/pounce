@@ -264,7 +264,7 @@ enum ConfigSpec {
                         json: json(s.pages.bundleId as Any)),
                     ConfigField(
                         name: "mruFile",
-                        doc: "Path to the newest-first workspace list your WM hook writes. null means no recency — the walk still works, ordered by name.",
+                        doc: "Path to the newest-first workspace list your WM hook writes; \"~\" is expanded. null means no recency — the walk still works, ordered by name.",
                         json: json(s.pages.mruFile as Any)),
                 ]),
 

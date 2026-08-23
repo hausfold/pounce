@@ -471,7 +471,7 @@ config written by a newer one.
     "modifiers": ["ctrl"],
     "prefix": "T",          // walks workspaces named prefix or prefix/…
     "bundleId": null,       // scope the chord to one app; null = anywhere
-    "mruFile": null         // recency file your WM hook maintains, newest first
+    "mruFile": null         // recency file your WM hook maintains, newest first ("~" ok)
   },
   "clipboard": {
     "enabled": true,
@@ -976,7 +976,9 @@ would land in a corridor.
 
 Recency itself is read, never tracked: `pages.mruFile` names the file the
 window manager's own workspace-change hook writes (newest first, one workspace
-per line). The hook hears about every change — chords, the mouse, a script —
+per line; `~` is expanded, and any line ending will do — it is the same read the
+palette's [`workspaces` scoping](#scoping-a-row-to-where-you-are) makes, so the
+two can never disagree about where you are). The hook hears about every change — chords, the mouse, a script —
 where anything pounce tracked itself would only see the changes pounce caused.
 Pages the file has never seen are still reachable; they queue behind the known
 ones, sorted by name.

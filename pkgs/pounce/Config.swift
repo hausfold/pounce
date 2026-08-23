@@ -320,7 +320,9 @@ struct AppHotkeysSettings {
 
 // The MRU workspace-page walk (AppScoped.swift): hold `modifiers`, tap `key` to
 // walk the non-empty AeroSpace workspaces named `prefix` or `prefix`/… by
-// recency, ⇧ to walk backwards, release to stay. Recency comes from `mruFile` —
+// recency, ⇧ to walk backwards, release to land there. A HUD lists the
+// candidate pages with the windows on each (PageSwitcherView.swift); nothing is
+// focused until the release. Recency comes from `mruFile` —
 // one workspace per line, most recent first, maintained by whatever the WM's
 // workspace-change hook writes (haus: windows/scripts/workspace-mru.sh) —
 // because pounce only ever OBSERVES workspace focus after the fact; the hook is
