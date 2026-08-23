@@ -36,14 +36,17 @@ enum SwitcherLayout {
 // user is leaving keeps it until the commit lands), which is also why it needs
 // no responder chain — the event tap feeds it. Chrome matches the palette
 // window (same blur, mask, radius) so the switcher reads as pounce.
-final class SwitcherPanel {
+//
+// Generic over its content because pounce has two quasimodes with the same
+// chrome and the same "never take key" requirement: the ⌘⇥ window switcher
+// (SwitcherView) and the ⌃⇥ page walk (PageSwitcherView, AppScoped.swift). The
+// panel is the part that has to be identical; what is drawn in it is not.
+final class QuasimodePanel<Content: View> {
     private let panel: NSPanel
-    private let hosting: NSHostingView<SwitcherView>
-    private let state: SwitcherState
+    private let hosting: NSHostingView<Content>
 
-    init(state: SwitcherState) {
-        self.state = state
-        hosting = NSHostingView(rootView: SwitcherView(state: state))
+    init(rootView: Content) {
+        hosting = NSHostingView(rootView: rootView)
 
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: SwitcherLayout.width, height: pt(200)),
@@ -69,11 +72,6 @@ final class SwitcherPanel {
         hosting.autoresizingMask = [.width, .height]
         blur.addSubview(hosting)
         panel.contentView = blur
-
-        state.onResize = { [weak self] in
-            guard let self, self.panel.isVisible else { return }
-            self.refit()
-        }
     }
 
     func show() {
@@ -86,6 +84,13 @@ final class SwitcherPanel {
 
     func hide() {
         panel.orderOut(nil)
+    }
+
+    // The content grew or shrank while it is on screen (a row appeared, the
+    // query line opened). Off screen it is refit on the next show anyway.
+    func refitIfVisible() {
+        guard panel.isVisible else { return }
+        refit()
     }
 
     // Size to the SwiftUI content and park it slightly above screen center (the

@@ -240,7 +240,7 @@ enum ConfigSpec {
 
             ConfigSection(
                 name: "pages",
-                doc: "A most-recently-used walk over the AeroSpace workspaces named \"prefix\" or \"prefix/…\": hold the modifiers, tap the key to step focus through the non-empty ones newest-first (add shift to walk backwards), release to stay. No panel — every step focuses the workspace live. Recency comes from \"mruFile\", a newest-first list your window manager's workspace-change hook maintains; pounce only reads it. Needs the Accessibility grant, and is read once at daemon start.",
+                doc: "A most-recently-used walk over the AeroSpace workspaces named \"prefix\" or \"prefix/…\": hold the modifiers, tap the key to step through the non-empty ones newest-first (add shift to walk backwards), release to land there. A panel lists the pages with the windows on each, so you pick a page by what is on it; escape abandons the walk and nothing is focused until you land. Recency comes from \"mruFile\", a newest-first list your window manager's workspace-change hook maintains; pounce only reads it. Needs the Accessibility grant, and is read once at daemon start.",
                 fields: [
                     ConfigField(
                         name: "enabled",
@@ -252,7 +252,7 @@ enum ConfigSpec {
                         json: json(s.pages.key)),
                     ConfigField(
                         name: "modifiers",
-                        doc: "The modifiers you hold. Releasing them ends the walk where it stands.",
+                        doc: "The modifiers you hold. Releasing them lands on the page the walk stands on.",
                         json: json(s.pages.modifiers)),
                     ConfigField(
                         name: "prefix",

@@ -466,7 +466,7 @@ config written by a newer one.
     ]
   },
   "pages": {
-    "enabled": false,       // MRU walk over prefix/* AeroSpace workspaces (needs Accessibility)
+    "enabled": false,       // MRU walk over prefix/* AeroSpace workspaces, with a HUD (needs Accessibility)
     "key": "tab",
     "modifiers": ["ctrl"],
     "prefix": "T",          // walks workspaces named prefix or prefix/…
@@ -898,8 +898,8 @@ is what makes ⌘⇥ mean "get me back to where I was" again.
 
 **Pages count as the workspace they belong to.** A workspace name with a `/` in
 it — `T/haus`, `T/main` — is a page of `T`, and the whole `T` family is one
-place as far as a bare tap is concerned. Getting *between* pages is what the
-page walk is for (the `pages` block in [Configuration](#configuration)), so
+place as far as a bare tap is concerned. Getting *between* pages is what
+[the page walk](#the-page-walk-tab-opt-in) is for, so
 walking a few pages and then tapping ⌘⇥ takes you off `T` altogether rather
 than dropping you back on the page you just left. The rule is the name before
 the first `/`, and it is deliberately not keyed on `pages.prefix`: ⌘⇥'s default
@@ -941,6 +941,50 @@ Headers appear only when there are two or more groups to tell apart; with
 everything on one workspace the list is plain. Filtered results are ranked by
 score rather than gathered, so they drop the headers and carry a per-row
 workspace badge instead.
+
+## The page walk (⌃Tab, opt-in)
+
+⌘⇥ moves between windows; **⌃⇥ moves between the pages of the workspace you're
+on**. A page is an AeroSpace workspace with a `/` in its name — `T/haus`,
+`T/pounce` — and the `pages` block in [Configuration](#configuration) turns the
+chord on, names the family it walks (`prefix`, `"T"` by default) and optionally
+scopes it to one app so a browser keeps its own ⌃⇥.
+
+- **⌃⇥, release** — the page you were on before this one.
+- **hold ⌃, keep tapping ⇥** — walk the family's pages, most-recently-used
+  first; ⌃⇧⇥ walks backwards. ↵ lands without waiting for the release, ⎋
+  abandons the walk and leaves you exactly where you were.
+
+Holding the modifier brings up a HUD after a quarter second — the ⌘⇥ switcher's
+list one level up. **Each row is a page, with the windows on it listed
+underneath**, most-recently-used first, so a page is chosen by recognising what
+is on it rather than by remembering which letter it got. A dot marks the page
+the walk started from. Pages with more windows than the card draws end in a
+"+N more" line; a long list scrolls to the selection.
+
+**Only the family's live pages are ever listed** — a page is live when it holds
+a window, since AeroSpace workspaces evaporate when their last window closes.
+Everything else on the Mac is ⌘⇥'s business: a page walk that listed workspaces
+the next tap cannot reach would be advertising a move it won't make.
+
+**Nothing is focused until you land.** The walk moves a selection, not the
+screen; the one `aerospace workspace` call happens on the release. That is also
+what keeps recency honest: the window manager's hook pushes every workspace you
+*visit* onto the MRU file, so a walk that travelled would rank the pages it
+merely passed through above the one you came from, and the next single tap
+would land in a corridor.
+
+Recency itself is read, never tracked: `pages.mruFile` names the file the
+window manager's own workspace-change hook writes (newest first, one workspace
+per line). The hook hears about every change — chords, the mouse, a script —
+where anything pounce tracked itself would only see the changes pounce caused.
+Pages the file has never seen are still reachable; they queue behind the known
+ones, sorted by name.
+
+Same footing as ⌘Tab underneath: it's a consuming event tap, so it needs
+**Accessibility**, it stands down during Secure Input, and with no live pages at
+all the chord passes straight through to whatever it meant before (a terminal
+multiplexer's own tab history, typically).
 
 ## Mouse chords (opt-in)
 
