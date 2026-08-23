@@ -1,11 +1,93 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Field editor
+
+// The palette's own field editor, whose only job is to refuse the contextual
+// menu macOS asks for when nobody clicked.
+//
+// ⌃⏎ is one of Pounce's action chords (haus's Spawn Agent uses it for
+// "Background"), and it is ALSO the system-wide context-menu hotkey whenever
+// keyboard navigation is on — AppleKeyboardUIMode = 2, which haus sets by
+// default, so that is the ordinary state of the machine. The chord therefore ran
+// its action AND dropped AppKit's stock text menu (Cut / Copy / Paste / Writing
+// Tools / AutoFill) over the palette a frame later.
+//
+// Not cosmetic: an NSMenu tracks in a modal run loop on the main thread, so the
+// palette behind it stops answering and is left on screen after its command has
+// finished and exited — a stuck window with no process behind it.
+//
+// ── why it is stopped here and not at the key event ──────────────────────────
+// Two earlier attempts ate the chord itself, and neither worked: swallowing its
+// keyDown in the field's local monitor, then also its keyUp. Measured both
+// times, the menu still arrived ~40 ms after the key came up with no mouse
+// button down anywhere. It does not travel the app's event stream as a key
+// event at all — NSResponder.h is explicit that the hotkey is delivered as
+// `contextMenuKeyDown:`, and that an Accessibility ShowMenu action or a user's
+// own Cocoa Text key binding can produce the menu with no key event first.
+//
+// So all three of AppKit's documented doors are answered below. Note what is
+// NOT here: a `menu(for:)` override that tries to tell a click from a keypress.
+// That cannot work, and the header says why — the default
+// `showContextMenuForSelection:` displays its menu by calling `menuForEvent:`
+// with a SYNTHESIZED right-mouse-down centered on the selection, so by the time
+// the request reaches `menu(for:)` it is indistinguishable from a real
+// right-click. Refusing there would have taken the real right-click's menu with
+// it, which is the one this class means to keep.
+final class PounceFieldEditor: NSTextView {
+    // The hotkey itself. This is the override NSResponder.h names for exactly
+    // this situation: "if your application already provides a different
+    // behavior for control-Return (the default context menu hotkey
+    // definition), and you want to preserve that behavior, you should override
+    // this method to handle that specific key combination, and then return
+    // without calling super."
+    //
+    // Scoped to ⌃Return for the reason the same paragraph gives: the user may
+    // have moved the hotkey to some other combination, and that one is not
+    // ours to swallow — it goes to super, which walks the responder chain and
+    // ends in the ordinary menu.
+    override func contextMenuKeyDown(_ event: NSEvent) {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        if isReturn, flags.contains(.control) { return }
+        super.contextMenuKeyDown(event)
+    }
+
+    // The routes that arrive with no `contextMenuKeyDown:` before them, which
+    // the header lists as an Accessibility ShowMenu action and a user-defined
+    // Cocoa Text key binding. A launcher panel that lives for one keystroke has
+    // no contextual menu worth presenting without a pointer, so both are
+    // declined rather than passed up the chain.
+    override func showContextMenuForSelection(_ sender: Any?) {}
+
+    // AXShowMenu is documented to arrive as `showContextMenuForSelection:`
+    // above, so this should be redundant — but it is the door measured to close
+    // the bug on macOS 26.6 before either override above existed, and a second
+    // answer to a request that must always be "no" costs nothing.
+    override func accessibilityPerformShowMenu() -> Bool { false }
+}
+
 // MARK: - Window
 
 class PounceWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    // One field editor per window is AppKit's own arrangement; this just makes
+    // it ours. `createFlag` is deliberately ignored — AppKit also probes with
+    // false ("is there one already?"), and answering that probe by building one
+    // is cheaper than tracking the distinction for a window that has exactly one
+    // text field and always edits it.
+    private lazy var pounceEditor: PounceFieldEditor = {
+        let editor = PounceFieldEditor()
+        editor.isFieldEditor = true
+        return editor
+    }()
+
+    override func fieldEditor(_ createFlag: Bool, for object: Any?) -> NSText? {
+        if object is NSTextField { return pounceEditor }
+        return super.fieldEditor(createFlag, for: object)
+    }
 
     // Pounce is a menu-less accessory app (.accessory policy, no main menu), and
     // in AppKit the standard editing chords — ⌘X/⌘C/⌘V/⌘A/⌘Z — are dispatched by

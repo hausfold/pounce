@@ -42,6 +42,19 @@ whole toolchain), so it needs **Xcode Command Line Tools** and the macOS build s
 relaxed (Determinate's default). Not a pure build; that's deliberate. CI builds it on
 a macOS runner on every push.
 
+**A build under test cannot reach its own window while the installed daemon is
+running.** `pounce -p …` hands the whole invocation to the daemon over
+`~/.local/share/pounce/pounce.sock`, so the palette that appears is the DAEMON's
+build and the binary you just compiled draws nothing — a fix can be feel-tested
+twice against the old code without any sign that it never ran. `$HOME` is no help
+(`SocketConfig.path` comes from `homeDirectoryForCurrentUser`, which reads
+`getpwuid` and ignores the environment). Set `POUNCE_NO_DAEMON=1` to keep the
+request in-process:
+
+```bash
+printf '' | POUNCE_NO_DAEMON=1 ./result/bin/pounce --actions "Go|ctrl:Other" -p "test"
+```
+
 To test inside a full machine without pushing: `bench try` from the workshop
 (`~/code/workshop`) rebuilds the user's machine against this local checkout; the
 `rebuild-pounce` alias on the host does the same. A plain rebuild uses the

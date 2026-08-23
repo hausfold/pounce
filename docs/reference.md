@@ -848,6 +848,7 @@ starts the daemon should export them:
 | `POUNCE_BUILTIN_DIR` | the built-in command set |
 | `POUNCE_EXTRA_COMMAND_DIRS` | colon-separated dirs a packager layers on |
 | `POUNCE_COMMAND_PATH` | colon-separated dirs for ad-hoc layering |
+| `POUNCE_NO_DAEMON` | `1` keeps a palette invocation in the calling process instead of handing it to the running daemon — for feel-testing a build while the installed daemon owns the socket |
 
 `~/.config/pounce/commands` is always searched last (highest precedence). When
 the launch agent exports none of these (e.g. the Homebrew service), the daemon
