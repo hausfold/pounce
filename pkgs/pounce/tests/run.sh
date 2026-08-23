@@ -48,9 +48,19 @@ echo 'let pounceVersion = "dev"' > "$scratch/version_stub.swift"
 # compile here floors them at the runner's OS and would wave through a
 # newer-than-14 API that the real build then rejects — the drift this pin
 # exists to close, reopened on the one job whose whole point is catching
-# things early. Keep the two in step.
+# things early.
+#
+# READ out of build.sh rather than repeated here. A second literal is the same
+# drift one level up: bump MACOS_MIN, forget this line, and the test job keeps
+# certifying against the old floor. Sourcing build.sh would RUN it, so this
+# greps the assignment instead, and refuses to guess if the shape ever changes.
+macos_min="$(sed -n 's/^MACOS_MIN="\(.*\)"$/\1/p' build.sh)"
+if [ -z "$macos_min" ]; then
+  echo "run.sh: no MACOS_MIN= in build.sh — the deployment floor moved or was renamed." >&2
+  exit 1
+fi
 /usr/bin/xcrun swiftc -o "$bin" \
-  -target "$(uname -m)-apple-macos14.0" \
+  -target "${POUNCE_TARGET_ARCH:-$(uname -m)}-apple-macos$macos_min" \
   Frecency.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
   Currency.swift ItemSettings.swift FunctionKeyGesture.swift FunctionKeyRemap.swift CommandRegistry.swift UpdateCheck.swift \
   ConfigTemplate.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \

@@ -56,7 +56,7 @@ stated requirement (currently "macOS 14 Sonoma or later") and the `#available` g
 in the sources move with it.
 
 The *arch* half of that triple is a build input, not a guess: `default.nix` passes
-`POUNCE_TARGET_ARCH` from `stdenv.hostPlatform.darwinArch`. `build.sh` falls back to
+`POUNCE_TARGET_ARCH` from `stdenvNoCC.hostPlatform.darwinArch`. `build.sh` falls back to
 `uname -m` for non-Nix packagers, which is the builder's kernel and so is wrong under
 Rosetta or an `x86_64-darwin` nix on Apple Silicon.
 

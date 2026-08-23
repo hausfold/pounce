@@ -37,7 +37,7 @@ jobs:
     name: build + publish release
     # macOS 15 SDK required: Window.swift overrides macOS 15-only NSResponder
     # methods. build.sh pins -target to macos14.0, so the shipped app's floor
-    # stays 14 regardless of which runner builds it. Note that pins `minos`
+    # stays 14 regardless of which runner builds it. Note that build.sh pins `minos`
     # only — the LINKED sdk does move with the runner, and AppKit gates a few
     # behaviours on that rather than on the deployment target.
     runs-on: macos-15

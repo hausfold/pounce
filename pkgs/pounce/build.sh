@@ -7,7 +7,7 @@
 #   POUNCE_VERSION                     stamped into the binary and Info.plist
 #                                      (defaults to "dev")
 #   POUNCE_TARGET_ARCH                 arch half of the -target triple. Nix
-#                                      passes stdenv.hostPlatform.darwinArch;
+#                                      passes stdenvNoCC.hostPlatform.darwinArch;
 #                                      everyone else gets `uname -m`, which is
 #                                      the BUILDER's kernel and so guesses wrong
 #                                      under Rosetta or an x86_64 nix on Apple

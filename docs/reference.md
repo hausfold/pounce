@@ -1086,8 +1086,13 @@ candidate from then on.
 nix build            # -> ./result/Applications/Pounce.app + ./result/bin/pounce
 ```
 
-Building from source needs the **Xcode Command Line Tools** — that path compiles
-against the system Swift toolchain via `xcrun` (`xcode-select --install`).
+Building from source needs the **Xcode Command Line Tools 16 or newer** — that
+path compiles against the system Swift toolchain via `xcrun`
+(`xcode-select --install`). 16 is the floor because pounce overrides two
+`NSResponder` methods that only the macOS 15 SDK declares; an older SDK fails
+the build with `method does not override any method from its superclass`, which
+does not otherwise explain itself. Note this is the SDK you *build* with — the
+app itself still runs on macOS 14 and later.
 
 Hacking on pounce as part of the wider rice? The
 [workshop](https://github.com/hausfold/workshop)'s `bench try` rebuilds a whole
