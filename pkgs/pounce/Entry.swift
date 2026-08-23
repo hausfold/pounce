@@ -1340,6 +1340,24 @@ enum ClientMode {
         }
         let inv = override ?? parseArgs()
 
+        // A build under test cannot reach its own window while the installed
+        // daemon owns the socket: EVERY palette request is handed over, so what
+        // appears on screen is the DAEMON's build and the thing you just
+        // compiled never draws anything. That is not a hypothetical — a fix was
+        // feel-tested twice against the old binary before this line existed,
+        // and both times the only evidence was an AppKit log line naming the
+        // daemon's pid.
+        //
+        // `$HOME` cannot do it: SocketConfig.path comes from
+        // homeDirectoryForCurrentUser, which reads getpwuid and ignores the
+        // environment (measured). An env var rather than a flag, so it can
+        // never collide with the argument parser or with a caller's own `--`
+        // spelling.
+        if ProcessInfo.processInfo.environment["POUNCE_NO_DAEMON"] == "1" {
+            runDirect(lines: stdinLines, inv: inv)
+            return
+        }
+
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { runDirect(lines: stdinLines, inv: inv); return }
 

@@ -1,11 +1,79 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Field editor
+
+// The palette's own field editor, whose only job is to refuse a contextual menu
+// asked for by anything that isn't a mouse.
+//
+// ⌃⏎ is one of Pounce's action chords (haus's Spawn Agent uses it for
+// "Background"), and it is ALSO macOS's "show the shortcut menu for the focused
+// control" whenever keyboard navigation is on — AppleKeyboardUIMode = 2, which
+// haus sets by default, so that is the ordinary state of the machine. The chord
+// therefore ran its action AND dropped AppKit's stock text menu (Cut / Copy /
+// Paste / Writing Tools / AutoFill) over the palette a frame later.
+//
+// Not cosmetic: an NSMenu tracks in a modal run loop on the main thread, so the
+// palette behind it stops answering and is left on screen after its command has
+// finished and exited — a stuck window with no process behind it.
+//
+// It is stopped HERE, at the menu, rather than at the key event, and that is the
+// second attempt. Swallowing the chord's keyDown never worked and neither did
+// its keyUp (both measured, 2026-08-23: the menu still appeared ~40 ms after the
+// key came up, with no mouse button down anywhere). Whatever asks for the menu
+// does not travel the app's event stream, so no amount of eating events reaches
+// it — but every route has to arrive at one of the three doors below, and a
+// menu that does not exist cannot be shown.
+//
+// A real secondary click still gets its menu: right-click, and ⌃-click, which
+// is macOS's other secondary click. Only the routes with no mouse behind them
+// are refused.
+final class PounceFieldEditor: NSTextView {
+    override func menu(for event: NSEvent) -> NSMenu? {
+        switch event.type {
+        case .rightMouseDown:
+            return super.menu(for: event)
+        case .leftMouseDown where event.modifierFlags.contains(.control):
+            return super.menu(for: event)
+        default:
+            return nil
+        }
+    }
+
+    // The keyboard route. AppKit's own name for "the user asked for this
+    // control's menu without a pointer", which is what the keyboard-navigation
+    // shortcut ends up sending down the responder chain.
+    //
+    // `@objc`, NOT `override`: NSResponder does not vend this in the Swift
+    // interface (the compiler says so — "method does not override any method
+    // from its superclass"), so it is reached by Objective-C dispatch only.
+    // Declaring it here is what puts an implementation in front of whatever
+    // AppKit would otherwise do.
+    @objc func showContextMenuForCurrentSelection(_ sender: Any?) {}
+
+    // The accessibility route to the same thing — AXShowMenu, which is how an
+    // assistive client (and some of macOS's own keyboard handling) asks.
+    override func accessibilityPerformShowMenu() -> Bool { false }
+}
+
 // MARK: - Window
 
 class PounceWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    // One field editor per window is AppKit's own arrangement; this just makes
+    // it ours. Created lazily so a window that never edits never builds one.
+    private lazy var pounceEditor: PounceFieldEditor = {
+        let editor = PounceFieldEditor()
+        editor.isFieldEditor = true
+        return editor
+    }()
+
+    override func fieldEditor(_ createFlag: Bool, for object: Any?) -> NSText? {
+        if object is NSTextField { return pounceEditor }
+        return super.fieldEditor(createFlag, for: object)
+    }
 
     // Pounce is a menu-less accessory app (.accessory policy, no main menu), and
     // in AppKit the standard editing chords — ⌘X/⌘C/⌘V/⌘A/⌘Z — are dispatched by
