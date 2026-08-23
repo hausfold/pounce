@@ -377,6 +377,19 @@ struct CustomTextField: NSViewRepresentable {
                 return nil
             }
 
+            // Every Return DOWN re-arms the pairing from scratch, so the flag
+            // means strictly "the up belonging to the down I just claimed".
+            // Without this it would leak across palette sessions rather than
+            // being the edge case it looks like: the commit path orders the
+            // window out and re-activates whatever app Pounce took focus from,
+            // so the up of the chord that dismissed us is delivered THERE and
+            // this monitor never sees it — while the Coordinator lives on,
+            // because the window is only ordered out and the hosting view is
+            // built once. Harmless today (nothing consumes a plain Return's
+            // up), but a flag that is usually stale is a trap for the next
+            // person to reach for it.
+            swallowNextReturnUp = false
+
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             // Match the existing Shift+Return contract: a shift held with any
             // other modifier still writes a line break, never an action. It has
