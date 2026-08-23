@@ -32,7 +32,19 @@ mkdir -p Pounce.app/Contents/MacOS Pounce.app/Contents/Resources
 # Use xcrun to invoke the system's Swift compiler (from Xcode CLT) — avoids
 # building the entire Swift toolchain. All sources compile as a single module,
 # so the file split needs no headers or access-level changes.
+# The deployment target is PINNED, not inherited from the build machine. Without
+# -target, swiftc floors the binary at whatever macOS the builder is running, so
+# one source tree yielded a 14.0-only app from a macos-14 runner and a 26.0-only
+# app from a dev Mac — and, worse, every API newer than the builder's OS
+# compiled with no `#available` demanded of it, silently. That is what let a
+# macOS 15-only override land and break CI. 14.0 is the floor the sources
+# actually hold to today (`swiftc -target ...-macos13.0` still fails on
+# SwiftUI's macOS 14 `onChange(of:initial:)` in ClipboardView.swift) and it is
+# the floor released builds already shipped, so pinning it changes nothing for
+# users. Moving it is now a deliberate edit here, not a side effect of which
+# machine ran the build.
 /usr/bin/xcrun swiftc -parse-as-library -o Pounce.app/Contents/MacOS/pounce \
+  -target "$(uname -m)-apple-macos14.0" \
   *.swift \
   -framework SwiftUI \
   -framework AppKit \

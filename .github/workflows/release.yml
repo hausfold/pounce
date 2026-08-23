@@ -35,7 +35,10 @@ permissions:
 jobs:
   release:
     name: build + publish release
-    runs-on: macos-14
+    # macOS 15 SDK required: Window.swift overrides macOS 15-only NSResponder
+    # methods. build.sh pins -target to macos13.0, so the shipped app's floor
+    # stays 13 regardless of which runner builds it.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main

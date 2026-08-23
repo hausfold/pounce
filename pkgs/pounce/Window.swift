@@ -26,6 +26,15 @@ import AppKit
 // `contextMenuKeyDown:`, and that an Accessibility ShowMenu action or a user's
 // own Cocoa Text key binding can produce the menu with no key event first.
 //
+// Both of those doors are macOS 15 API (`NSResponder.h`, `API_AVAILABLE(macos(15.0))`),
+// hence the `@available` on each override: build.sh pins the deployment target
+// at macOS 14, so without the annotation the overrides only compile when the
+// builder's own OS happens to be 15+. The third door,
+// `accessibilityPerformShowMenu`, is 10.10 and needs none. Note this is a
+// COMPILE-time floor as well as a runtime one — an SDK older than 15 does not
+// declare the methods at all, so building pounce needs Xcode 16+ CLT no matter
+// what it is then targeted at.
+//
 // So all three of AppKit's documented doors are answered below. Note what is
 // NOT here: a `menu(for:)` override that tries to tell a click from a keypress.
 // That cannot work, and the header says why — the default
@@ -46,6 +55,7 @@ final class PounceFieldEditor: NSTextView {
     // have moved the hotkey to some other combination, and that one is not
     // ours to swallow — it goes to super, which walks the responder chain and
     // ends in the ordinary menu.
+    @available(macOS 15.0, *)
     override func contextMenuKeyDown(_ event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let isReturn = event.keyCode == 36 || event.keyCode == 76
@@ -58,6 +68,7 @@ final class PounceFieldEditor: NSTextView {
     // Cocoa Text key binding. A launcher panel that lives for one keystroke has
     // no contextual menu worth presenting without a pointer, so both are
     // declined rather than passed up the chain.
+    @available(macOS 15.0, *)
     override func showContextMenuForSelection(_ sender: Any?) {}
 
     // AXShowMenu is documented to arrive as `showContextMenuForSelection:`
