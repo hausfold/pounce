@@ -15,7 +15,7 @@ jobs:
     # `showContextMenuForSelection:`, which NSResponder.h only declares at
     # macOS 15, and an SDK that never heard of a method cannot be overridden at
     # any deployment target. What the app RUNS on is unaffected — build.sh pins
-    # -target to macos13.0, so a newer runner does not raise users' floor.
+    # -target to macos14.0, so a newer runner does not raise users' floor.
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
