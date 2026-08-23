@@ -316,6 +316,9 @@ struct CustomTextField: NSViewRepresentable {
         var itemCount: Int
         weak var textField: NSTextField?
         private var keyMonitor: Any?
+        // Set when a modified Return's DOWN was consumed, so its UP can be
+        // consumed too. See the note in handleModifiedReturn.
+        private var swallowNextReturnUp = false
 
         init(_ parent: CustomTextField) {
             self.parent = parent
@@ -326,7 +329,10 @@ struct CustomTextField: NSViewRepresentable {
             // by then ⌥ may already read as up. Read the key event itself so a
             // modified Return cannot degrade into a plain Return and submit the
             // prompt by accident.
-            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            //
+            // keyUp is watched as well as keyDown, and that is not symmetry for
+            // its own sake — see swallowNextReturnUp.
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
                 self?.handleModifiedReturn(event) ?? event
             }
         }
@@ -346,6 +352,31 @@ struct CustomTextField: NSViewRepresentable {
                   textField.currentEditor() != nil,
                   event.keyCode == 36 || event.keyCode == 76 else { return event }
 
+            // ── the UP of a Return we already answered ──────────────────────
+            // Consuming the keyDown is not enough for ⌃Return. With macOS
+            // keyboard navigation on (AppleKeyboardUIMode = 2 — which haus sets
+            // by default, so this is the ordinary state of the machine) ⌃⏎ is
+            // also the system's "show the shortcut menu for the focused
+            // control", and that layer acts on the key going UP. So the chord
+            // ran its Pounce action AND, a frame later, dropped AppKit's stock
+            // text-field menu — Cut / Copy / Paste / Writing Tools / AutoFill —
+            // on top of the palette.
+            //
+            // That was never only cosmetic: an NSMenu tracks in a modal run
+            // loop on the main thread, so the palette behind it stopped
+            // answering and stayed on screen after its command had finished and
+            // exited. Measured 2026-08-23 against haus's Spawn Agent, whose
+            // "Background" action is ⌃↵: the menu appeared 24 ms after the
+            // Return key went up, with no mouse button down anywhere.
+            //
+            // Paired to a down we actually claimed, so an ordinary Return's up
+            // still reaches the text system untouched.
+            if event.type == .keyUp {
+                guard swallowNextReturnUp else { return event }
+                swallowNextReturnUp = false
+                return nil
+            }
+
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             // Match the existing Shift+Return contract: a shift held with any
             // other modifier still writes a line break, never an action. It has
@@ -354,6 +385,7 @@ struct CustomTextField: NSViewRepresentable {
             // asks the field editor to interpret this event.
             if flags.contains(.shift), let editor = textField.currentEditor() as? NSTextView {
                 editor.insertText("\n", replacementRange: editor.selectedRange())
+                swallowNextReturnUp = true
                 return nil
             }
 
@@ -365,6 +397,7 @@ struct CustomTextField: NSViewRepresentable {
             guard let action else { return event }
 
             parent.onSubmit(action)
+            swallowNextReturnUp = true
             return nil
         }
 
