@@ -38,9 +38,19 @@ nix build            # -> ./result/Applications/Pounce.app + ./result/bin/pounce
 ```
 
 The build shells out to `/usr/bin/xcrun swiftc` (system Swift — avoids compiling the
-whole toolchain), so it needs **Xcode Command Line Tools** and the macOS build sandbox
-relaxed (Determinate's default). Not a pure build; that's deliberate. CI builds it on
-a macOS runner on every push.
+whole toolchain), so it needs **Xcode Command Line Tools 16 or newer** and the macOS
+build sandbox relaxed (Determinate's default). Not a pure build; that's deliberate.
+CI builds it on a `macos-15` runner on every push.
+
+**Two different macOS versions are in play; don't conflate them.** The *SDK* floor is
+15 — `Window.swift` overrides `contextMenuKeyDown:` / `showContextMenuForSelection:`,
+which `NSResponder.h` only declares at macOS 15, and an SDK that lacks a method cannot
+have it overridden at any target. That is why CLT 16+ is required to compile, and it
+bites `brew install --build-from-source` too, since `build.sh` is the shared compile
+step. The *deployment* floor is 14, pinned with `-target` in `build.sh` (and matched
+in `tests/run.sh`) so it is a deliberate edit rather than a property of whichever Mac
+ran the build. Raising either is user-facing — `README`'s stated requirement and the
+`#available` guards in the sources move with it.
 
 **A build under test cannot reach its own window while the installed daemon is
 running.** `pounce -p …` hands the whole invocation to the daemon over

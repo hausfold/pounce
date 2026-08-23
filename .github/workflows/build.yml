@@ -9,9 +9,14 @@ on:
 jobs:
   build:
     name: nix build (aarch64-darwin)
-    # The build shells out to /usr/bin/xcrun swiftc, so it needs a real Mac
-    # with Xcode CLT — macos-14+ runners are Apple Silicon and ship Xcode.
-    runs-on: macos-14
+    # The build shells out to /usr/bin/xcrun swiftc, so it needs a real Mac with
+    # Xcode CLT — macos-14+ runners are Apple Silicon and ship Xcode. The floor
+    # is the SDK, not the runner: Window.swift overrides `contextMenuKeyDown:` /
+    # `showContextMenuForSelection:`, which NSResponder.h only declares at
+    # macOS 15, and an SDK that never heard of a method cannot be overridden at
+    # any deployment target. What the app RUNS on is unaffected — build.sh pins
+    # -target to macos14.0, so a newer runner does not raise users' floor.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       # Determinate's installer relaxes the macOS build sandbox by default,
@@ -23,8 +28,9 @@ jobs:
 
   test:
     name: frecency unit tests (swift)
-    # Uses /usr/bin/xcrun swiftc, same as the app build — needs a real Mac.
-    runs-on: macos-14
+    # Uses /usr/bin/xcrun swiftc, same as the app build — needs a real Mac, and
+    # the same macOS 15 SDK for the same reason (see the build job).
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: compile + run pure-logic tests

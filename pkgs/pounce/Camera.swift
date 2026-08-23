@@ -120,8 +120,8 @@ final class CameraController: ObservableObject {
 
     private static func discover() -> [AVCaptureDevice] {
         var types: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera]
-        if #available(macOS 13.0, *) { types += [.continuityCamera, .deskViewCamera] }
-        if #available(macOS 14.0, *) { types.append(.external) }
+        if #available(macOS 13.0, *) { types.append(.deskViewCamera) }
+        if #available(macOS 14.0, *) { types += [.continuityCamera, .external] }
         return AVCaptureDevice.DiscoverySession(
             deviceTypes: types, mediaType: .video, position: .unspecified
         ).devices

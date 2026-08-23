@@ -42,7 +42,15 @@ echo 'let pounceVersion = "dev"' > "$scratch/version_stub.swift"
 # (Test files carry a _tests suffix: macOS builds on a case-insensitive
 # filesystem, where tests/quickanswer.swift and QuickAnswer.swift would
 # collide to the same object file and silently drop one file's symbols.)
+#
+# The deployment target is pinned to the SAME floor build.sh uses, and for the
+# same reason: 18 of the files below are shipped app sources, so an unpinned
+# compile here floors them at the runner's OS and would wave through a
+# newer-than-14 API that the real build then rejects — the drift this pin
+# exists to close, reopened on the one job whose whole point is catching
+# things early. Keep the two in step.
 /usr/bin/xcrun swiftc -o "$bin" \
+  -target "$(uname -m)-apple-macos14.0" \
   Frecency.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
   Currency.swift ItemSettings.swift FunctionKeyGesture.swift FunctionKeyRemap.swift CommandRegistry.swift UpdateCheck.swift \
   ConfigTemplate.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \
