@@ -63,7 +63,16 @@ stdenvNoCC.mkDerivation {
 
     # Compile + assemble via the shared build script (also used by the Homebrew
     # formula in hausfold/homebrew-tap) so the two packagings never drift.
-    POUNCE_VERSION="$version" bash ./build.sh
+    #
+    # POUNCE_TARGET_ARCH comes from the derivation's host platform, not from
+    # `uname -m`: the script's fallback reads the BUILDER's kernel, which is a
+    # different thing under Rosetta or an x86_64-darwin nix on Apple Silicon,
+    # and would quietly stamp a triple disagreeing with what nix believes it
+    # built. The macOS floor itself stays in build.sh — it is a property of the
+    # sources, shared with every other packaging.
+    POUNCE_VERSION="$version" \
+      POUNCE_TARGET_ARCH="${stdenvNoCC.hostPlatform.darwinArch}" \
+      bash ./build.sh
   '';
 
   installPhase = ''

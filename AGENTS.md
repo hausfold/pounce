@@ -47,10 +47,18 @@ CI builds it on a `macos-15` runner on every push.
 which `NSResponder.h` only declares at macOS 15, and an SDK that lacks a method cannot
 have it overridden at any target. That is why CLT 16+ is required to compile, and it
 bites `brew install --build-from-source` too, since `build.sh` is the shared compile
-step. The *deployment* floor is 14, pinned with `-target` in `build.sh` (and matched
-in `tests/run.sh`) so it is a deliberate edit rather than a property of whichever Mac
-ran the build. Raising either is user-facing — `README`'s stated requirement and the
-`#available` guards in the sources move with it.
+step. The *deployment* floor is 14, and it has exactly one source: `MACOS_MIN` in
+`build.sh`, which feeds both the compiler's `-target` and the `LSMinimumSystemVersion`
+that `plutil` writes into the bundle — so the version the app refuses to launch on can
+never disagree with the version it was compiled for. `tests/run.sh` carries the same
+target by hand; keep the two in step. Raising either floor is user-facing — README's
+stated requirement (currently "macOS 14 Sonoma or later") and the `#available` guards
+in the sources move with it.
+
+The *arch* half of that triple is a build input, not a guess: `default.nix` passes
+`POUNCE_TARGET_ARCH` from `stdenv.hostPlatform.darwinArch`. `build.sh` falls back to
+`uname -m` for non-Nix packagers, which is the builder's kernel and so is wrong under
+Rosetta or an `x86_64-darwin` nix on Apple Silicon.
 
 **A build under test cannot reach its own window while the installed daemon is
 running.** `pounce -p …` hands the whole invocation to the daemon over

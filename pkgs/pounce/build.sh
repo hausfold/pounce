@@ -6,6 +6,12 @@
 # Inputs:
 #   POUNCE_VERSION                     stamped into the binary and Info.plist
 #                                      (defaults to "dev")
+#   POUNCE_TARGET_ARCH                 arch half of the -target triple. Nix
+#                                      passes stdenv.hostPlatform.darwinArch;
+#                                      everyone else gets `uname -m`, which is
+#                                      the BUILDER's kernel and so guesses wrong
+#                                      under Rosetta or an x86_64 nix on Apple
+#                                      Silicon. Set it when cross-building.
 #   Palette+nebelung.generated.swift   must exist next to this script. Nix
 #                                      renders it from the nebelung flake input;
 #                                      release tarballs ship it pre-rendered.
@@ -13,6 +19,16 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION="${POUNCE_VERSION:-dev}"
+
+# THE macOS floor, in one place. It reaches the binary twice — as the compiler's
+# deployment target (so an API newer than this cannot compile without an
+# `#available`) and as Info.plist's LSMinimumSystemVersion (so Launch Services
+# refuses an older Mac with a sentence instead of letting dyld abort). Those two
+# have to agree or the app either crashes on a Mac it claimed to support, or
+# refuses one it would have run on, so they read the same variable and cannot
+# drift. Bumping this is user-facing: README's stated requirement moves with it.
+MACOS_MIN="14.0"
+TARGET_ARCH="${POUNCE_TARGET_ARCH:-$(uname -m)}"
 
 if [ ! -f "Palette+nebelung.generated.swift" ]; then
   echo "build.sh: Palette+nebelung.generated.swift is missing." >&2
@@ -43,8 +59,13 @@ mkdir -p Pounce.app/Contents/MacOS Pounce.app/Contents/Resources
 # the floor released builds already shipped, so pinning it changes nothing for
 # users. Moving it is now a deliberate edit here, not a side effect of which
 # machine ran the build.
+#
+# Note this pins `minos` only. The LINKED sdk is still whatever the builder has,
+# and AppKit gates a few behaviours on that rather than on the deployment
+# target — so a release built on a newer runner is not bit-for-bit behaviourally
+# identical to an older one even with the floor unmoved.
 /usr/bin/xcrun swiftc -parse-as-library -o Pounce.app/Contents/MacOS/pounce \
-  -target "$(uname -m)-apple-macos14.0" \
+  -target "$TARGET_ARCH-apple-macos$MACOS_MIN" \
   *.swift \
   -framework SwiftUI \
   -framework AppKit \
@@ -59,6 +80,10 @@ mkdir -p Pounce.app/Contents/MacOS Pounce.app/Contents/Resources
 cp Info.plist Pounce.app/Contents/
 /usr/bin/plutil -replace CFBundleShortVersionString -string "$VERSION" Pounce.app/Contents/Info.plist
 /usr/bin/plutil -replace CFBundleVersion -string "$VERSION" Pounce.app/Contents/Info.plist
+# Written here rather than checked into Info.plist so it cannot disagree with
+# the -target above. `plutil -replace` inserts a key that is absent, which is
+# also how the two version strings land.
+/usr/bin/plutil -replace LSMinimumSystemVersion -string "$MACOS_MIN" Pounce.app/Contents/Info.plist
 
 # Bundle the picker datasets (read at runtime via Bundle.main). Both feed the
 # one emoji-mode grid: emoji.json is the vendored emoji superset, symbols.json
