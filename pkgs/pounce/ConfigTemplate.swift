@@ -30,7 +30,131 @@
 
 import Foundation
 
-/// One setting: the leaf key, the prose above it, and its default as JSON.
+/// What the Settings window draws for one setting.
+///
+/// A DESCRIPTION, not a widget: this file is Foundation-only (it is compiled by
+/// `tests/run.sh`, which links no AppKit), so the SwiftUI that honours each case
+/// lives in SettingsControls.swift. The split is the same one that already keeps
+/// the renderer testable — ConfigSpec knows pounce's settings, this file knows
+/// how to write them down, and the window knows how to draw them.
+///
+/// Every case reads and writes a JSON LITERAL rather than a typed value, because
+/// that is the currency both halves of the file already trade in: ConfigSpec
+/// renders defaults as JSON (`ConfigSpec.json`) and ConfigWriter puts JSON back
+/// on one line. A control that dealt in `Bool` would need a third mapping
+/// between the two, and a place for it to disagree.
+enum ConfigControl {
+    /// One of a fixed set of strings — `windowMode`, `fnKey`.
+    struct Choice {
+        let value: String   // the JSON string as written, without its quotes
+        let label: String   // what the picker says
+        init(_ value: String, _ label: String) {
+            self.value = value
+            self.label = label
+        }
+    }
+
+    case toggle
+    /// A whole number, with the range it is clamped or sensible within.
+    case number(ClosedRange<Int>, unit: String? = nil)
+    /// A real number typed rather than dragged — a timeout, where the useful
+    /// range spans three orders of magnitude and a slider resolves none of it.
+    case decimal(ClosedRange<Double>, step: Double, unit: String? = nil)
+    /// A real number dragged rather than typed — `scale`, whose whole point is
+    /// that you try one and look.
+    case slider(ClosedRange<Double>, step: Double)
+    case choice([Choice])
+    /// Free text. `nullable` means an emptied field writes `null` (the theme
+    /// keys, where "unset" is a third state that means "follow macOS"), not `""`.
+    case text(placeholder: String = "", nullable: Bool = false)
+    /// A named key — "space", "tab", "f13". Text, but drawn narrow and with the
+    /// spelling to hand, since the grammar is pounce's own (see HotKey.swift).
+    case key
+    /// Any of "cmd"/"shift"/"opt"/"ctrl", drawn as the four glyphs.
+    case modifiers
+    /// A list of strings, one per line — bundle ids, mostly.
+    case list(placeholder: String = "")
+    /// Structured past what a row can honestly draw: `appHotkeys.scopes` is a
+    /// list of apps each holding a list of chords each naming a target. The
+    /// window shows how many there are and sends you to the file, which is a
+    /// smaller lie than a form that can only express half of them. The string
+    /// says what one entry looks like.
+    case fileOnly(String)
+
+    /// Whether this control can actually read that literal — i.e. whether the
+    /// control named in ConfigSpec matches the TYPE of the setting it was put
+    /// against. `.toggle` on an Int is the mistake this catches: the switch
+    /// would read false, write `true`, and `Settings.load()` would drop it, so
+    /// the window would appear to work and change nothing.
+    ///
+    /// Checked where the row is drawn rather than trusted, so a mismatched pair
+    /// degrades to "edit this one in the file" instead of to a control that
+    /// lies. Pure, so tests/run.sh can hold the table to it.
+    func accepts(_ json: String) -> Bool {
+        switch self {
+        case .toggle:
+            return json == "true" || json == "false"
+        case .number:
+            return Int(json) != nil
+        case .decimal, .slider:
+            return Double(json) != nil
+        case .choice(let choices):
+            // `null` is not offered by a picker — a choice setting always has
+            // one of its cases, because `Settings` types them as enums.
+            guard let value = ConfigValue.string(json) else { return false }
+            return choices.contains { $0.value == value }
+        case .text(_, let nullable):
+            return ConfigValue.string(json) != nil || (nullable && json == "null")
+        case .key:
+            return ConfigValue.string(json) != nil
+        case .modifiers, .list:
+            return ConfigValue.isStringArray(json)
+        case .fileOnly:
+            return ConfigValue.isArray(json)
+        }
+    }
+}
+
+/// Reading a JSON literal back — the other direction from `ConfigSpec.json`.
+///
+/// Lives here, beside `ConfigControl`, because the two are one idea: the spec
+/// hands the window a value written as JSON and a note about how to draw it,
+/// and both halves of that have to agree about what "a string" looks like.
+/// Foundation-only, so tests/run.sh holds them to it together.
+enum ConfigValue {
+    /// A JSON string's contents, or nil for `null` and for anything that isn't
+    /// a string.
+    static func string(_ json: String) -> String? {
+        guard json != "null" else { return nil }
+        return object(json) as? String
+    }
+
+    /// A JSON array of strings, or empty for anything else. Empty and
+    /// not-an-array are deliberately the same answer: a list control showing
+    /// nothing is the honest rendering of both.
+    static func strings(_ json: String) -> [String] {
+        object(json) as? [String] ?? []
+    }
+
+    static func isStringArray(_ json: String) -> Bool { object(json) is [String] }
+
+    static func isArray(_ json: String) -> Bool { object(json) is [Any] }
+
+    /// How many entries an array literal holds; 0 for anything else.
+    static func count(_ json: String) -> Int { (object(json) as? [Any])?.count ?? 0 }
+
+    /// Parsed with the SAME flags `Settings.load()` uses, plus fragments —
+    /// most of these literals are a bare `true` or `200`, which is not a JSON
+    /// document on its own.
+    private static func object(_ json: String) -> Any? {
+        guard let data = json.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(
+            with: data, options: [.fragmentsAllowed, .json5Allowed])
+    }
+}
+
+/// One setting: the leaf key, the prose above it, its default as JSON, and what
+/// the Settings window should draw for it.
 struct ConfigField {
     let name: String
     let doc: String
@@ -38,11 +162,57 @@ struct ConfigField {
     /// or a pretty-printed array). ConfigSpec builds these from a live `Settings`
     /// so they can't drift from the struct defaults they document.
     let json: String
+    /// The widget. Deliberately NOT optional and with no default value: a
+    /// setting added to ConfigSpec without one doesn't compile, which is the
+    /// only kind of coverage this table has ever managed to keep. (The prose and
+    /// the default were both once "remember to add it too"; the default stopped
+    /// drifting the day it started being read off a live `Settings`.)
+    let control: ConfigControl
+    /// SF Symbol for the row, or nil for a row that reads fine without one.
+    let symbol: String?
+
+    /// "maxEntries" → "Max entries". The key IS the label: inventing a second
+    /// name for every setting would mean the words you read in the Settings
+    /// window and the words you search for in config.json are different words,
+    /// which for a window whose whole pitch is "this is that file" would be the
+    /// one unforgivable seam.
+    var label: String {
+        var out = ""
+        for (index, character) in name.enumerated() {
+            if index > 0 && character.isUppercase && !out.hasSuffix(" ") {
+                out.append(" ")
+                out.append(Character(character.lowercased()))
+            } else {
+                out.append(index == 0 ? Character(character.uppercased()) : character)
+            }
+        }
+        // "Bundle IDs" beats "Bundle i ds" — the acronym is the one place the
+        // camel-case split guesses wrong, and it is in four of these keys.
+        return out.replacingOccurrences(of: " ids", with: " IDs")
+    }
+
+    init(name: String, doc: String, json: String, control: ConfigControl, symbol: String? = nil) {
+        self.name = name
+        self.doc = doc
+        self.json = json
+        self.control = control
+        self.symbol = symbol
+    }
 }
 
 /// A `{ }` in the config, or the top level when `name` is nil.
 struct ConfigSection {
     let name: String?
+    /// Which Settings-window pane this section's card belongs on. A plain string
+    /// here rather than an enum for the same reason `control` is a description:
+    /// the panes' titles, glyphs and tints are SwiftUI, and this file links no
+    /// AppKit. `ConfigPane` in SettingsView.swift owns the id → chrome map and
+    /// the sidebar order; a pane id it doesn't recognise still shows up, on the
+    /// fallback pane, because a setting that silently isn't drawn is the exact
+    /// failure that window exists to fix.
+    ///
+    /// Required, again so the compiler is the one keeping coverage.
+    let pane: String
     let doc: String?
     let fields: [ConfigField]
     /// A raw, already-commented block appended inside the section — for the one
@@ -51,8 +221,10 @@ struct ConfigSection {
     /// honest documentation.
     let raw: String?
 
-    init(name: String?, doc: String? = nil, fields: [ConfigField] = [], raw: String? = nil) {
+    init(name: String?, pane: String, doc: String? = nil,
+         fields: [ConfigField] = [], raw: String? = nil) {
         self.name = name
+        self.pane = pane
         self.doc = doc
         self.fields = fields
         self.raw = raw

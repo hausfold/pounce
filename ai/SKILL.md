@@ -61,6 +61,7 @@ drawing the window itself.
 | list / read / drop drafts | `pounce drafts <key> list \| get <n> \| rm <n> \| clear` |
 | where is the config? | `pounce config` |
 | what settings exist, with defaults? | `pounce config print` |
+| let the user change a setting themselves | `pounce settings` opens the Settings window |
 | is the hotkey actually working? | `pounce doctor` |
 | everything, exhaustively | `pounce --help` |
 
@@ -68,6 +69,12 @@ drawing the window itself.
 prints every setting at its default, annotated. Read that rather than guessing
 key names. `pounce config init` writes the same thing as the user's own
 `config.json` with everything commented out.
+
+`pounce settings` opens the same list as a window the USER clicks through —
+reach for it when they want to change something themselves rather than have you
+edit the file. It writes one line of `config.json` per click and leaves the rest
+alone, so it and a hand edit are the same door. It is read-only on a
+haus-managed Mac (see below), and says so.
 
 `pounce drafts <key> list` prints `<index>\t<preview>\t<age>`, newest first —
 ready to turn back into picker rows.
@@ -91,9 +98,10 @@ ready to turn back into picker rows.
   yet. Read verbs print human text or TSV; parse them carefully or not at all.
 - **You want to change what's in the palette.** Items, commands and the hotkey
   live in `~/.config/pounce/config.json` and
-  `~/.config/pounce/commands` — edit those files. On a machine running haus,
-  they are generated: change `haus.launcher.*` instead and rebuild, or the next
-  rebuild reverts you.
+  `~/.config/pounce/commands` — edit those files, or hand the user `pounce
+  settings`. On a machine running haus, they are generated: change
+  `haus.launcher.*` instead and rebuild, or the next rebuild reverts you (the
+  Settings window is read-only there for exactly that reason).
 - **You want a notification.** That's `trill send`.
 - **You want to hold a file for dragging.** That's `perch add`.
 - **You are not on a logged-in macOS GUI session.** Every window verb needs one;

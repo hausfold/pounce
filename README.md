@@ -90,6 +90,10 @@ or skip that version with ⌘⏎.
 - **`pounce config init`** — writes a config with *every* setting at its
   default, a sentence above each, all commented out. You learn the settings by
   reading your own config.
+- **a Settings window** — `pounce settings`, or the row in the palette. Panes of
+  cards, drawn from that same table, writing that same file one line at a time:
+  your comments and ordering survive a click, and setting something back to its
+  default comments its line out again. No second copy of anything.
 
 MIT, no telemetry, no cloud, no login. The only things it ever calls home for
 are currency rates and the update check — both switched off with one line.

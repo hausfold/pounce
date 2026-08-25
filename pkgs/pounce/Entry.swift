@@ -54,6 +54,7 @@ enum Main {
                                   mode:camera         camera preview
                                   mode:filesearch     file/folder search
                                   mode:launcher       the palette itself
+                                  mode:settings       pounce's own settings
 
     drafts (what --draft kept):
       drafts <key> save         file stdin as a draft under <key> — for a step
@@ -87,6 +88,9 @@ enum Main {
                                 Forwarded to the daemon, which holds the grant.
 
     settings:
+      settings                  open the Settings window — every setting in
+                                config.json, with the same prose `config print`
+                                writes, and a click writes one line back
       config                    print the config path
       config print              print an annotated config to stdout, touching
                                 nothing — pipe it, or diff it against yours
@@ -169,6 +173,12 @@ enum Main {
             // One-shot bootstrap: fire the system Bluetooth prompt (see
             // BluetoothGrant.swift for why blueutil can't do this itself).
             BluetoothGrant.request()
+        } else if args.count >= 2 && args[1] == "settings" {
+            // Positional like `config`/`focus`/`doctor` (see those branches for
+            // why). Opens the Settings window — in the DAEMON when one is
+            // running, so the window belongs to the process that outlives this
+            // one, and in this process when it isn't.
+            SettingsMode.run()
         } else if args.count >= 2 && args[1] == "config" {
             // Positional like `focus`/`doctor` (see those branches for why).
             // `pounce config init` writes an annotated config.json: every
@@ -760,6 +770,17 @@ enum DaemonMode {
             case .mode("screenshots"): presentMode(.screenshots) { $0.loadScreenshots(placeholder: nil) }
             case .mode("camera"):      presentMode(.camera) { $0.loadCamera(placeholder: nil) }
             case .mode("filesearch"):  presentMode(.fileSearch) { $0.loadFileSearch(placeholder: nil) }
+            case .mode("settings"):
+                // Not a `presentMode`: this is pounce's own Settings window, an
+                // ordinary titled NSWindow rather than a swap of the palette's
+                // contents (SettingsWindow.swift). Hide the palette first — it
+                // dismisses on losing key anyway, and doing it here means the
+                // panel is gone before the window arrives rather than blinking
+                // out behind it. Guarded: `cancel()` also stashes a draft and
+                // answers a waiting socket client, neither of which a hidden
+                // palette has any business doing.
+                if state.isVisible { state.cancel() }
+                PounceSettingsWindowController.shared.show()
             case .mode(let name):
                 // Unreachable: ItemTarget.parse only yields modes it knows.
                 NSLog("pounce daemon: built-in mode '\(name)' has no dispatch case")
