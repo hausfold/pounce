@@ -111,16 +111,23 @@ class PounceWindow: NSWindow {
     // and send it to the first responder (to: nil walks the responder chain, so
     // the field editor picks it up).
     //
-    // It also swallows ⌘Q, which is the opposite job. Pounce grew a main menu
-    // the day it grew a Settings window (SettingsWindow.swift) and a main menu
-    // brings a Quit item with it — right from a settings window, wrong from a
-    // panel that lives for one keystroke, where ⌘Q has always done nothing and a
-    // fumbled ⌘Space must not take the daemon down. Refused here rather than
-    // omitted from the menu, so the menu stays the one macOS expects.
+    // The WINDOW-management chords are the opposite job, and arrived with the
+    // same fix. Pounce grew a main menu the day it grew a Settings window
+    // (SettingsWindow.swift), and a menu brings ⌘Q/⌘W/⌘M/⌘H with it — all four
+    // right from a settings window, all four wrong from a panel that lives for
+    // one keystroke and has always ignored them. ⌘Q would take the daemon down
+    // on a fumbled ⌘Space; the other three would beep, minimise or hide a panel
+    // that is about to dismiss itself anyway. Refused HERE rather than left out
+    // of the menu, so the menu stays the one macOS expects and the palette stays
+    // the panel it has always been.
+    static let refusedCommandKeys: Set<String> = ["q", "w", "m", "h"]
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let command: NSEvent.ModifierFlags = .command
-        if mods == command, event.charactersIgnoringModifiers == "q" { return true }
+        if mods == command,
+           let key = event.charactersIgnoringModifiers,
+           Self.refusedCommandKeys.contains(key) { return true }
         if mods == command || mods == [command, .shift] {
             let selector: Selector?
             switch event.charactersIgnoringModifiers {

@@ -206,8 +206,10 @@ struct ConfigSection {
     /// Which Settings-window pane this section's card belongs on. A plain string
     /// here rather than an enum for the same reason `control` is a description:
     /// the panes' titles, glyphs and tints are SwiftUI, and this file links no
-    /// AppKit. SettingsPanes.swift owns the id → chrome map and the sidebar
-    /// order; anything it doesn't recognise still shows up, on the last pane.
+    /// AppKit. `ConfigPane` in SettingsView.swift owns the id → chrome map and
+    /// the sidebar order; a pane id it doesn't recognise still shows up, on the
+    /// fallback pane, because a setting that silently isn't drawn is the exact
+    /// failure that window exists to fix.
     ///
     /// Required, again so the compiler is the one keeping coverage.
     let pane: String

@@ -155,6 +155,10 @@ final class ConfigStore: ObservableObject {
             with: Data(updated.utf8), options: [.json5Allowed])) != nil
         else {
             writeError = "That change would have made config.json unreadable, so it wasn't saved. Please report this."
+            // Re-read like every other early return: without it the control
+            // keeps showing the value that was NOT saved, right beside the
+            // banner saying it wasn't.
+            refresh()
             return
         }
 
@@ -176,7 +180,14 @@ final class ConfigStore: ObservableObject {
     /// default, commented out — so the first switch you flip lands in a file
     /// that explains the other thirty-nine, rather than in a bare `{ }`.
     private func fileText() -> String? {
-        if let text = try? String(contentsOf: path, encoding: .utf8) { return text }
+        // An EMPTY file counts as no file. `ConfigWriter` has nothing to edit in
+        // it and nowhere to insert, so it would hand back the empty string and
+        // the parse check would then reject pounce's own no-op — an error
+        // message for a file the user could reasonably have just `touch`ed.
+        if let text = try? String(contentsOf: path, encoding: .utf8),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
         return try? ConfigSpec.render(version: pounceVersion)
     }
 

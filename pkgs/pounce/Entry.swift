@@ -54,6 +54,7 @@ enum Main {
                                   mode:camera         camera preview
                                   mode:filesearch     file/folder search
                                   mode:launcher       the palette itself
+                                  mode:settings       pounce's own settings
 
     drafts (what --draft kept):
       drafts <key> save         file stdin as a draft under <key> — for a step

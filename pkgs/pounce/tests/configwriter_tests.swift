@@ -205,6 +205,95 @@ func runConfigWriterTests() -> Int {
     check(oneLinerOutcome.refused != nil, "a single-line document is refused too")
     check(oneLinerOutcome.text == oneLiner, "…and left exactly as it was")
 
+    // MARK: A config with no trailing commas
+
+    // JSON5's trailing comma is what the generated template leans on; an
+    // ordinary hand-written config has none, and inserting a key after its last
+    // member used to produce JSON nothing could parse — so the window could only
+    // ever edit keys the file already mentioned.
+    let strict = """
+    {
+      "theme": "mocha",
+      "clipboard": {
+        "maxEntries": 100
+      }
+    }
+    """
+    let strictAdded = write(strict, section: "clipboard", key: "enabled", json: "false")
+    check(parse(strictAdded) != nil, "adding a key to a comma-less config still parses")
+    check((parse(strictAdded)?["clipboard"] as? [String: Any])?["maxEntries"] as? Int == 100,
+          "…and the member above it survives")
+    check((parse(strictAdded)?["clipboard"] as? [String: Any])?["enabled"] as? Bool == false,
+          "…and the new key is there")
+
+    let strictSection = write(strict, section: "hotkey", key: "key", json: "\"f13\"")
+    check(parse(strictSection) != nil, "adding a whole SECTION to a comma-less config still parses")
+    check(parse(strictSection)?["theme"] as? String == "mocha", "…and the rest is intact")
+
+    // The comma goes after the value, not after a trailing note.
+    let noted = """
+    {
+      "scale": 1.4   // I like it big
+    }
+    """
+    let notedAdded = write(noted, section: nil, key: "theme", json: "\"mocha\"")
+    check(parse(notedAdded) != nil, "a trailing line comment doesn't swallow the new comma")
+    check(notedAdded.contains("// I like it big"), "…and the note itself survives")
+    check(parse(notedAdded)?["scale"] as? Double == 1.4, "…and so does the value it annotates")
+
+    // MARK: Block comments
+
+    // `/* */` spans lines, so a line in the middle of one carries no `//` to
+    // recognise it by. Left unhandled, a block-commented section was read as a
+    // live one — either the key was written INSIDE the comment (a switch that
+    // does nothing) or, when the commented braces didn't balance, the real
+    // section went unfound and a duplicate was appended over it.
+    let blockCommented = """
+    {
+      "scale": 1.4,
+      /*
+      "clipboard": { "maxEntries": 999 },
+      */
+      "clipboard": {
+        "maxEntries": 50,
+      },
+    }
+    """
+    let blockOut = write(blockCommented, section: "clipboard", key: "maxEntries", json: "77")
+    check(parse(blockOut) != nil, "a config with a block comment still parses after a write")
+    check((parse(blockOut)?["clipboard"] as? [String: Any])?["maxEntries"] as? Int == 77,
+          "the LIVE section is the one that changed")
+    check(blockOut.contains("\"maxEntries\": 999"),
+          "the commented-out copy is left exactly as it was")
+    check(blockOut.components(separatedBy: "\"clipboard\":").count - 1 == 2,
+          "no third \"clipboard\" was appended")
+
+    // An unbalanced brace inside a block comment must not move the depth count.
+    let unbalanced = """
+    {
+      /* was: "clipboard": { */
+      "clipboard": {
+        "maxEntries": 50,
+      },
+    }
+    """
+    let unbalancedOut = write(unbalanced, section: "clipboard", key: "enabled", json: "false")
+    check(parse(unbalancedOut) != nil, "an unbalanced brace inside a comment doesn't break the write")
+    check((parse(unbalancedOut)?["clipboard"] as? [String: Any])?["enabled"] as? Bool == false,
+          "…and the key lands in the real section")
+    check(unbalancedOut.components(separatedBy: "\"clipboard\": {").count - 1 == 2,
+          "…without a duplicate section being appended")
+
+    // MARK: A multi-line value lines up under its key
+
+    let arrayed = write(
+        template, section: "clipboard", key: "blacklistBundleIds",
+        json: "[\n  \"a\",\n  \"b\",\n  \"c\",\n  \"d\"\n]")
+    check(parse(arrayed) != nil, "a pretty-printed array still parses")
+    check(arrayed.contains("\n      \"a\","),
+          "its entries are indented under the key, not flush at column zero")
+    check(arrayed.contains("\n    ],"), "and so is its closing bracket")
+
     if failures == 0 { print("ok — all config-writer tests passed") }
     return failures
 }

@@ -59,10 +59,10 @@ enum ConfigWriter {
         _ text: String, section: String?, key: String, json: String?, default defaultJSON: String? = nil
     ) -> Outcome {
         var lines = text.components(separatedBy: "\n")
-        let depths = depthsBefore(lines)
+        let (depths, inComment) = scan(lines)
 
         let range: Range<Int>
-        switch searchRange(lines, depths: depths, section: section) {
+        switch searchRange(lines, depths: depths, inComment: inComment, section: section) {
         case .range(let found):
             range = found
         case .inline:
@@ -83,22 +83,33 @@ enum ConfigWriter {
             // gets a section of its own.
             guard let json else { return Outcome(text: text, refused: nil) }
             return Outcome(
-                text: insertSection(section, key: key, json: json, into: lines, depths: depths),
+                text: insertSection(section, key: key, json: json, into: lines,
+                                    depths: depths, inComment: inComment),
                 refused: nil)
         }
 
-        guard let found = locate(key: key, in: lines, range: range, depths: depths, section: section)
+        guard let found = locate(key: key, in: lines, range: range, depths: depths,
+                                inComment: inComment, section: section)
         else {
             guard let json else { return Outcome(text: text, refused: nil) }
+            let indent = insertionIndent(lines, range: range, section: section)
+            // The member ABOVE the new one needs a comma it may not have. The
+            // annotated file gives every commented line its own (that is what
+            // makes uncommenting any subset work), but an ordinary hand-written
+            // config has no trailing comma on its last member — and appending
+            // after it produced JSON that nothing could parse. The window then
+            // refused its own write and blamed itself, which meant it could only
+            // ever edit keys the file already mentioned.
+            addTrailingComma(&lines, before: range.upperBound, inComment: inComment)
             lines.insert(
-                "\(insertionIndent(lines, range: range, section: section))\"\(key)\": \(json),",
+                "\(indent)\"\(key)\": \(reindent(json, to: indent))," ,
                 at: range.upperBound)
             return Outcome(text: lines.joined(separator: "\n"), refused: nil)
         }
 
         let indent = leadingWhitespace(lines[found.lowerBound])
         if let json {
-            lines.replaceSubrange(found, with: ["\(indent)\"\(key)\": \(json),"])
+            lines.replaceSubrange(found, with: ["\(indent)\"\(key)\": \(reindent(json, to: indent)),"])
         } else {
             // Back to the default, which in this file's grammar is a commented
             // line — keeping the prose above it, and keeping the file the kind
@@ -120,28 +131,58 @@ enum ConfigWriter {
     /// the last — counting braces and brackets in the part of the line that is
     /// real JSON, so the commented-out settings that make up most of this file
     /// don't move it.
-    private static func depthsBefore(_ lines: [String]) -> [Int] {
+    /// Per-line structural depth, plus whether each line STARTS inside a
+    /// `/* */` comment. The second half is what keeps `searchRange` and
+    /// `locate` from mistaking a commented-out section for a live one — the
+    /// leading `//` they used to look for isn't there on the middle lines of a
+    /// block comment.
+    private static func scan(_ lines: [String]) -> (depths: [Int], inComment: [Bool]) {
         var depths: [Int] = []
+        var inComment: [Bool] = []
         var depth = 0
+        // A `/* */` comment runs ACROSS lines, so the scanner has to remember
+        // whether it is inside one — the only piece of state this file's
+        // line-at-a-time reading cannot get from the line itself. Without it, a
+        // block-commented section whose braces happen not to balance shifts
+        // every depth below it, `searchRange` fails to find the real section,
+        // and `insertSection` appends a duplicate that shadows it. Same silent
+        // shadowing the one-line-section case caused; same reason it must not
+        // happen.
+        var inBlockComment = false
         for line in lines {
             depths.append(depth)
-            for character in structuralPart(line) {
+            inComment.append(inBlockComment)
+            for character in structuralPart(line, inBlockComment: &inBlockComment) {
                 if character == "{" || character == "[" { depth += 1 }
                 if character == "}" || character == "]" { depth -= 1 }
             }
         }
         depths.append(depth)
-        return depths
+        inComment.append(inBlockComment)
+        return (depths, inComment)
     }
 
-    /// A line with its comment and its string contents removed — what's left is
-    /// only the punctuation that nests.
-    private static func structuralPart(_ line: String) -> String {
+    /// A line with its comments and its string contents removed — what's left
+    /// is only the punctuation that nests.
+    ///
+    /// `inBlockComment` is carried in and out because `/* */` spans lines. The
+    /// no-argument overload below is for the callers that ask about one line on
+    /// its own, where "am I inside a block comment?" has no answer to give.
+    private static func structuralPart(_ line: String, inBlockComment: inout Bool) -> String {
         var out = ""
         var inString = false
         var escaped = false
         var previous: Character? = nil
         for character in line {
+            if inBlockComment {
+                if previous == "*" && character == "/" {
+                    inBlockComment = false
+                    previous = nil
+                    continue
+                }
+                previous = character
+                continue
+            }
             if escaped { escaped = false; previous = character; continue }
             if inString {
                 if character == "\\" { escaped = true }
@@ -151,10 +192,21 @@ enum ConfigWriter {
             }
             if character == "\"" { inString = true; previous = character; continue }
             if character == "/" && previous == "/" { out.removeLast(); break }
+            if character == "*" && previous == "/" {
+                out.removeLast()          // the `/` already appended
+                inBlockComment = true
+                previous = nil
+                continue
+            }
             out.append(character)
             previous = character
         }
         return out
+    }
+
+    private static func structuralPart(_ line: String) -> String {
+        var inBlockComment = false
+        return structuralPart(line, inBlockComment: &inBlockComment)
     }
 
     /// Where a key may live, or why it may not be written.
@@ -171,11 +223,15 @@ enum ConfigWriter {
     /// The lines a key may live on: the inside of its section's braces, or the
     /// inside of the root object for a top-level key.
     private static func searchRange(
-        _ lines: [String], depths: [Int], section: String?
+        _ lines: [String], depths: [Int], inComment: [Bool], section: String?
     ) -> SectionRange {
         guard let section else {
-            guard let open = lines.firstIndex(where: { structuralPart($0).contains("{") }),
-                  let close = lines.lastIndex(where: { structuralPart($0).contains("}") })
+            guard let open = lines.indices.first(where: {
+                      !inComment[$0] && structuralPart(lines[$0]).contains("{")
+                  }),
+                  let close = lines.indices.last(where: {
+                      !inComment[$0] && structuralPart(lines[$0]).contains("}")
+                  })
             else { return .missing }
             // `{"scale":1.4}` on one line: nowhere to put a line, and no line to
             // replace.
@@ -188,7 +244,7 @@ enum ConfigWriter {
         for (index, line) in lines.enumerated() where depths[index] == 1 {
             // Matched against the raw line: `structuralPart` throws away string
             // contents, and the section's name is a string.
-            guard !isCommented(line) else { continue }
+            guard !isCommented(line), !inComment[index] else { continue }
             let span = NSRange(line.startIndex..., in: line)
             guard opener.firstMatch(in: line, range: span) != nil else { continue }
             // A section that opened AND closed on this line — depth is already
@@ -208,7 +264,8 @@ enum ConfigWriter {
     /// The lines one setting occupies — one for a scalar, several for a
     /// pretty-printed array, commented or not.
     private static func locate(
-        key: String, in lines: [String], range: Range<Int>, depths: [Int], section: String?
+        key: String, in lines: [String], range: Range<Int>, depths: [Int],
+        inComment: [Bool], section: String?
     ) -> Range<Int>? {
         let pattern = try? NSRegularExpression(
             pattern: "^\\s*(//\\s*)?\"\(NSRegularExpression.escapedPattern(for: key))\"\\s*:")
@@ -217,6 +274,9 @@ enum ConfigWriter {
             // A top-level key is only top-level: the same name nested inside a
             // section is a different setting ("enabled" is in nine of them).
             if section == nil && depths[index] != 1 { continue }
+            // A key written out inside a `/* */` is not this setting. Editing it
+            // there would look like a working switch that changes nothing.
+            if inComment[index] { continue }
             let line = lines[index]
             let span = NSRange(line.startIndex..., in: line)
             guard pattern.firstMatch(in: line, range: span) != nil else { continue }
@@ -245,19 +305,22 @@ enum ConfigWriter {
     // MARK: - Inserting
 
     private static func insertSection(
-        _ section: String?, key: String, json: String, into lines: [String], depths: [Int]
+        _ section: String?, key: String, json: String, into lines: [String],
+        depths: [Int], inComment: [Bool]
     ) -> String {
         var lines = lines
-        guard let close = lines.lastIndex(where: { structuralPart($0).contains("}") })
-        else { return lines.joined(separator: "\n") }
+        guard let close = lines.indices.last(where: {
+            !inComment[$0] && structuralPart(lines[$0]).contains("}")
+        }) else { return lines.joined(separator: "\n") }
+        addTrailingComma(&lines, before: close, inComment: inComment)
         if let section {
             lines.insert(contentsOf: [
                 "  \"\(section)\": {",
-                "    \"\(key)\": \(json),",
+                "    \"\(key)\": \(reindent(json, to: "    ")),",
                 "  },",
             ], at: close)
         } else {
-            lines.insert("  \"\(key)\": \(json),", at: close)
+            lines.insert("  \"\(key)\": \(reindent(json, to: "  ")),", at: close)
         }
         return lines.joined(separator: "\n")
     }
@@ -277,17 +340,87 @@ enum ConfigWriter {
     /// One setting written back out as the template writes it: commented, at
     /// the indent of its neighbours, one line per line of a multi-line value.
     private static func commented(_ text: String, indent: String) -> [String] {
-        text.components(separatedBy: "\n").enumerated().map { index, line in
-            index == 0 ? "\(indent)// \(line)" : "\(indent)// \(line)"
+        text.components(separatedBy: "\n").map { "\(indent)// \($0)" }
+    }
+
+    /// Line up a pretty-printed value under the key it belongs to. A JSON array
+    /// of more than three entries comes back from `ConfigSpec.json` across
+    /// several lines, each already indented relative to its own `[` — so every
+    /// line after the first needs the key's indent in front of it, or the array
+    /// lands flush against column zero inside a section. (`apps.demoteBundleIds`
+    /// ships a ten-entry default, so this is the ordinary case, not the exotic
+    /// one.) The twin of `ConfigTemplate.reindent`, which does the same for the
+    /// commented copy.
+    private static func reindent(_ json: String, to indent: String) -> String {
+        let lines = json.components(separatedBy: "\n")
+        guard lines.count > 1 else { return json }
+        return ([lines[0]] + lines.dropFirst().map { "\(indent)\($0)" }).joined(separator: "\n")
+    }
+
+    /// Give the member above `index` the comma a new sibling underneath it
+    /// requires. A no-op when it already has one, when there is no member above
+    /// (the line is the section's own `{`), or when everything above is comment
+    /// or blank.
+    private static func addTrailingComma(_ lines: inout [String], before index: Int, inComment: [Bool]) {
+        var probe = index - 1
+        while probe >= 0 {
+            let line = lines[probe]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || isCommented(line) || inComment[probe] { probe -= 1; continue }
+            let code = structuralPart(line).trimmingCharacters(in: .whitespaces)
+            // `{` / `[` mean this is the opener, and there is no member yet.
+            guard !code.isEmpty, !code.hasSuffix(","), !code.hasSuffix("{"), !code.hasSuffix("[") else { return }
+            lines[probe] = insertingComma(into: line)
+            return
         }
+    }
+
+    /// Put a comma after the last piece of real JSON on a line — which is not
+    /// the end of the line when the line carries a trailing `// note`, and is
+    /// not `structuralPart`'s length either: that function DROPS characters
+    /// (string contents most of all), so its count is not an offset into the
+    /// line it came from. Scan the real line instead.
+    private static func insertingComma(into line: String) -> String {
+        var inString = false
+        var escaped = false
+        var previous: Character? = nil
+        var cut = line.endIndex
+        var index = line.startIndex
+        while index < line.endIndex {
+            let character = line[index]
+            if escaped {
+                escaped = false
+            } else if inString {
+                if character == "\\" { escaped = true }
+                else if character == "\"" { inString = false }
+            } else if character == "\"" {
+                inString = true
+            } else if (character == "/" || character == "*") && previous == "/" {
+                cut = line.index(before: index)   // the first slash
+                break
+            }
+            previous = character
+            index = line.index(after: index)
+        }
+
+        let head = String(line[..<cut])
+        let tail = String(line[cut...])
+        let value = String(head.reversed().drop(while: { $0 == " " || $0 == "\t" }).reversed())
+        guard !value.isEmpty else { return line }
+        return value + "," + String(head.dropFirst(value.count)) + tail
     }
 
     private static func leadingWhitespace(_ line: String) -> String {
         String(line.prefix(while: { $0 == " " || $0 == "\t" }))
     }
 
+    /// Whether this line is commented out where it starts. `/*` counts: a
+    /// section opened inside a block comment is not a section, and treating it
+    /// as one is how a key ends up written INSIDE a comment, where it parses
+    /// fine and does nothing.
     private static func isCommented(_ line: String) -> Bool {
-        line.trimmingCharacters(in: .whitespaces).hasPrefix("//")
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.hasPrefix("//") || trimmed.hasPrefix("/*")
     }
 
     /// A commented line with its `//` taken off, so a commented value can be

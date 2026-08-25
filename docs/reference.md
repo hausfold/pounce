@@ -464,7 +464,14 @@ A few settings are structured past what a row can honestly draw
 (`appHotkeys.scopes`, `mouseChords.chords`, the whole `items` map). Those show
 what one entry looks like and open the file.
 
-Bind it like anything else: `"items": { "mode:settings": { "hotkey": "cmd+," } }`.
+Bind it like anything else — but not to ⌘, : that comma is not a key name pounce
+parses, and an item hotkey is a *global* registration, so binding the universal
+Preferences chord would take it away from every other app on the Mac. A leader
+sequence stays out of everyone's way:
+
+```jsonc
+"items": { "mode:settings": { "hotkey": "opt+space s" } }
+```
 
 **Comments and trailing commas are fine** — pounce parses config.json as JSON5,
 which is what lets you uncomment any subset of lines without fixing up commas by

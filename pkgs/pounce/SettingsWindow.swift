@@ -189,7 +189,13 @@ enum PounceMainMenu {
 /// might have come to fix.
 enum SettingsMode {
     static func run() -> Never {
-        if let reply = Daemon.request("RUN\tmode:settings\n"), !reply.hasPrefix("err") {
+        // The same escape hatch `ClientMode.run` honours, and for the same
+        // reason AGENTS.md spells out: with a daemon running, every window verb
+        // is answered by the DAEMON's build, so a fix can be feel-tested twice
+        // against the old code with no sign it never ran. This is the verb
+        // people will most want to try from `./result/bin/pounce`.
+        let forwarded = ProcessInfo.processInfo.environment["POUNCE_NO_DAEMON"] == nil
+        if forwarded, let reply = Daemon.request("RUN\tmode:settings\n"), !reply.hasPrefix("err") {
             exit(0)
         }
         runDirect()
