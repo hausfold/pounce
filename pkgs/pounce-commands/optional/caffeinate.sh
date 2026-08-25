@@ -8,8 +8,26 @@
 # -d keeps the display on, -i blocks idle sleep. Picking "Let the Mac Sleep"
 # (or the timer running out) ends it.
 
+# Draws through trill when this Mac has it, macOS's own banner when it doesn't.
+# The bundle is resolved at call time rather than through a `trill` on PATH,
+# because pounce installs standalone and cannot assume either. `--source` is
+# what `~/.config/trill/rules.json` matches on, so this one command can be
+# routed or silenced without silencing pounce. See AGENTS.md § Notifications.
 notify() {
-    osascript -e "display notification \"${1//\"/}\" with title \"Caffeinate\""
+    local _bin
+    for _bin in "${TRILL_APP:-}/Contents/MacOS/Trill" \
+                "$HOME/Applications/Trill.app/Contents/MacOS/Trill" \
+                "/Applications/Trill.app/Contents/MacOS/Trill"; do
+        [ -x "$_bin" ] || continue
+        "$_bin" send --source pounce.caffeinate --title "Caffeinate" --body "$1" \
+            >/dev/null 2>&1 && return 0
+        break
+    done
+    # `argv`, not interpolation: a body carrying a double quote used to end the
+    # AppleScript string early, which is why callers here stripped them.
+    osascript -e 'on run argv
+          display notification (item 1 of argv) with title (item 2 of argv)
+        end run' -- "$1" "Caffeinate" >/dev/null 2>&1
 }
 
 # Only track the caffeinate WE started (other processes spawn their own —

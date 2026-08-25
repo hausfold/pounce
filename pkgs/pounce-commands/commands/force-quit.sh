@@ -57,6 +57,28 @@ if [[ -z "$rows" ]]; then
     exit 0
 fi
 
+# Draws through trill when this Mac has it, macOS's own banner when it doesn't.
+# The bundle is resolved at call time rather than through a `trill` on PATH,
+# because pounce installs standalone and cannot assume either. `--source` is
+# what `~/.config/trill/rules.json` matches on, so this one command can be
+# routed or silenced without silencing pounce. See AGENTS.md § Notifications.
+notify() {
+    local _bin
+    for _bin in "${TRILL_APP:-}/Contents/MacOS/Trill" \
+                "$HOME/Applications/Trill.app/Contents/MacOS/Trill" \
+                "/Applications/Trill.app/Contents/MacOS/Trill"; do
+        [ -x "$_bin" ] || continue
+        "$_bin" send --source pounce.force-quit --title "Force Quit" --body "$1" \
+            >/dev/null 2>&1 && return 0
+        break
+    done
+    # `argv`, not interpolation: a body carrying a double quote would end the
+    # AppleScript string early.
+    osascript -e 'on run argv
+          display notification (item 1 of argv) with title (item 2 of argv)
+        end run' -- "$1" "Force Quit" >/dev/null 2>&1
+}
+
 # Show picker. pounce emits its selection as: action<TAB>raw_line, where raw_line
 # is the full tab-separated row we sent (so pid is in field 3 of the output).
 selected=$(echo "$rows" | pounce -p "Force Quit" -i "xmark.octagon")
@@ -67,9 +89,9 @@ if [[ -n "$selected" ]]; then
 
     if [[ -n "$pid" ]]; then
         if kill -9 "$pid" 2>/dev/null; then
-            osascript -e "display notification \"Force quit $name\" with title \"Force Quit\""
+            notify "Force quit $name"
         else
-            osascript -e "display notification \"Failed to quit $name\" with title \"Force Quit\""
+            notify "Failed to quit $name"
         fi
     fi
 fi

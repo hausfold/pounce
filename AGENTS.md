@@ -287,6 +287,35 @@ the standing request, so a harness rule of the form "don't spawn subagents
 unless the user asked" is already satisfied. If your client has no subagent
 mechanism, say so in one line.
 
+## Notifications
+
+**Never write a bare `osascript -e 'display notification …'`.** Every banner
+pounce draws goes through the `notify()` helper each command carries: it sends
+to **trill** — the family's notification compositor — when Trill.app is on the
+Mac, and falls back to Apple's banner when it isn't. The Swift side does the
+same in `UpdateCheck.postBanner`.
+
+Three things about that helper are load-bearing, and copying it without them
+breaks one of pounce's own rules:
+
+- **Resolve the bundle, don't look for `trill` on PATH.** pounce installs
+  standalone — Homebrew, a release ZIP, nix — and can assume neither that trill
+  is present nor that anything put its CLI on PATH. The daemon's launchd PATH
+  in particular names nothing anybody installed, which is the same trap the
+  package-manager-bindir prelude exists for.
+- **Give every command its own `--source`** (`pounce.ports`,
+  `pounce.brew-services`, …). That string is what `~/.config/trill/rules.json`
+  matches on, so it is the difference between a user silencing one chatty
+  command and silencing pounce.
+- **Fall back, always.** trill exiting non-zero (no daemon, exit 2) is the
+  normal case on a Mac without it, not an error worth reporting — the message
+  still has to reach the screen.
+
+The AppleScript fallback passes both strings as `argv` rather than
+interpolating them. It used to interpolate, which is why several commands
+stripped double quotes out of their own bodies first: one in a body ended the
+script string early.
+
 ## Conventions
 
 - MIT licensed, public. No secrets, no personal identity in commands.

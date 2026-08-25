@@ -292,15 +292,59 @@ final class UpdateNudge {
         try? data.write(to: statePath, options: .atomic)
     }
 
-    // The same notification surface the command scripts use. The version is
-    // regex-vetted above and the hint is a compile-time constant, so the
-    // interpolation is safe.
+    // The same notification surface the command scripts use: trill when this
+    // Mac has it, macOS's own banner when it doesn't.
+    //
+    // Resolved at call time rather than through a `trill` on PATH, because
+    // pounce installs standalone (Homebrew, a release ZIP, nix) and can assume
+    // neither — and because this runs in the daemon, whose launchd PATH names
+    // nothing anybody installed. `--source pounce.update` is what
+    // `~/.config/trill/rules.json` matches on, so "stop telling me about
+    // pounce updates" is a rule rather than a switch nobody shipped.
     private static func postBanner(version: String, kind: InstallKind) {
+        let title = "Pounce \(version) is out"
+        if let trill = trillBinary() {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: trill)
+            p.arguments = ["send", "--source", "pounce.update", "--kind", "note",
+                           "--symbol", "arrow.down.circle",
+                           "--title", title, "--body", kind.bannerHint]
+            p.standardOutput = FileHandle.nullDevice
+            p.standardError = FileHandle.nullDevice
+            // Exit 0 means the daemon accepted it. Anything else — 2 for "no
+            // daemon", or trill not running at all — falls through to Apple's,
+            // because a missed update notice is the one outcome this check has
+            // no other way to recover from.
+            if (try? p.run()) != nil {
+                p.waitUntilExit()
+                if p.terminationStatus == 0 { return }
+            }
+        }
+        // The version is regex-vetted above and the hint is a compile-time
+        // constant, so the interpolation is safe.
         let script = "display notification \"\(kind.bannerHint)\" " +
-                     "with title \"Pounce \(version) is out\""
+                     "with title \"\(title)\""
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         p.arguments = ["-e", script]
         try? p.run()
+    }
+
+    /// Trill.app, wherever it was installed, or nil. `$TRILL_APP` first so a
+    /// branch build can be pointed at; then the two places every install source
+    /// puts a bundle. Deliberately not `trill` on PATH: no install source
+    /// reliably provides one, and the daemon's PATH would not see it if it did.
+    private static func trillBinary() -> String? {
+        var roots: [String] = []
+        if let override = ProcessInfo.processInfo.environment["TRILL_APP"], !override.isEmpty {
+            roots.append(override)
+        }
+        roots.append(NSHomeDirectory() + "/Applications/Trill.app")
+        roots.append("/Applications/Trill.app")
+        for root in roots {
+            let binary = root + "/Contents/MacOS/Trill"
+            if FileManager.default.isExecutableFile(atPath: binary) { return binary }
+        }
+        return nil
     }
 }

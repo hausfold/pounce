@@ -27,7 +27,27 @@ export PATH; unset _d
 REPO="hausfold/pounce"
 AGENT_LABEL="com.hausfold.pounce.daemon"
 
-notify() { osascript -e "display notification \"$1\" with title \"Update Pounce\""; }
+# Draws through trill when this Mac has it, macOS's own banner when it doesn't.
+# The bundle is resolved at call time rather than through a `trill` on PATH,
+# because pounce installs standalone and cannot assume either. `--source` is
+# what `~/.config/trill/rules.json` matches on, so this one command can be
+# routed or silenced without silencing pounce. See AGENTS.md § Notifications.
+notify() {
+    local _bin
+    for _bin in "${TRILL_APP:-}/Contents/MacOS/Trill" \
+                "$HOME/Applications/Trill.app/Contents/MacOS/Trill" \
+                "/Applications/Trill.app/Contents/MacOS/Trill"; do
+        [ -x "$_bin" ] || continue
+        "$_bin" send --source pounce.update --title "Update Pounce" --body "$1" \
+            >/dev/null 2>&1 && return 0
+        break
+    done
+    # `argv`, not interpolation: a body carrying a double quote used to end the
+    # AppleScript string early, which is why callers here stripped them.
+    osascript -e 'on run argv
+          display notification (item 1 of argv) with title (item 2 of argv)
+        end run' -- "$1" "Update Pounce" >/dev/null 2>&1
+}
 
 # Resolve the latest release tag from the /releases/latest redirect — no JSON,
 # no API quota, nothing to parse but a URL (jq and python3 aren't guaranteed on
