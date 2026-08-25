@@ -303,6 +303,15 @@ func runItemSettingsTests() -> Int {
     check(handBuilt.matches(ItemContext(workspace: nil, bundleId: "com.mitchellh.ghostty")),
           "a bundle id that skipped parse still matches case-insensitively")
 
+    // The Settings window is addressed by the same grammar everything else is:
+    // one string is the palette row's command target, the hotkey target and the
+    // `pounce run` argument (see SettingsWindow.swift).
+    check(ItemTarget.parse("mode:settings") != nil, "mode:settings is a real target")
+    check(ItemTarget.problem(with: "mode:settings") == nil,
+          "…and passes the shape check `pounce run` exits non-zero on")
+    check(ItemTarget.problem(with: "mode:preferences")?.contains("mode:settings") == true,
+          "a near-miss names the real modes, settings included")
+
     if failures == 0 { print("ok — all ItemSettings tests passed") }
     return failures
 }

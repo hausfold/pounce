@@ -110,9 +110,17 @@ class PounceWindow: NSWindow {
     // dispatch the missing menu would do: map the chord to its editing selector
     // and send it to the first responder (to: nil walks the responder chain, so
     // the field editor picks it up).
+    //
+    // It also swallows ⌘Q, which is the opposite job. Pounce grew a main menu
+    // the day it grew a Settings window (SettingsWindow.swift) and a main menu
+    // brings a Quit item with it — right from a settings window, wrong from a
+    // panel that lives for one keystroke, where ⌘Q has always done nothing and a
+    // fumbled ⌘Space must not take the daemon down. Refused here rather than
+    // omitted from the menu, so the menu stays the one macOS expects.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let command: NSEvent.ModifierFlags = .command
+        if mods == command, event.charactersIgnoringModifiers == "q" { return true }
         if mods == command || mods == [command, .shift] {
             let selector: Selector?
             switch event.charactersIgnoringModifiers {

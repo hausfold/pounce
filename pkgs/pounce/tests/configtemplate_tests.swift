@@ -27,19 +27,24 @@ func runConfigTemplateTests() -> Int {
     }
 
     let fixture: [ConfigSection] = [
-        ConfigSection(name: nil, doc: "Top level.", fields: [
-            ConfigField(name: "windowMode", doc: "How tightly it reads: \"default\", or \"compact\".", json: "\"default\""),
-            ConfigField(name: "scale", doc: "Multiplies every size.", json: "1"),
-            ConfigField(name: "theme", doc: "Unset follows macOS light and dark.", json: "null"),
+        ConfigSection(name: nil, pane: "appearance", doc: "Top level.", fields: [
+            ConfigField(name: "windowMode", doc: "How tightly it reads: \"default\", or \"compact\".", json: "\"default\"",
+                        control: .choice([.init("default", "Default"), .init("compact", "Compact")])),
+            ConfigField(name: "scale", doc: "Multiplies every size.", json: "1",
+                        control: .slider(0.8...2.0, step: 0.05)),
+            ConfigField(name: "theme", doc: "Unset follows macOS light and dark.", json: "null",
+                        control: .text(nullable: true)),
         ]),
-        ConfigSection(name: "clipboard", doc: "Clipboard history.", fields: [
-            ConfigField(name: "enabled", doc: "Record copies at all.", json: "true"),
-            ConfigField(name: "maxEntries", doc: "How many to remember.", json: "200"),
+        ConfigSection(name: "clipboard", pane: "clipboard", doc: "Clipboard history.", fields: [
+            ConfigField(name: "enabled", doc: "Record copies at all.", json: "true", control: .toggle),
+            ConfigField(name: "maxEntries", doc: "How many to remember.", json: "200",
+                        control: .number(1...5000)),
             ConfigField(name: "blacklistBundleIds",
                         doc: "A long list, so it renders across lines.",
-                        json: "[\n  \"a\",\n  \"b\",\n  \"c\",\n  \"d\"\n]"),
+                        json: "[\n  \"a\",\n  \"b\",\n  \"c\",\n  \"d\"\n]",
+                        control: .list()),
         ]),
-        ConfigSection(name: "items", doc: "Per-item overrides.", raw: """
+        ConfigSection(name: "items", pane: "keys", doc: "Per-item overrides.", raw: """
         // "cmd:emoji": {
         //   "alias": "emo",
         // },
@@ -122,6 +127,51 @@ func runConfigTemplateTests() -> Int {
     check(ConfigTemplate.wrap("", width: 40) == [""], "empty prose renders one empty line, not none")
     check(ConfigTemplate.wrap("supercalifragilistic", width: 5) == ["supercalifragilistic"],
           "a word longer than the width is emitted whole rather than dropped")
+
+    // MARK: the Settings window's half of the description
+
+    // A key is its own label — the words in the window and the words in the
+    // file have to be the same words.
+    func label(_ key: String) -> String {
+        ConfigField(name: key, doc: "", json: "null", control: .toggle).label
+    }
+    check(label("maxEntries") == "Max entries", "camelCase becomes a sentence")
+    check(label("theme") == "Theme", "a one-word key is just capitalised")
+    check(label("subItemMinQuery") == "Sub item min query", "several humps still read as one phrase")
+    check(label("blacklistBundleIds") == "Blacklist bundle IDs", "the one acronym is spelled as one")
+    check(label("fnKey") == "Fn key", "a two-letter first word survives")
+
+    // A control that can't read its own setting's type is the mistake worth
+    // catching: it would draw a working-looking switch that changes nothing.
+    check(ConfigControl.toggle.accepts("true"), "a switch reads a bool")
+    check(!ConfigControl.toggle.accepts("200"), "a switch does NOT read a number")
+    check(ConfigControl.number(1...10).accepts("200"), "a stepper reads a number")
+    check(!ConfigControl.number(1...10).accepts("true"), "a stepper does not read a bool")
+    check(ConfigControl.slider(0.8...2.0, step: 0.05).accepts("1"), "a slider reads an int as a double")
+    check(ConfigControl.decimal(0...10, step: 1).accepts("2.5"), "a decimal field reads a double")
+    check(ConfigControl.text(nullable: true).accepts("null"),
+          "an unset-able string reads null — that IS its third state")
+    check(!ConfigControl.text().accepts("null"),
+          "a string that can't be unset does not read null")
+    check(ConfigControl.text().accepts("\"nebelung\""), "a string field reads a string")
+    let modes = ConfigControl.choice([.init("tap", "Event tap"), .init("remap", "HID remap")])
+    check(modes.accepts("\"remap\""), "a picker reads one of its own cases")
+    check(!modes.accepts("\"nonsense\""), "a picker refuses a value it doesn't offer")
+    check(ConfigControl.modifiers.accepts("[\"cmd\"]"), "the modifier chips read a string array")
+    check(!ConfigControl.modifiers.accepts("\"cmd\""), "…and not a bare string")
+    check(ConfigControl.fileOnly("").accepts("[]"), "a file-only setting reads any array")
+    check(!ConfigControl.list().accepts("[{}]"),
+          "a list of strings refuses a list of objects — that's the file-only case")
+
+    // Reading a literal back, the inverse of ConfigSpec.json.
+    check(ConfigValue.string("\"gruvbox\"") == "gruvbox", "a string literal unwraps")
+    check(ConfigValue.string("null") == nil, "null is not a string")
+    check(ConfigValue.string("200") == nil, "a number is not a string")
+    check(ConfigValue.strings("[\n  \"a\",\n  \"b\"\n]") == ["a", "b"],
+          "a pretty-printed array reads back in order")
+    check(ConfigValue.strings("true").isEmpty, "a non-array reads as no entries, not a crash")
+    check(ConfigValue.count("[1, 2, 3]") == 3, "an array literal is counted")
+    check(ConfigValue.count("null") == 0, "nothing counts as none")
 
     if failures == 0 { print("ok — all config-template tests passed") }
     return failures

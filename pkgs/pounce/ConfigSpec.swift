@@ -1,6 +1,13 @@
-// The settings table `pounce config init` writes out: one entry per key
-// `Settings.load()` reads, with the prose a user needs and the default it
-// actually has.
+// The settings table pounce is configured FROM: one entry per key
+// `Settings.load()` reads, with the prose a user needs, the default it actually
+// has, and the control the Settings window draws for it.
+//
+// It feeds two surfaces from the one table. `pounce config init` renders it as
+// an annotated config.json (ConfigTemplate.swift), and the Settings window
+// (SettingsView.swift) renders it as panes of cards — same prose, same
+// defaults, same order. That is the point of it being a table and not two
+// hand-written UIs: a setting cannot be documented in the file and missing from
+// the window, or the other way round.
 //
 // THE DEFAULTS ARE NOT WRITTEN DOWN HERE. Each entry reads its value off a live
 // `Settings()` — `json(s.clipboard.maxEntries)`, not `json(200)` — so the
@@ -10,17 +17,26 @@
 //
 // What DOES have to be kept in step by hand is coverage: a setting added to
 // `Settings` and to `load()` but not added here is simply absent from the
-// generated file. It still works; it's just undiscoverable, which is the exact
-// problem this feature exists to fix. When you add a setting, add it here — the
-// section order below mirrors `Settings.load()` on purpose so the two read as
-// one list.
+// generated file AND from the Settings window. It still works; it's just
+// undiscoverable, which is the exact problem this feature exists to fix. When
+// you add a setting, add it here — the section order below mirrors
+// `Settings.load()` on purpose so the two read as one list.
+//
+// The entry itself can't be half-finished, though: `control:` on a field and
+// `pane:` on a section have no default value, so a new setting that hasn't been
+// given a widget and a home in the sidebar does not compile. That is deliberate
+// — the alternative is a fourth list to keep in step by eye, and the third one
+// (this file) is already the one that gets forgotten.
 //
 // The prose is the USER-FACING half. The comments on the structs in Config.swift
 // are the maintainer-facing half — why the default is what it is, what breaks if
 // you change it. Neither should try to be the other.
 //
 // Rendering, wrapping and the JSON-with-comments shape live in
-// ConfigTemplate.swift, which is Foundation-only so it can be tested.
+// ConfigTemplate.swift, which is Foundation-only so it can be tested — as does
+// `ConfigControl`, the description of a widget that the SwiftUI in
+// SettingsControls.swift honours. Writing one value back into the file without
+// disturbing the rest of it is ConfigWriter.swift.
 
 import Foundation
 
@@ -57,176 +73,214 @@ enum ConfigSpec {
         [
             ConfigSection(
                 name: nil,
+                pane: "appearance",
                 doc: "The palette itself — its proportions, its size, and its colours.",
                 fields: [
                     ConfigField(
                         name: "windowMode",
                         doc: "How tightly the launcher reads: \"default\", or \"compact\" for a narrower window with shorter rows. Independent of \"scale\" below — a compact palette can still be drawn large.",
-                        json: json(s.windowMode.rawValue)),
+                        json: json(s.windowMode.rawValue),
+                        control: .choice([.init("default", "Default"), .init("compact", "Compact")]), symbol: "macwindow"),
                     ConfigField(
                         name: "scale",
                         doc: "Multiplies every size in the UI — text, rows, icons, and the emoji / clipboard / screenshot panels behind the palette. 1.0 is the tuned look; 0.8 to 2.0 is the range, and anything outside it is clamped rather than rejected.",
-                        json: json(s.scale)),
+                        json: json(s.scale),
+                        control: .slider(0.8...2.0, step: 0.05), symbol: "textformat.size"),
                     ConfigField(
                         name: "theme",
                         doc: "Colour palette: a built-in name, or a ~/.config/pounce/themes/<name>.json. Unset (null) means the nebelung / nebelung-latte pair, so pounce follows macOS light and dark by itself. Setting this PINS one palette for both appearances.",
-                        json: json(s.theme as Any)),
+                        json: json(s.theme as Any),
+                        control: .text(placeholder: "follows macOS", nullable: true), symbol: "paintpalette"),
                     ConfigField(
                         name: "themeLight",
                         doc: "The palette to use when macOS is in Light appearance, overriding \"theme\". Set this alongside \"theme\" to get a following pair again: \"theme\": \"gruvbox-dark\" + \"themeLight\": \"gruvbox\".",
-                        json: json(s.themeLight as Any)),
+                        json: json(s.themeLight as Any),
+                        control: .text(placeholder: "follows \"theme\"", nullable: true), symbol: "sun.max"),
                     ConfigField(
                         name: "themeDark",
                         doc: "The palette to use when macOS is in Dark appearance, overriding \"theme\".",
-                        json: json(s.themeDark as Any)),
+                        json: json(s.themeDark as Any),
+                        control: .text(placeholder: "follows \"theme\"", nullable: true), symbol: "moon"),
                 ]),
 
             ConfigSection(
                 name: "clipboard",
+                pane: "clipboard",
                 doc: "Clipboard history — the ⌘⇧V panel.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "Record copies at all. Off means the clipboard panel stays empty and nothing is written to disk.",
-                        json: json(s.clipboard.enabled)),
+                        json: json(s.clipboard.enabled),
+                        control: .toggle, symbol: "doc.on.clipboard"),
                     ConfigField(
                         name: "maxEntries",
                         doc: "How many copies to remember. The oldest fall off the end.",
-                        json: json(s.clipboard.maxEntries)),
+                        json: json(s.clipboard.maxEntries),
+                        control: .number(1...5000, unit: "copies"), symbol: "number"),
                     ConfigField(
                         name: "blacklistBundleIds",
                         doc: "Copies made while one of these apps is frontmost are never recorded. Belt and braces on top of the concealed-type filter that already drops password-manager copies.",
-                        json: json(s.clipboard.blacklistBundleIds)),
+                        json: json(s.clipboard.blacklistBundleIds),
+                        control: .list(placeholder: "com.apple.Passwords"), symbol: "hand.raised"),
                     ConfigField(
                         name: "autoPaste",
                         doc: "Paste a chosen entry straight into the app you came from (a synthesized ⌘V) instead of only setting the clipboard. Needs the daemon's Accessibility grant; without it, pounce falls back to clipboard-only rather than failing. Off by default so a fresh install never quietly needs a permission.",
-                        json: json(s.clipboard.autoPaste)),
+                        json: json(s.clipboard.autoPaste),
+                        control: .toggle, symbol: "arrow.down.doc"),
                 ]),
 
             ConfigSection(
                 name: "quickAnswers",
+                pane: "launcher",
                 doc: "The inline answer engines — maths, unit and time conversion, currency.",
                 fields: [
                     ConfigField(
                         name: "currency",
                         doc: "Convert currencies, which needs daily reference rates over the network — pounce's only outbound call. Set false (with \"updates\".\"check\" too) for a fully offline pounce. The other engines are pure arithmetic and are always on.",
-                        json: json(s.quickAnswers.currency)),
+                        json: json(s.quickAnswers.currency),
+                        control: .toggle, symbol: "dollarsign.circle"),
                 ]),
 
             ConfigSection(
                 name: "updates",
+                pane: "general",
                 doc: "The daily release check.",
                 fields: [
                     ConfigField(
                         name: "check",
                         doc: "Look once a day for a newer pounce and nudge — a palette row and one notification. It never installs anything. Already off by itself on Nix-managed installs, whose updates ride the flake.",
-                        json: json(s.updates.check)),
+                        json: json(s.updates.check),
+                        control: .toggle, symbol: "arrow.triangle.2.circlepath"),
                 ]),
 
             ConfigSection(
                 name: "fileSearch",
+                pane: "launcher",
                 doc: "Find Files — the local Spotlight-index search.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "Offer file search at all. Read-only and local (the Spotlight index, no network), so it's on by default.",
-                        json: json(s.fileSearch.enabled)),
+                        json: json(s.fileSearch.enabled),
+                        control: .toggle, symbol: "doc.text.magnifyingglass"),
                     ConfigField(
                         name: "homeOnly",
                         doc: "Search only your home directory. False searches everything indexed on the machine.",
-                        json: json(s.fileSearch.homeOnly)),
+                        json: json(s.fileSearch.homeOnly),
+                        control: .toggle, symbol: "house"),
                     ConfigField(
                         name: "maxResults",
                         doc: "How many hits the list shows.",
-                        json: json(s.fileSearch.maxResults)),
+                        json: json(s.fileSearch.maxResults),
+                        control: .number(1...500, unit: "hits"), symbol: "list.number"),
                 ]),
 
             ConfigSection(
                 name: "shortcuts",
+                pane: "launcher",
                 doc: "Your Shortcuts library, as ordinary launcher rows.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "List the shortcuts from Shortcuts.app alongside apps and commands; ⏎ runs one. This is also how you reach an app's Shortcuts/Spotlight action from pounce — wrap it in a one-action shortcut and it shows up here, since macOS gives no way to fire another app's App Intent directly. Shortcuts start ranked below everything at an empty query and climb by use.",
-                        json: json(s.shortcuts.enabled)),
+                        json: json(s.shortcuts.enabled),
+                        control: .toggle, symbol: "wand.and.rays"),
                 ]),
 
             ConfigSection(
                 name: "systemSettings",
+                pane: "launcher",
                 doc: "System Settings, opened by the setting rather than the pane.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "List every System Settings pane as a launcher row, plus the individual settings inside them; ⏎ opens the pane already scrolled to the one you picked. The titles and their synonyms are read from the panes' own search index, so \"full disk access\", \"device management\" and \"night shift\" find the right screen even when that isn't what the row is called. Panes start ranked below everything at an empty query and climb by use.",
-                        json: json(s.systemSettings.enabled)),
+                        json: json(s.systemSettings.enabled),
+                        control: .toggle, symbol: "gearshape"),
                     ConfigField(
                         name: "subItemMinQuery",
                         doc: "How many characters you have to type before the settings INSIDE a pane join the results. Panes themselves are always searchable; this only holds back the ~700 individual settings, so short queries stay about your apps. 0 shows everything from the first keystroke.",
-                        json: json(s.systemSettings.subItemMinQuery)),
+                        json: json(s.systemSettings.subItemMinQuery),
+                        control: .number(0...10, unit: "characters"), symbol: "textformat.abc"),
                     ConfigField(
                         name: "maxPerPane",
                         doc: "How many settings a single pane may contribute to one result list. Accessibility alone ships 342 of them, which would otherwise be the entire answer to a short query. The ones kept are that pane's best matches. 0 means no cap.",
-                        json: json(s.systemSettings.maxPerPane == Int.max ? 0 : s.systemSettings.maxPerPane)),
+                        json: json(s.systemSettings.maxPerPane == Int.max ? 0 : s.systemSettings.maxPerPane),
+                        control: .number(0...100, unit: "per pane"), symbol: "square.stack"),
                 ]),
 
             ConfigSection(
                 name: "apps",
+                pane: "launcher",
                 doc: "The app launcher's opinions about which apps matter.",
                 fields: [
                     ConfigField(
                         name: "demoteBundleIds",
                         doc: "Apps that sink below everything else on an empty query and have to climb back by actual use. Defaults to Apple utilities nobody launches on purpose — the fix for Feedback Assistant squatting the top slot. Set [] to disable, or list your own; unknown ids are harmless.",
-                        json: json(s.appLauncher.demoteBundleIds)),
+                        json: json(s.appLauncher.demoteBundleIds),
+                        control: .list(placeholder: "com.apple.FeedbackAssistant"), symbol: "arrow.down.to.line"),
                     ConfigField(
                         name: "hideBundleIds",
                         doc: "Apps dropped from the launcher entirely, on top of the built-in filter that already hides background agents and droplet bridges.",
-                        json: json(s.appLauncher.hideBundleIds)),
+                        json: json(s.appLauncher.hideBundleIds),
+                        control: .list(placeholder: "com.example.app"), symbol: "eye.slash"),
                 ]),
 
             ConfigSection(
                 name: "hotkey",
+                pane: "keys",
                 doc: "The global key that summons the palette. Read ONCE when the daemon starts — changing it needs a daemon restart, unlike everything above.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "Let pounce bind the key itself. False leaves it to an external binder (skhd, AeroSpace, a launch agent spawning pounce-palette).",
-                        json: json(s.hotkey.enabled)),
+                        json: json(s.hotkey.enabled),
+                        control: .toggle, symbol: "power"),
                     ConfigField(
                         name: "key",
                         doc: "A named key: \"space\", \"return\", \"tab\", \"escape\", a letter, a digit, or \"f13\"-\"f20\" (the F-keys no laptop has, where a hardware macro key or a HID remap lands).",
-                        json: json(s.hotkey.key)),
+                        json: json(s.hotkey.key),
+                        control: .key, symbol: "keyboard"),
                     ConfigField(
                         name: "modifiers",
                         doc: "Any of \"cmd\", \"shift\", \"opt\", \"ctrl\".",
-                        json: json(s.hotkey.modifiers)),
+                        json: json(s.hotkey.modifiers),
+                        control: .modifiers, symbol: "command"),
                 ]),
 
             ConfigSection(
                 name: "windows",
+                pane: "windows",
                 doc: "The most-recently-used window switcher: hold the modifiers, tap the key to walk windows, release to land. Off by default — taking over ⌘Tab is a bold move, and the event tap needs the Accessibility grant. Read once at daemon start, like \"hotkey\".",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "Turn the switcher on.",
-                        json: json(s.windows.enabled)),
+                        json: json(s.windows.enabled),
+                        control: .toggle, symbol: "macwindow.on.rectangle"),
                     ConfigField(
                         name: "key",
                         doc: "The key you tap to advance.",
-                        json: json(s.windows.key)),
+                        json: json(s.windows.key),
+                        control: .key, symbol: "keyboard"),
                     ConfigField(
                         name: "modifiers",
                         doc: "The modifiers you hold. Releasing them lands on the highlighted window.",
-                        json: json(s.windows.modifiers)),
+                        json: json(s.windows.modifiers),
+                        control: .modifiers, symbol: "command"),
                 ]),
 
             ConfigSection(
                 name: "appHotkeys",
+                pane: "keys",
                 doc: "Chords consumed ONLY while a named app is frontmost, passed through untouched everywhere else — what a plain global hotkey can't do (it swallows the chord machine-wide or not at all). Each scope is {\"bundleId\": …, \"keys\": [{\"key\": …, \"modifiers\": […], \"target\": \"cmd:…\"}]}; targets use the same grammar as \"items\" keys. Needs the Accessibility grant, and is read once at daemon start.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "Turn scoped chords on.",
-                        json: json(s.appHotkeys.enabled)),
+                        json: json(s.appHotkeys.enabled),
+                        control: .toggle, symbol: "app.badge"),
                     ConfigField(
                         name: "scopes",
                         doc: "The apps and their chords. Empty means nothing is consumed anywhere.",
@@ -235,47 +289,57 @@ enum ConfigSpec {
                              "keys": scope.keys.map {
                                  ["key": $0.key, "modifiers": $0.modifiers, "target": $0.target]
                              }] as [String: Any]
-                        })),
+                        }),
+                        control: .fileOnly("{\"bundleId\": \"com.mitchellh.ghostty\", \"keys\": [{\"key\": \"t\", \"modifiers\": [\"opt\"], \"target\": \"cmd:lane-here\"}]}"), symbol: "list.bullet.rectangle"),
                 ]),
 
             ConfigSection(
                 name: "pages",
+                pane: "windows",
                 doc: "A most-recently-used walk over the AeroSpace workspaces named \"prefix\" or \"prefix/…\": hold the modifiers, tap the key to step through the non-empty ones newest-first (add shift to walk backwards), release to land there. A panel lists the pages with the windows on each, so you pick a page by what is on it; escape abandons the walk and nothing is focused until you land. Recency comes from \"mruFile\", a newest-first list your window manager's workspace-change hook maintains; pounce only reads it. Needs the Accessibility grant, and is read once at daemon start.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "Turn the page walk on.",
-                        json: json(s.pages.enabled)),
+                        json: json(s.pages.enabled),
+                        control: .toggle, symbol: "square.grid.2x2"),
                     ConfigField(
                         name: "key",
                         doc: "The key you tap to advance.",
-                        json: json(s.pages.key)),
+                        json: json(s.pages.key),
+                        control: .key, symbol: "keyboard"),
                     ConfigField(
                         name: "modifiers",
                         doc: "The modifiers you hold. Releasing them lands on the page the walk stands on.",
-                        json: json(s.pages.modifiers)),
+                        json: json(s.pages.modifiers),
+                        control: .modifiers, symbol: "command"),
                     ConfigField(
                         name: "prefix",
                         doc: "Only workspaces named exactly this, or this + \"/…\", are walked.",
-                        json: json(s.pages.prefix)),
+                        json: json(s.pages.prefix),
+                        control: .text(placeholder: "T"), symbol: "textformat"),
                     ConfigField(
                         name: "bundleId",
                         doc: "Scope the chord to one app, like an appHotkeys scope — over any other app it passes through untouched (a browser keeps its ⌃⇥ tabs). null means the chord is consumed everywhere.",
-                        json: json(s.pages.bundleId as Any)),
+                        json: json(s.pages.bundleId as Any),
+                        control: .text(placeholder: "every app", nullable: true), symbol: "app.dashed"),
                     ConfigField(
                         name: "mruFile",
                         doc: "Path to the newest-first workspace list your WM hook writes; \"~\" is expanded. null means no recency — the walk still works, ordered by name.",
-                        json: json(s.pages.mruFile as Any)),
+                        json: json(s.pages.mruFile as Any),
+                        control: .text(placeholder: "no recency", nullable: true), symbol: "clock.arrow.circlepath"),
                 ]),
 
             ConfigSection(
                 name: "mouseChords",
+                pane: "windows",
                 doc: "A modifier plus a click, acting on the window UNDER THE POINTER — what a window-manager keybind can't do, since a keybind can only reach the window you are already in. Each chord is {\"button\": \"left\"|\"right\", \"modifiers\": […], \"action\": \"fullscreen\"}. Every chord must carry a modifier (a bare one would swallow every click on the machine), and the click is consumed over every app, so pick a chord nothing else claims — ⌥ + right-click is the quietest (it costs only macOS's ⌥ variant of a context menu); ctrl + click is macOS's own secondary-click and would cost you context menus everywhere. Needs AeroSpace and the Accessibility grant, and is read once at daemon start.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "Turn mouse chords on.",
-                        json: json(s.mouseChords.enabled)),
+                        json: json(s.mouseChords.enabled),
+                        control: .toggle, symbol: "cursorarrow.click"),
                     ConfigField(
                         name: "chords",
                         doc: "The chords. Empty means no click is consumed anywhere.",
@@ -283,35 +347,42 @@ enum ConfigSpec {
                             ["button": chord.button.rawValue,
                              "modifiers": chord.modifiers,
                              "action": chord.action.rawValue] as [String: Any]
-                        })),
+                        }),
+                        control: .fileOnly("{\"button\": \"right\", \"modifiers\": [\"opt\"], \"action\": \"fullscreen\"}"), symbol: "cursorarrow.rays"),
                 ]),
 
             ConfigSection(
                 name: "autoQuit",
+                pane: "windows",
                 doc: "Quit an app when you close its last window — what Windows does and macOS doesn't. Off by default. Reads the same window snapshot as \"windows\", so it wants the same Accessibility grant, and is read once at daemon start. The quit is the polite one ⌘Q sends: an app with unsaved work puts its sheet up and stays.",
                 fields: [
                     ConfigField(
                         name: "enabled",
                         doc: "Turn auto-quit on.",
-                        json: json(s.autoQuit.enabled)),
+                        json: json(s.autoQuit.enabled),
+                        control: .toggle, symbol: "xmark.circle"),
                     ConfigField(
                         name: "delay",
                         doc: "Seconds to wait, then look again before quitting. This is what lets an app close one window and open another — a browser replacing its last window, an editor switching projects — without being quit out from under you.",
-                        json: json(s.autoQuit.delay)),
+                        json: json(s.autoQuit.delay),
+                        control: .decimal(0.25...3600, step: 0.25, unit: "seconds"), symbol: "timer"),
                     ConfigField(
                         name: "exclude",
                         doc: "Bundle ids that are never auto-quit. Setting this REPLACES the default rather than adding to it — keep Finder in your list unless you want the desktop to blink out and relaunch.",
-                        json: json(s.autoQuit.exclude)),
+                        json: json(s.autoQuit.exclude),
+                        control: .list(placeholder: "com.apple.finder"), symbol: "hand.raised"),
                 ]),
 
             ConfigSection(
                 name: nil,
+                pane: "keys",
                 doc: "How a \"hotkey\": \"fn\" item binding (below) gets the Fn/Globe key.",
                 fields: [
                     ConfigField(
                         name: "fnKey",
                         doc: "\"tap\" reads Fn with an event tap: it needs Accessibility, and it SHARES the key with macOS — HIToolbox carries its own Globe handler inside every process, below the event stream, so macOS's Emoji & Symbols picker can still open alongside pounce's (turning off System Settings > Keyboard > \"Press 🌐 key to\" helps, but that value is read from login-session state, so it wants a logout). \"remap\" instead takes Fn away at the HID layer — it becomes F19, which pounce binds like any ordinary key: no Accessibility, and nothing left for macOS to race. The cost is that Fn stops being Fn everywhere: no Fn+arrows, Fn+Delete, or Fn+F1-F12. Applied while the daemon runs, removed when it exits, and never persistent — a reboot clears it.",
-                        json: json(s.fnKey.rawValue)),
+                        json: json(s.fnKey.rawValue),
+                        control: .choice([.init("tap", "Event tap"), .init("remap", "HID remap")]), symbol: "globe"),
                 ]),
 
             // `items` is the one setting with no fixed key list — it's keyed by
@@ -321,6 +392,7 @@ enum ConfigSpec {
             // per-item fields is the honest documentation.
             ConfigSection(
                 name: "items",
+                pane: "keys",
                 doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\", \"shortcut:<uuid>\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too — see \"fnKey\" above for the two ways it can be carried. \"workspaces\"/\"bundleIds\" scope the ROW to where you summoned the palette from — never the item's hotkey, which stays global. \"workspaces\" reads the same \"pages\".mruFile the ⌃⇥ page walk does, and filters nothing when that file is unset or missing.",
                 // Five fields, and only five — see ItemSettings.parse.
                 raw: """

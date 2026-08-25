@@ -19,7 +19,8 @@ authoritative flag list; this is the prose version.
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
 | `--transform '<filter>'` | act on the current selection: copy it (⌘C), pipe the text through the shell `<filter>`, paste back (⌘V) — e.g. `--transform 'tr "[:lower:]" "[:upper:]"'`. Forwarded to the daemon, which holds the grant. |
 | `focus <op>` | Focus/DND (haus's Focus room): `focus status\|toggle\|on\|off`, forwarded to the daemon |
-| `run <item-key>` | run one item by the key `items` uses — `cmd:emoji`, `mode:clipboard`, `app:/Applications/Foo.app`. **Also how the built-in windows are opened**: `mode:clipboard` / `mode:emoji` / `mode:screenshots` / `mode:camera` / `mode:filesearch` / `mode:launcher` (they had a flag each until 2026-07-30). For binders that already own the keystroke; see [Driving pounce from another binder](#driving-pounce-from-another-binder) |
+| `run <item-key>` | run one item by the key `items` uses — `cmd:emoji`, `mode:clipboard`, `app:/Applications/Foo.app`. **Also how the built-in windows are opened**: `mode:clipboard` / `mode:emoji` / `mode:screenshots` / `mode:camera` / `mode:filesearch` / `mode:launcher` (they had a flag each until 2026-07-30) — plus `mode:settings`, which opens the Settings **window** rather than swapping the palette's contents. For binders that already own the keystroke; see [Driving pounce from another binder](#driving-pounce-from-another-binder) |
+| `settings` | open the Settings window — every setting in config.json, drawn from the same table `config print` writes. Handed to the daemon when one is running, so a second invocation raises the window you already have; runs in-process when it isn't. See [The Settings window](#the-settings-window) |
 | `--copy-file <path>` | copy a file (contents) to the clipboard |
 | `--daemon` | run the resident daemon (what `launchd` starts; also hosts the ⌘Tab window switcher) |
 | `--request-accessibility` / `--check-accessibility` | manage the Accessibility (TCC) grant |
@@ -426,6 +427,44 @@ config you already have (it writes `config.json.new` beside it instead; `--force
 replaces). On a machine managed by the haus desktop it refuses outright: that
 config.json is generated from `haus.launcher.*`, and the next rebuild would
 put the generated one straight back.
+
+### The Settings window
+
+```sh
+pounce settings         # or the "Pounce Settings" row in the palette
+```
+
+A sidebar of panes, each a scrolling column of cards — the same shape perch and
+trill use. **It is not a second place your settings live**: every control reads
+its value out of config.json and every click rewrites exactly one line of it,
+leaving your comments, your ordering and any key pounce has never heard of
+untouched. Edit the file in your editor with the window open and it catches up
+the next time it comes forward.
+
+Both surfaces are generated from one table (`ConfigSpec`), so the sentence under
+a switch is the sentence above that key in the file, and a setting cannot exist
+in one and be missing from the other.
+
+Three things worth knowing:
+
+- **Setting something back to its default comments its line out again.** That is
+  this file's grammar for "unset", so the config only ever accumulates the
+  decisions you actually made, and switching a thing on and off leaves the file
+  byte-for-byte where it started. A row that is *not* at its default grows a ↺
+  button — the only marker of what you have changed.
+- **A config that doesn't exist yet is created annotated**, exactly as `config
+  init` would, by the first switch you flip.
+- **It refuses rather than guesses.** On a haus-managed Mac (config.json is a
+  symlink into the Nix store) every control is read-only and says why. And
+  because it is a line editor, a section you folded onto one line — `"clipboard":
+  { "maxEntries": 50 }` — is refused with a note rather than rewritten; put each
+  key on its own line, or change that one in the file.
+
+A few settings are structured past what a row can honestly draw
+(`appHotkeys.scopes`, `mouseChords.chords`, the whole `items` map). Those show
+what one entry looks like and open the file.
+
+Bind it like anything else: `"items": { "mode:settings": { "hotkey": "cmd+," } }`.
 
 **Comments and trailing commas are fine** — pounce parses config.json as JSON5,
 which is what lets you uncomment any subset of lines without fixing up commas by

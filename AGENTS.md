@@ -83,6 +83,8 @@ update haus` in the consumer — whatever that flake names the input).
 
 ```
 pkgs/pounce/            Swift sources (daemon/UI, one file per concern), Info.plist, emoji.json, ports
+                        Config*.swift = the settings table + its two renderers;
+                        Settings*.swift = the Settings window over them
 pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh (official plugins)
 pkgs/pounce-skill/      the agent skill as a derivation — see below
 ai/SKILL.md             its source
@@ -172,16 +174,34 @@ changes `ai/SKILL.md` in the same PR.
   (`ItemSettings.modes`) — renaming it would break users' `mode:emoji` hotkeys.
 - **Adding a setting**: three places, and the third is the one that gets forgotten.
   The field + default on the struct in `Config.swift`, the `if let` that reads it in
-  `Settings.load()`, and an entry in **`ConfigSpec.sections`** — the table
-  `pounce config init` writes out. A setting missing from the spec still works; it's
-  just absent from the annotated config, i.e. undiscoverable, which is the problem
-  that command exists to fix. Never write the default *value* into the spec: entries
-  read it off a live `Settings()` (`json(s.clipboard.maxEntries)`), so a documented
-  default can't drift from the real one. Prose in the spec is user-facing; the
-  comments on the structs are maintainer-facing — neither should try to be the
-  other. `config.json` is parsed with `.json5Allowed` (comments + trailing commas —
-  Foundation's own flag, not a hand-rolled stripper), which is what lets the file
-  people READ be the file pounce reads.
+  `Settings.load()`, and an entry in **`ConfigSpec.sections`** — the table that feeds
+  BOTH `pounce config init` and the Settings window. A setting missing from the spec
+  still works; it's just absent from the annotated config and from the window, i.e.
+  undiscoverable, which is the problem both exist to fix. The spec entry can't be
+  half-written: `control:` on the field and `pane:` on the section have no defaults,
+  so a new setting with no widget and no home in the sidebar doesn't compile. Never
+  write the default *value* into the spec: entries read it off a live `Settings()`
+  (`json(s.clipboard.maxEntries)`), so a documented default can't drift from the real
+  one. Prose in the spec is user-facing; the comments on the structs are
+  maintainer-facing — neither should try to be the other. `config.json` is parsed with
+  `.json5Allowed` (comments + trailing commas — Foundation's own flag, not a
+  hand-rolled stripper), which is what lets the file people READ be the file pounce
+  reads.
+- **The Settings window** (`pounce settings` / `mode:settings` / the palette row):
+  panes of cards over that same spec — `SettingsView.swift` arranges,
+  `SettingsControls.swift` draws a `ConfigControl`, `SettingsStore.swift` reads and
+  writes. It holds **no copy of the settings**: values are read back by handing
+  `ConfigSpec.sections(defaults:)` a live `Settings.load()` (so the window shows the
+  post-clamp value pounce will actually use) and written one line at a time with
+  `ConfigWriter.apply`. **Never re-serialise config.json** — it is JSON5 with
+  generated prose in it, and a round trip through `JSONSerialization` deletes every
+  comment the user was invited to write. `ConfigWriter` refuses rather than guesses
+  (a section folded onto one line has no line to edit); its `Outcome.refused` is a
+  sentence for the user, not a log line. `SettingsChrome.swift` is a **verbatim copy**
+  of trill's `Trill/UI/SettingsChrome.swift` — keep it diffable against that and
+  perch's, and put pounce-only shapes in the other three files. A shared package was
+  weighed and rejected: those two build through Xcode, this builds through a bare
+  `swiftc` in Nix.
 - **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
   enable / alias / hotkey for anything the palette can address, keyed by the item's
   **frecency key** — `cmd:<id>`, `app:<path>`, `shortcut:<uuid>`, plus `mode:<name>`

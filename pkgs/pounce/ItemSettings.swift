@@ -358,7 +358,14 @@ enum ItemTarget: Equatable {
 
     // The built-in windows a "mode:" target may name. Single-sourced here so the
     // daemon's dispatch, the CLI's validation and the error text can't drift.
-    static let modes = ["launcher", "clipboard", "emoji", "screenshots", "camera", "filesearch"]
+    // "settings" is the odd one: every other mode swaps the palette's contents
+    // (DisplayMode), while this one opens pounce's own Settings WINDOW. It is a
+    // mode all the same, because what `mode:` addresses is "a built-in window
+    // pounce can put in front of you" — which buys the settings window a hotkey
+    // binding, a `pounce run` target and an `items` entry for free, none of
+    // which a bespoke verb would have had.
+    static let modes = ["launcher", "clipboard", "emoji", "screenshots", "camera", "filesearch",
+                        "settings"]
 
     static func parse(_ target: String) -> ItemTarget? {
         if target.hasPrefix("cmd:"), target.count > 4 { return .command(String(target.dropFirst(4))) }
