@@ -311,10 +311,22 @@ breaks one of pounce's own rules:
   normal case on a Mac without it, not an error worth reporting — the message
   still has to reach the screen.
 
-The AppleScript fallback passes both strings as `argv` rather than
-interpolating them. It used to interpolate, which is why several commands
-stripped double quotes out of their own bodies first: one in a body ended the
-script string early.
+The AppleScript fallback in the **shell** helper passes both strings as `argv`
+rather than interpolating them. It used to interpolate, which is why several
+commands stripped double quotes out of their own bodies first: one in a body
+ended the script string early. `UpdateCheck`'s fallback still interpolates, and
+may only keep doing so while both halves stay what they are today — a
+regex-vetted version string and a compile-time-constant hint. Put anything a
+user or a server could influence in either and it needs `on run argv` too.
+
+**A send trill accepts is not a send the user sees, and that is deliberate.**
+Exit 0 means the daemon took the event; a rule, a digest or quiet hours can
+still route it to the inbox instead of the screen. So on a Mac with trill and
+quiet hours set, a confirmation you asked for by pressing a key — "force quit
+Safari", "could not connect" — may land silently in the inbox where an
+`osascript` banner would have shown. That is the user's own dial and pounce
+must not second-guess it with a second banner; it is worth knowing before you
+conclude a command stopped working.
 
 ## Conventions
 

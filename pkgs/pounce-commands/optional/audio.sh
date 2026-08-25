@@ -22,13 +22,26 @@ export PATH; unset _d
 # because pounce installs standalone and cannot assume either. `--source` is
 # what `~/.config/trill/rules.json` matches on, so this one command can be
 # routed or silenced without silencing pounce. See AGENTS.md § Notifications.
+#
+#   notify <body> [kind] [sf-symbol]     kind: note (default) | fault | "done"
+#
+# Quote `done` when you pass it: it is a shell keyword, and unquoted it
+# makes shellcheck read the line as a broken loop (SC1010).
+#
+# The kind is what trill colours the card by, so a failure and a confirmation
+# do not arrive looking identical. macOS has nowhere to put either, which is
+# why the fallback drops them rather than faking them.
 notify() {
     local _bin
+    # An array, not `${3:+--symbol "$3"}`: that form is word-split after
+    # expansion, so a value with a space in it would arrive as two arguments.
+    local _sym=()
+    [ -n "${3:-}" ] && _sym=(--symbol "$3")
     for _bin in "${TRILL_APP:-}/Contents/MacOS/Trill" \
                 "$HOME/Applications/Trill.app/Contents/MacOS/Trill" \
                 "/Applications/Trill.app/Contents/MacOS/Trill"; do
         [ -x "$_bin" ] || continue
-        "$_bin" send --source pounce.audio --title "Audio Devices" --body "$1" \
+        "$_bin" send --kind "${2:-note}" "${_sym[@]}" --source pounce.audio --title "Audio Devices" --body "$1" \
             >/dev/null 2>&1 && return 0
         break
     done
@@ -92,5 +105,5 @@ kind="output"
 if SwitchAudioSource -t "$kind" -s "$dev" >/dev/null 2>&1; then
     notify "Now using $dev for $kind"
 else
-    notify "Could not switch $kind to $dev"
+    notify "Could not switch $kind to $dev" fault exclamationmark.triangle
 fi

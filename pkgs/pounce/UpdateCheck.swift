@@ -303,31 +303,59 @@ final class UpdateNudge {
     // pounce updates" is a rule rather than a switch nobody shipped.
     private static func postBanner(version: String, kind: InstallKind) {
         let title = "Pounce \(version) is out"
-        if let trill = trillBinary() {
+        let body = kind.bannerHint
+        // OFF the main thread, and this is not tidiness. `apply` runs on the
+        // main queue (daemon start, then hourly), and unlike the old
+        // fire-and-forget osascript this has to WAIT for trill to answer
+        // before it knows whether to fall back. `trill send` reads its reply
+        // with no clock of its own, so a trill daemon that accepts the
+        // connection and then wedges would block pounce's runloop forever —
+        // ⌘Space dead until pounce is restarted. Nothing here touches
+        // AppKit; both arms are child processes.
+        DispatchQueue.global(qos: .utility).async {
+            if trillDrew(title: title, body: body) { return }
+            // The version is regex-vetted by the caller and the hint is a
+            // compile-time constant, so this interpolation is safe. Anything
+            // non-constant put in either would need `on run argv`, the way the
+            // command scripts do it.
+            let script = "display notification \"\(body)\" with title \"\(title)\""
             let p = Process()
-            p.executableURL = URL(fileURLWithPath: trill)
-            p.arguments = ["send", "--source", "pounce.update", "--kind", "note",
-                           "--symbol", "arrow.down.circle",
-                           "--title", title, "--body", kind.bannerHint]
-            p.standardOutput = FileHandle.nullDevice
-            p.standardError = FileHandle.nullDevice
-            // Exit 0 means the daemon accepted it. Anything else — 2 for "no
-            // daemon", or trill not running at all — falls through to Apple's,
-            // because a missed update notice is the one outcome this check has
-            // no other way to recover from.
-            if (try? p.run()) != nil {
-                p.waitUntilExit()
-                if p.terminationStatus == 0 { return }
-            }
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            p.arguments = ["-e", script]
+            try? p.run()
         }
-        // The version is regex-vetted above and the hint is a compile-time
-        // constant, so the interpolation is safe.
-        let script = "display notification \"\(kind.bannerHint)\" " +
-                     "with title \"\(title)\""
+    }
+
+    /// True when trill took the event. False means "draw it some other way" —
+    /// no Trill.app, no daemon (exit 2), or a send that never came back.
+    ///
+    /// The deadline is the point: a compositor that stopped answering must
+    /// cost this check a few seconds and a fallback banner, never a hang. It
+    /// terminates the child rather than just giving up on it, because the read
+    /// blocks on a pipe that stays open as long as the process lives.
+    private static func trillDrew(title: String, body: String) -> Bool {
+        guard let trill = trillBinary() else { return false }
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        p.arguments = ["-e", script]
-        try? p.run()
+        p.executableURL = URL(fileURLWithPath: trill)
+        p.arguments = ["send", "--source", "pounce.update", "--kind", "note",
+                       "--symbol", "arrow.down.circle",
+                       "--title", title, "--body", body]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return false }
+
+        let deadline = DispatchWorkItem { if p.isRunning { p.terminate() } }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5, execute: deadline)
+        p.waitUntilExit()
+        deadline.cancel()
+        // Read only after waiting: `terminationStatus` on a live process
+        // raises an ObjC exception no Swift `catch` can take.
+        //
+        // Exit 0 means the daemon ACCEPTED it, which is not the same as drew
+        // it — a rule, a digest or quiet hours can route it elsewhere, and
+        // that is the user's call, not something to second-guess with a
+        // second banner through Apple.
+        return p.terminationStatus == 0
     }
 
     /// Trill.app, wherever it was installed, or nil. `$TRILL_APP` first so a
@@ -339,7 +367,8 @@ final class UpdateNudge {
         if let override = ProcessInfo.processInfo.environment["TRILL_APP"], !override.isEmpty {
             roots.append(override)
         }
-        roots.append(NSHomeDirectory() + "/Applications/Trill.app")
+        roots.append(FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Applications/Trill.app").path)
         roots.append("/Applications/Trill.app")
         for root in roots {
             let binary = root + "/Contents/MacOS/Trill"
