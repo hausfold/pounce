@@ -27,7 +27,40 @@ export PATH; unset _d
 REPO="hausfold/pounce"
 AGENT_LABEL="com.hausfold.pounce.daemon"
 
-notify() { osascript -e "display notification \"$1\" with title \"Update Pounce\""; }
+# Draws through trill when this Mac has it, macOS's own banner when it doesn't.
+# The bundle is resolved at call time rather than through a `trill` on PATH,
+# because pounce installs standalone and cannot assume either. `--source` is
+# what `~/.config/trill/rules.json` matches on, so this one command can be
+# routed or silenced without silencing pounce. See AGENTS.md § Notifications.
+#
+#   notify <body> [kind] [sf-symbol]     kind: note (default) | fault | "done"
+#
+# Quote `done` when you pass it: it is a shell keyword, and unquoted it
+# makes shellcheck read the line as a broken loop (SC1010).
+#
+# The kind is what trill colours the card by, so a failure and a confirmation
+# do not arrive looking identical. macOS has nowhere to put either, which is
+# why the fallback drops them rather than faking them.
+notify() {
+    local _bin
+    # An array, not `${3:+--symbol "$3"}`: that form is word-split after
+    # expansion, so a value with a space in it would arrive as two arguments.
+    local _sym=()
+    [ -n "${3:-}" ] && _sym=(--symbol "$3")
+    for _bin in "${TRILL_APP:-}/Contents/MacOS/Trill" \
+                "$HOME/Applications/Trill.app/Contents/MacOS/Trill" \
+                "/Applications/Trill.app/Contents/MacOS/Trill"; do
+        [ -x "$_bin" ] || continue
+        "$_bin" send --kind "${2:-note}" "${_sym[@]}" --source pounce.update --title "Update Pounce" --body "$1" \
+            >/dev/null 2>&1 && return 0
+        break
+    done
+    # `argv`, not interpolation: a body carrying a double quote used to end the
+    # AppleScript string early, which is why callers here stripped them.
+    osascript -e 'on run argv
+          display notification (item 1 of argv) with title (item 2 of argv)
+        end run' -- "$1" "Update Pounce" >/dev/null 2>&1
+}
 
 # Resolve the latest release tag from the /releases/latest redirect — no JSON,
 # no API quota, nothing to parse but a URL (jq and python3 aren't guaranteed on
@@ -57,7 +90,7 @@ if [ "$1" = "--run" ]; then
             brew services restart pounce
             notify "Pounce is up to date ✅"
         else
-            notify "Update failed — run 'brew upgrade pounce' in a terminal to see why."
+            notify "Update failed — run 'brew upgrade pounce' in a terminal to see why." fault exclamationmark.triangle
         fi
         exit 0
     fi
@@ -75,7 +108,7 @@ if [ "$1" = "--run" ]; then
     trap 'rm -rf "$WORK"' EXIT
     if ! curl -fsSL --retry 3 -o "$WORK/pounce.tar.gz" \
         "https://github.com/$REPO/releases/download/$TAG/pounce-$TAG-macos.tar.gz"; then
-        notify "Download failed — see github.com/$REPO/releases"
+        notify "Download failed — see github.com/$REPO/releases" fault exclamationmark.triangle
         exit 0
     fi
     tar -xzf "$WORK/pounce.tar.gz" -C "$WORK"
@@ -83,7 +116,7 @@ if [ "$1" = "--run" ]; then
     # Only swap in what Apple would let launch: a bit-rotted or tampered
     # download must fail HERE, not as a corrupt palette after the swap.
     if [ ! -d "$NEW_APP" ] || ! /usr/bin/codesign --verify --deep --strict "$NEW_APP" 2>/dev/null; then
-        notify "Downloaded app failed verification — keeping $CURRENT."
+        notify "Downloaded app failed verification — keeping $CURRENT." fault exclamationmark.triangle
         exit 0
     fi
 

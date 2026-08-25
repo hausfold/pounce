@@ -47,4 +47,22 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
-          shellcheck --severity=warning pkgs/pounce-commands/pounce-palette pkgs/pounce-commands/commands/*.sh pkgs/pounce-commands/optional/*.sh
+          shellcheck --severity=warning pkgs/pounce-commands/pounce-palette pkgs/pounce-commands/commands/*.sh pkgs/pounce-commands/optional/*.sh pkgs/pounce/ports
+      # A rule with nothing enforcing it is a rule the thirteenth command
+      # breaks silently. Every banner pounce draws goes through the `notify()`
+      # helper (AGENTS.md § Notifications) so that trill can draw it and
+      # rules.json can route it; a bare `display notification` is the one way
+      # to bypass that, and it looks completely normal in review.
+      #
+      # `display dialog` is deliberately NOT matched — that is a modal question
+      # (docker.sh, caffeinate.sh), not a banner, and trill has no verb for it.
+      - name: no bare notification banners
+        run: |
+          if grep -rn "display notification" pkgs/pounce-commands pkgs/pounce/ports \
+             | grep -v "item 1 of argv"; then
+            echo
+            echo "Above: a banner that bypasses notify(). See AGENTS.md § Notifications —"
+            echo "notify() draws through trill when the Mac has it, and falls back to this"
+            echo "same osascript when it doesn't. Call it instead."
+            exit 1
+          fi

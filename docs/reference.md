@@ -164,6 +164,13 @@ treated as support data and are not shown in the launcher.
 osascript -e 'display notification "🐾" with title "Pounce"'
 ```
 
+That `osascript` line is the *whole API* speaking — a command is any executable,
+and pounce neither knows nor cares how it draws. The commands **shipped in this
+repo** go through a `notify()` helper instead, so they render through
+[trill](https://github.com/hausfold/trill) on a Mac that has it and fall back to
+exactly the line above on one that doesn't. Copy that helper if you want the
+same; keep the one-liner if you don't.
+
 Header keys (all optional — the filename is the fallback name/id):
 
 | key | meaning |
