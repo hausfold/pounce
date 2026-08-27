@@ -20,11 +20,67 @@ struct GroupHeaderRow: View {
     }
 }
 
+// MARK: - SelectionGlide
+
+// The selection is ONE body, not a fill each row paints for itself.
+//
+// Every row that can be selected draws this, and exactly one of them has
+// `isSelected` at a time — but they all hand the shape the SAME
+// matchedGeometryEffect id in a namespace the LIST owns, so SwiftUI treats the
+// highlight leaving row 3 and the one arriving at row 4 as a single view that
+// moved and interpolates its frame on the shared spring. That is the whole
+// trick. The shape, the fill and the 8pt inset are byte-for-byte what each row
+// used to fill for itself, so a still frame is identical to before; only the
+// frames BETWEEN two stills are new, which is why this costs no latency —
+// SwiftUI was already drawing them.
+//
+// The size interpolates too, which is the point on the one list that mixes row
+// heights: gliding on or off the quick answer's 76pt hero card grows and
+// shrinks the highlight instead of cutting.
+struct SelectionGlide: View {
+    let isSelected: Bool
+    // nil = no namespace on offer, so the highlight cuts the way it always did.
+    // Matched geometry needs both ends inside one namespace and a Namespace.ID
+    // cannot be conjured per row, so a row rendered outside a list that owns one
+    // has to degrade rather than fail.
+    var namespace: Namespace.ID? = nil
+
+    static let id = "pounce.selection"
+
+    private var shape: some View {
+        RoundedRectangle(cornerRadius: pt(10))
+            .fill(Theme.mauve.opacity(0.20))
+    }
+
+    var body: some View {
+        ZStack {
+            if isSelected {
+                if let namespace {
+                    shape.matchedGeometryEffect(id: Self.id, in: namespace)
+                } else {
+                    shape
+                }
+            }
+        }
+        .padding(.horizontal, pt(8))
+    }
+}
+
 // MARK: - ItemRow
 
 struct ItemRow: View {
     let item: PounceItem
     let isSelected: Bool
+    // The list's shared glide namespace, and the index the whole list is
+    // currently on. Both default to "no glide" so a row drawn outside a list
+    // that owns a namespace (Find Files' own list passes one; anything else)
+    // keeps exactly today's behaviour.
+    var glide: Namespace.ID? = nil
+    var selection: Int = 0
+    // False while the selection is moving because the LIST changed under it
+    // rather than because the user navigated — see ContentView.glideArmed. The
+    // move still happens, it just cuts.
+    var glides: Bool = true
 
     // Both "app:<path>" (launcher) and "file:<path>" (Find Files) render the
     // real Finder icon for that path via NSWorkspace; the prefix just marks it.
@@ -65,12 +121,23 @@ struct ItemRow: View {
         }
         .padding(.horizontal, pt(14))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: pt(10))
-                .fill(isSelected ? Theme.mauve.opacity(0.20) : Color.clear)
-                .padding(.horizontal, pt(8))
-        )
+        .background(SelectionGlide(isSelected: isSelected, namespace: glide))
         .contentShape(Rectangle())
+        // Keyed on the SELECTION, not on this row's own `isSelected`: the
+        // highlight's departure from one row and its arrival at another are two
+        // halves of one move, and they have to animate in the same transaction
+        // or matchedGeometryEffect has nothing to interpolate between. It also
+        // brings the icon's accent tint along, so the row lights up with the
+        // highlight rather than a frame ahead of it.
+        //
+        // `glides` is what keeps that honest when the list itself moved: a
+        // keystroke resets the selection to row 0 from wherever it was, and the
+        // row it is leaving may be scrolled out of the viewport or gone from the
+        // results altogether — a matched-geometry pair whose source frame is
+        // off-screen (or stale, in a LazyVStack that culled it) swoops in from
+        // outside the panel. The move is real either way; only the animation is
+        // withheld. See ContentView.glideArmed.
+        .animation(glides ? Motion.spring : nil, value: selection)
     }
 }
 
@@ -84,6 +151,9 @@ struct AnswerRow: View {
     static var height: CGFloat { pt(76) }
     let item: PounceItem
     let isSelected: Bool
+    var glide: Namespace.ID? = nil
+    var selection: Int = 0
+    var glides: Bool = true
 
     var accent: Color { isSelected ? Theme.mauve : Theme.blue }
 
@@ -116,12 +186,23 @@ struct AnswerRow: View {
         }
         .padding(.horizontal, pt(14))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: pt(10))
-                .fill(isSelected ? Theme.mauve.opacity(0.20) : Color.clear)
-                .padding(.horizontal, pt(8))
-        )
+        .background(SelectionGlide(isSelected: isSelected, namespace: glide))
         .contentShape(Rectangle())
+        // Keyed on the SELECTION, not on this row's own `isSelected`: the
+        // highlight's departure from one row and its arrival at another are two
+        // halves of one move, and they have to animate in the same transaction
+        // or matchedGeometryEffect has nothing to interpolate between. It also
+        // brings the icon's accent tint along, so the row lights up with the
+        // highlight rather than a frame ahead of it.
+        //
+        // `glides` is what keeps that honest when the list itself moved: a
+        // keystroke resets the selection to row 0 from wherever it was, and the
+        // row it is leaving may be scrolled out of the viewport or gone from the
+        // results altogether — a matched-geometry pair whose source frame is
+        // off-screen (or stale, in a LazyVStack that culled it) swoops in from
+        // outside the panel. The move is real either way; only the animation is
+        // withheld. See ContentView.glideArmed.
+        .animation(glides ? Motion.spring : nil, value: selection)
     }
 }
 
@@ -150,6 +231,11 @@ struct ActionBar: View {
     var dials: [Dial] = []
     var activeDial: Int = 0
     var onDialTap: ((Int) -> Void)? = nil
+    // The action key that just committed ("enter" / "cmd" / …), so THIS bar can
+    // blink the one keycap that fired while the window goes. It answers the
+    // question a dismissal otherwise leaves open on a step with three verbs:
+    // which one did I just hit? nil (and every other cap) draws at rest.
+    var firedAction: String? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -174,7 +260,7 @@ struct ActionBar: View {
                     Text(action.label)
                         .font(.system(size: pt(12), weight: .medium, design: .rounded))
                         .foregroundColor(Theme.subtext)
-                    KeyCap(action.displayKey)
+                    KeyCap(action.displayKey, isPressed: firedAction == action.key)
                 }
             }
         }
@@ -218,20 +304,55 @@ struct DialChip: View {
     }
 }
 
+// Press feedback lives here: a cap whose chord just fired lights, holds for a
+// blink, then springs back to rest on the shared spring — a keypress you can
+// SEE land, on the one surface that was already telling you what the chord
+// does. It plays out during the 0.4s the window lingers before its fade
+// (PounceUI.startLinger), so the confirmation and the dismissal are one
+// gesture. A `.hideNow` commit (an app launch) takes the window instantly and
+// simply never shows it — nothing to confirm there; the app arriving IS the
+// confirmation.
 struct KeyCap: View {
     let symbol: String
-    init(_ symbol: String) { self.symbol = symbol }
+    var isPressed: Bool = false
+    @State private var lit = false
+
+    init(_ symbol: String, isPressed: Bool = false) {
+        self.symbol = symbol
+        self.isPressed = isPressed
+    }
 
     var body: some View {
         Text(symbol)
             .font(.system(size: pt(12), weight: .medium, design: .rounded))
-            .foregroundColor(Theme.subtext)
+            .foregroundColor(lit ? Theme.mauve : Theme.subtext)
             .frame(minWidth: pt(22), minHeight: pt(22))
             .padding(.horizontal, pt(4))
             .background(
                 RoundedRectangle(cornerRadius: pt(6))
-                    .fill(Theme.surface1.opacity(0.5))
+                    .fill(lit ? Theme.mauve.opacity(0.42) : Theme.surface1.opacity(0.5))
             )
+            .scaleEffect(lit ? 0.93 : 1)
+            .onChange(of: isPressed) { blink() }
+    }
+
+    // Lit SNAPS on — a key going down has no ease-in — and is released after a
+    // hold, from a later runloop turn: both halves in one turn would coalesce
+    // into a single update and the lit frame would never be drawn at all.
+    //
+    // The snap is enforced, not assumed. This runs from onChange, so it
+    // inherits whatever transaction published `firedAction`; nothing wraps a
+    // commit in withAnimation today, but that is a fact about the callers, not
+    // a property of this view, and the day one does the blink would fade in
+    // instead of landing.
+    private func blink() {
+        guard isPressed, !Motion.reduceMotion else { return }
+        var snap = Transaction()
+        snap.disablesAnimations = true
+        withTransaction(snap) { lit = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Motion.pressHold) {
+            withAnimation(Motion.spring) { lit = false }
+        }
     }
 }
 

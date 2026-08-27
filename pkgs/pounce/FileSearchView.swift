@@ -12,6 +12,14 @@ struct FileSearchView: View {
     @ObservedObject var state: DaemonState
     @State private var query = ""
     @State private var selectedIndex = 0
+    // Find Files is the launcher's list widget in another window, so it gets the
+    // same one motion language — its own namespace, because a namespace is per
+    // list and the two are never on screen together.
+    @Namespace private var glide
+    // Same arming as the launcher's: a keystroke re-runs the metadata query and
+    // resets the selection to row 0, and the row it left may be gone — the move
+    // happens, it just doesn't glide. See ContentView.glideArmed.
+    @State private var glideArmed = true
 
     var results: [FileHit] { state.fileResults }
 
@@ -60,10 +68,12 @@ struct FileSearchView: View {
         .background(Theme.wash())
         .clipShape(RoundedRectangle(cornerRadius: PanelChrome.cornerRadius))
         .onChange(of: query) {
+            glideArmed = false
             selectedIndex = 0
             state.fileQueryChanged(query)
         }
-        .onChange(of: state.requestID) { query = ""; selectedIndex = 0 }
+        .onChange(of: selectedIndex) { glideArmed = true }
+        .onChange(of: state.requestID) { query = ""; selectedIndex = 0; glideArmed = true }
     }
 
     @ViewBuilder
@@ -89,7 +99,9 @@ struct FileSearchView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(results.enumerated()), id: \.element.id) { i, hit in
                         ItemRow(item: PounceItem.file(name: hit.name, path: hit.path, parent: hit.parent),
-                                isSelected: i == selectedIndex)
+                                isSelected: i == selectedIndex,
+                                glide: glide, selection: selectedIndex,
+                                glides: glideArmed)
                             .frame(height: FileSearchLayout.rowHeight)
                             .id(hit.id)
                             .onTapGesture { selectedIndex = i; commit(action: "enter") }

@@ -260,6 +260,32 @@ changes `ai/SKILL.md` in the same PR.
   on rebuild. haus (`modules/launcher`) re-signs a stable copy to keep the grant
   — that logic lives there, not here. Here, just: `pounce
   --request-accessibility` / `--check-accessibility`.
+- **Anything that moves**: there is ONE spring — `Motion.spring` (`Motion.swift`),
+  response 0.25 / damping 0.85 — and every *move* reads it: the selection glide
+  between rows (`SelectionGlide`, one highlight body tied across rows by
+  `matchedGeometryEffect` in a namespace the LIST owns), the dial roll, the action
+  bar's press blink, the type-settle on the launcher's `LazyVStack`. A second
+  `.spring(response:…)` literal in the sources IS the bug. `Motion.spring` is nil
+  under System Settings › Accessibility › Reduce motion, so a new animation
+  inherits that by using it and loses it by hand-rolling one — `SkeletonRow`'s
+  loading pulse is the one deliberate non-spring (a "still working" signal has no
+  destination, and a spring has no forever), and it consults `Motion.reduceMotion`
+  by hand precisely because an indefinitely repeating pulse is what that setting
+  exists to stop. Three rules:
+  - **Latency.** Animate only frames SwiftUI was already drawing. Never delay
+    first render, and never read anything off disk to decide how to animate
+    (`Motion.reduceMotion` is cached behind an AppKit notification for that
+    reason — don't inline the `NSWorkspace` property into a row body).
+  - **Never let a transaction reach the resize.** The window's height is
+    arithmetic and instant (`pendingContentHeight` → `PounceUI.resizeToFit`, with
+    implicit animation off). Scope `.animation(_:value:)` to the subtree that
+    moves, never to an ancestor of the frame that sizes the window.
+  - **Animate a move the USER made.** A selection that jumps because the list
+    re-ranked under a keystroke is leaving a row that may be scrolled out of the
+    viewport, culled by the `LazyVStack`, or gone from the results — matched
+    geometry given a source like that swoops in from outside the panel. Both
+    lists gate on a `glideArmed` flag (disarmed in the query hook, re-armed when
+    the selection settles); a new animated list wants the same gate.
 - **Theming**: colors live in `Palette` (`Theme.swift`). The default **nebelung**
   palette is *generated at build time* from the `nebelung` flake input's `palette`
   output into `Palette+nebelung.generated.swift` (see `pkgs/pounce/default.nix`) —
