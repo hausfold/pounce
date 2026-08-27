@@ -128,38 +128,6 @@ final class PounceSettingsWindowController: NSObject, NSWindowDelegate {
 /// Installed once and left in place. It is only ever VISIBLE while the app is
 /// `.regular`, i.e. while the settings window is up; tearing it down again on
 /// close would buy nothing and risks doing it mid-tracking.
-/// Targets for menu items that aren't one of AppKit's own selectors.
-///
-/// A menu item with a nil target sends up the responder chain to NSApp and then
-/// to its delegate; neither answers `reportBug:`, and an unhandled selector
-/// leaves the row permanently greyed out with nothing said anywhere. So the row
-/// gets an explicit target, and this object is it — retained by
-/// `PounceMainMenu`, which is installed once and left in place.
-final class PounceMenuActions: NSObject {
-    static let shared = PounceMenuActions()
-
-    @objc func reportBug(_ sender: Any?) {
-        // Re-exec `pounce report` rather than calling ReportMode in place, for
-        // two reasons that both end badly in-process:
-        //
-        //   ReportMode exits when it's done, and this process is a live
-        //   settings window somebody is still using.
-        //
-        //   The block it builds includes the doctor report, which is a
-        //   round trip to the DAEMON's socket — and when Settings was opened
-        //   from the palette, this process IS that daemon. Asking yourself a
-        //   question over your own socket and waiting on the main thread for
-        //   the answer is a beachball with no visible cause.
-        //
-        // A separate process asks the daemon from outside, which is the
-        // supported direction, and nothing here waits for it.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
-        process.arguments = ["report"]
-        try? process.run()
-    }
-}
-
 enum PounceMainMenu {
     static func install() {
         guard NSApp.mainMenu == nil else { return }
@@ -217,6 +185,54 @@ enum PounceMainMenu {
         // Named so macOS puts its own items (Enter Full Screen, the window
         // list) in the right place rather than treating it as a stray menu.
         NSApp.windowsMenu = windowMenu
+    }
+}
+
+/// Targets for menu items that aren't one of AppKit's own selectors.
+///
+/// A menu item with a nil target sends up the responder chain to NSApp and then
+/// to its delegate; neither answers `reportBug:`, and an unhandled selector
+/// leaves the row permanently greyed out with nothing said anywhere. So the row
+/// gets an explicit target, and this object is it.
+///
+/// `static let shared` is what keeps it alive, and it has to: `NSMenuItem.target`
+/// is a **weak** reference, so the menu retains nothing and a per-install
+/// instance would be gone before the first click.
+final class PounceMenuActions: NSObject {
+    static let shared = PounceMenuActions()
+
+    @objc func reportBug(_ sender: Any?) {
+        // Re-exec `pounce report` rather than calling ReportMode in place, for
+        // two reasons that both end badly in-process:
+        //
+        //   ReportMode exits when it's done, and this process is a live
+        //   settings window somebody is still using.
+        //
+        //   The block it builds includes the doctor report, which is a
+        //   round trip to the DAEMON's socket — and when Settings was opened
+        //   from the palette, this process IS that daemon. Asking yourself a
+        //   question over your own socket and waiting on the main thread for
+        //   the answer is a beachball with no visible cause.
+        //
+        // A separate process asks the daemon from outside, which is the
+        // supported direction, and nothing here waits for it.
+        // `Bundle.main.executableURL`, not `CommandLine.arguments[0]`: a binary
+        // found on PATH sees argv[0] as the bare word `pounce`, which
+        // `URL(fileURLWithPath:)` then resolves against the cwd and `run()`
+        // throws on. That path is live — `SettingsMode.run` hosts the window in
+        // the CLI process whenever no daemon answers, which is exactly the
+        // "something is wrong, let me file a bug" cohort.
+        let process = Process()
+        process.executableURL = Bundle.main.executableURL
+            ?? URL(fileURLWithPath: CommandLine.arguments[0])
+        process.arguments = ["report"]
+        // Logged, not swallowed: a door that can fail must not fail mutely.
+        // Same shape as CommandSpawner.run.
+        do {
+            try process.run()
+        } catch {
+            NSLog("pounce: couldn't open the bug report: \(error)")
+        }
     }
 }
 

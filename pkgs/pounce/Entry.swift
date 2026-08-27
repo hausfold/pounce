@@ -234,8 +234,10 @@ enum Main {
 /// version of pounce from the one you just typed.
 enum ReportMode {
     static func run(args: [String]) -> Never {
-        let quiet = args.contains("--print") || args.contains("-n")
-        for flag in args where !["--print", "-n"].contains(flag) {
+        let quiet = args.contains("--print")
+        // One spelling. An alias nobody documents is surface you cannot remove
+        // later because you can't know who found it.
+        for flag in args where flag != "--print" {
             FileHandle.standardError.write(Data("pounce: report takes no \(flag)\n".utf8))
             exit(1)
         }
