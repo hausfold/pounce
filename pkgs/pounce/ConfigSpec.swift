@@ -228,6 +228,23 @@ enum ConfigSpec {
                 ]),
 
             ConfigSection(
+                name: "stage",
+                pane: "launcher",
+                doc: "The Stage — what an empty query looks like before you type.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Open the launcher on a strip of tiles for the handful of things you actually reach for, with the usual list beneath them and a quiet line above showing the time, the date and what you last copied. Off gives you the flat list pounce has always shown. Typing anything yields the whole thing to the ranked results either way — this only changes the first thing you see.",
+                        json: json(s.stage.enabled),
+                        control: .toggle, symbol: "rectangle.topthird.inset.filled"),
+                    ConfigField(
+                        name: "tiles",
+                        doc: "How many tiles the strip holds. They share the window's width, so more of them means narrower ones — 5 fits the default width comfortably and 3 or 4 suits a compact palette. The list below grows by the same number, so promoting rows into tiles never costs you list.",
+                        json: json(s.stage.tiles),
+                        control: .number(1...8, unit: "tiles"), symbol: "square.grid.3x1.below.line.grid.1x2"),
+                ]),
+
+            ConfigSection(
                 name: "hotkey",
                 pane: "keys",
                 doc: "The global key that summons the palette. Read ONCE when the daemon starts — changing it needs a daemon restart, unlike everything above.",

@@ -88,6 +88,14 @@ final class DaemonState: ObservableObject {
 
     var isLauncher = false
     var maxEmpty = Int.max
+    // The Stage (Stage.swift), snapshotted per summon rather than read in a view
+    // body — that is what keeps the zone free on the keystroke path. `stageTiles`
+    // is how many of the empty-query rows are drawn as TILES; 0 is what the off
+    // switch, a non-launcher step and a config without the key all reduce to, so
+    // "is there a stage?" is one integer and never a chain of predicates.
+    @Published var stageTiles = 0
+    // The glance line's contents, built once in load(). nil → no line.
+    @Published var stageGlance: StageGlance?
     // How many settings a single System Settings pane may contribute to one
     // result list (ContentView.filtered). Read off config on every summon like
     // everything else; Int.max outside the launcher, where there are no
@@ -179,6 +187,8 @@ final class DaemonState: ObservableObject {
         globalIcon = nil
         isLauncher = false
         maxEmpty = Int.max
+        stageTiles = 0
+        stageGlance = nil
         settingsMaxPerPane = Int.max
         chainActions = []
         freeTextActions = []
@@ -453,6 +463,23 @@ final class DaemonState: ObservableObject {
                 for i in built.indices {
                     built[i].userAlias = settings.items.alias(for: built[i].frecencyKey)
                 }
+            }
+            // The Stage. Snapshotted HERE — once, on the summon — and never in
+            // a view body: formatting a date or asking the clipboard store for
+            // its head on every render would put that work on the keystroke
+            // path, which is the one thing this zone may not cost.
+            //
+            // Compact mode is deliberately excluded. `hideEmptyList` means "an
+            // empty query shows nothing", and a strip of tiles is emphatically
+            // something — the two are answers to the same question and the
+            // narrower one wins.
+            if settings.stage.enabled && !settings.metrics.hideEmptyList {
+                stageTiles = settings.stage.tiles
+                stageGlance = StageGlance.now(clipboardEnabled: settings.clipboard.enabled)
+                // The list beneath keeps its full length: a tile is a row
+                // PROMOTED out of the ranked prefix, not one taken away from it,
+                // so turning the Stage on never costs you list.
+                if self.maxEmpty != Int.max { self.maxEmpty += stageTiles }
             }
             placeholderText = placeholder ?? "Search apps & actions..."
         } else {

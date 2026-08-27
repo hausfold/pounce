@@ -544,9 +544,42 @@ config written by a newer one.
     "demoteBundleIds": [],  // apps ranked lower in the launcher (bundle IDs)
     "hideBundleIds": []     // apps hidden from the launcher entirely (bundle IDs)
   },
+  "stage": {
+    "enabled": true,        // the empty query opens on tiles + a glance line
+    "tiles": 5              // how many tiles the strip holds (1–8)
+  },
   "items": {}               // per-item enable / alias / hotkey — see below
 }
 ```
+
+### The Stage (`stage`)
+
+What you see **before you type**. On (the default), an empty launcher query is
+three zones instead of one list:
+
+- a **strip of tiles** for the handful of things you actually reach for — the
+  top of the same frecency ranking the list has always used;
+- the **familiar list** beneath it, unchanged;
+- a quiet **glance line** above: the time, the date, and what you last copied.
+
+Type a single character and the whole thing yields to today's ranked results —
+search itself is untouched. A tile is not a new kind of thing: it is the same
+row, promoted. Same frecency key, same `items` override, same per-item hotkey,
+same ⏎. `←` / `→` walk the strip, `↓` drops into the list, `↑` comes back.
+
+The list keeps its full length when the Stage is on — tiles are taken off the
+top of the ranking *in addition to*, not out of, the rows below, so turning it
+on never costs you list.
+
+```jsonc
+"stage": { "enabled": false }   // the flat list pounce has always shown
+"stage": { "tiles": 3 }         // fewer, wider tiles — suits "compact"
+```
+
+In `"windowMode": "compact"` there is no Stage at all: compact means an empty
+query shows *nothing* until you type or press ↓, and a strip of tiles is
+emphatically something. The two are answers to the same question, and the
+narrower one wins.
 
 ### Sizing: `windowMode` and `scale`
 

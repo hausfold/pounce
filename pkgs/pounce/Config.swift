@@ -274,6 +274,23 @@ struct AppLauncherSettings {
     var hideBundleIds: [String] = []
 }
 
+// The Stage — what an EMPTY launcher query looks like (Stage.swift). On: the
+// top-frecency prefix is drawn as a strip of tiles with the familiar list
+// beneath it and one quiet glance line above. Off: exactly the flat list pounce
+// has always shown, which is the whole point of the switch — this changes the
+// first thing you see every time you press ⌘Space, and that is not a taste
+// everyone shares.
+//
+// `tiles` is a COUNT, not a size: the strip divides the window's width between
+// however many are asked for, and the list beneath grows by the same number so
+// promoting rows into tiles never costs you list. Clamped in load() rather than
+// rejected — one tile is a legitimate (if odd) answer, and twelve on a 600pt
+// compact window would be twelve unreadable slivers.
+struct StageSettings {
+    var enabled: Bool = true
+    var tiles: Int = 5
+}
+
 // The daemon's in-process global hotkey (see HotKeyManager). `key` is a named
 // key ("space", "return", "a"…); `modifiers` combine "cmd"/"shift"/"opt"/"ctrl".
 // Defaults to ⌘Space. Set `enabled: false` to leave the hotkey to an external
@@ -413,6 +430,7 @@ struct Settings {
     var scale: CGFloat = 1
     var clipboard = ClipboardSettings()
     var appLauncher = AppLauncherSettings()
+    var stage = StageSettings()
     var hotkey = HotKeyConfig()
     var windows = WindowSwitcherSettings()
     var appHotkeys = AppHotkeysSettings()
@@ -564,6 +582,12 @@ struct Settings {
         if let ap = obj["apps"] as? [String: Any] {
             if let d = ap["demoteBundleIds"] as? [String] { s.appLauncher.demoteBundleIds = Set(d) }
             if let h = ap["hideBundleIds"] as? [String] { s.appLauncher.hideBundleIds = h }
+        }
+        if let st = obj["stage"] as? [String: Any] {
+            if let e = st["enabled"] as? Bool { s.stage.enabled = e }
+            // Clamped, not rejected — see StageSettings. 0 is spelled
+            // "enabled": false, so it is not a value the strip has to draw.
+            if let t = st["tiles"] as? Int { s.stage.tiles = min(8, max(1, t)) }
         }
         if let hk = obj["hotkey"] as? [String: Any] {
             if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }
