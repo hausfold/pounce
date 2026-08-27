@@ -6,6 +6,11 @@ struct ContentView: View {
     @ObservedObject var state: DaemonState
     @State private var selectedIndex = 0
     @State private var revealed = false   // compact mode: list shown after ↓ / typing
+    // The namespace the selection highlight glides through. It belongs to the
+    // LIST, not to a row: matchedGeometryEffect only ties two views together
+    // inside one namespace, and the two views here are the highlight leaving
+    // the old row and the one arriving at the new. See SelectionGlide.
+    @Namespace private var glide
 
     var rowHeight: CGFloat { state.metrics.rowHeight }
 
@@ -334,9 +339,11 @@ struct ContentView: View {
                                 case .item(let item, let i):
                                     Group {
                                         if item.kind == .answer {
-                                            AnswerRow(item: item, isSelected: i == selectedIndex)
+                                            AnswerRow(item: item, isSelected: i == selectedIndex,
+                                                      glide: glide, selection: selectedIndex)
                                         } else {
-                                            ItemRow(item: item, isSelected: i == selectedIndex)
+                                            ItemRow(item: item, isSelected: i == selectedIndex,
+                                                    glide: glide, selection: selectedIndex)
                                         }
                                     }
                                     .frame(height: item.kind == .answer ? AnswerRow.height : rowHeight)
@@ -346,6 +353,22 @@ struct ContentView: View {
                             }
                         }
                         .padding(.vertical, Self.listVPadding)
+                        // Type-settle. Rows are keyed by item.id, so a keystroke
+                        // that re-ranks the list is a set of MOVES to SwiftUI —
+                        // this is what makes it play them instead of cutting to
+                        // the new order. Keyed on the query (already in hand) and
+                        // not on the row ids: recomputing `renderRows` for a
+                        // comparison would re-run the whole scoring pass on every
+                        // render, and the keystroke is the thing being settled
+                        // anyway.
+                        //
+                        // Scoped to the STACK, deliberately. The window's height
+                        // is arithmetic and instant (requestResize →
+                        // PounceUI.resizeToFit, implicit animation off), and the
+                        // ScrollView's frame below is outside this modifier, so
+                        // both still snap; rows on their way out are clipped by a
+                        // viewport that has already reached its new size.
+                        .animation(Motion.spring, value: state.query)
                     }
                     .frame(height: listHeight + Self.listVPadding * 2)
                     .onChange(of: selectedIndex) {
@@ -357,7 +380,8 @@ struct ContentView: View {
                     Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
                     ActionBar(actions: item.actions, dials: state.dials,
                               activeDial: state.activeDial,
-                              onDialTap: { state.tapDial($0) })
+                              onDialTap: { state.tapDial($0) },
+                              firedAction: state.firedAction)
                         .frame(height: Self.actionBarHeight)
                 }
             } else if showFreeTextBar {
@@ -367,7 +391,8 @@ struct ContentView: View {
                 Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
                 ActionBar(actions: state.freeTextActions, dials: state.dials,
                           activeDial: state.activeDial,
-                          onDialTap: { state.tapDial($0) })
+                          onDialTap: { state.tapDial($0) },
+                          firedAction: state.firedAction)
                     .frame(height: Self.actionBarHeight)
             }
         }

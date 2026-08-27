@@ -116,6 +116,11 @@ final class DaemonState: ObservableObject {
     // the published two-field output shape is untouched.
     @Published var dials: [Dial] = []
     @Published var activeDial = 0
+    // The action key that just committed, for the action bar's press blink
+    // (see KeyCap). Set at the commit, read for the fraction of a second the
+    // window lingers before its fade — it is feedback, never part of the
+    // client string, and reset() clears it with everything else.
+    @Published var firedAction: String? = nil
 
     // The clipboard and emoji views are fixed-size windows; everything else
     // follows the launcher's windowMode width.
@@ -180,6 +185,7 @@ final class DaemonState: ObservableObject {
         draftKey = nil
         dials = []
         activeDial = 0
+        firedAction = nil
         requestID = UUID()
         displayMode = .list
         clipEntries = []
@@ -533,6 +539,11 @@ final class DaemonState: ObservableObject {
             return
         }
         frecency.record(item.frecencyKey)
+        // Light the keycap this commit actually used — which is not always the
+        // one you pressed: buildCommit falls back to the plain Return when the
+        // row declares nothing for the modifier you held, and the bar has to
+        // agree with what happened rather than with what you reached for.
+        firedAction = item.action(for: action) != nil ? action : "enter"
         // For a two-step command, seed the loading header with its name + icon so
         // it matches the step-2 header (which arrives with the same -p / -i).
         if item.kind == .command && item.submenu {
@@ -575,6 +586,7 @@ final class DaemonState: ObservableObject {
     // which is what a caller wants when its next act needs the screen (⌘↵ →
     // `screencapture -i`).
     func commitText(_ text: String, action: String = "enter") {
+        firedAction = action
         let chains = chainActions.contains(action)
         if chains {
             loadingTitle = placeholderText
@@ -610,7 +622,7 @@ final class DaemonState: ObservableObject {
         var d = dials[i]
         let n = d.options.count
         d.index = ((d.index + delta) % n + n) % n
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { dials[i] = d }
+        withAnimation(Motion.spring) { dials[i] = d }
     }
 
     // ⌃⇥: move the ⇥ focus to the next dial. Only meaningful on the rare

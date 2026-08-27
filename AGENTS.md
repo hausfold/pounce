@@ -260,6 +260,20 @@ changes `ai/SKILL.md` in the same PR.
   on rebuild. haus (`modules/launcher`) re-signs a stable copy to keep the grant
   — that logic lives there, not here. Here, just: `pounce
   --request-accessibility` / `--check-accessibility`.
+- **Anything that moves**: there is ONE spring — `Motion.spring` (`Motion.swift`),
+  response 0.25 / damping 0.85 — and everything animated reads it: the selection
+  glide between rows (`SelectionGlide`, a single highlight body tied together with
+  `matchedGeometryEffect` in a namespace the LIST owns), the dial roll, the action
+  bar's press blink, the type-settle on the launcher's `LazyVStack`. A second
+  `.spring(response:…)` literal in the sources IS the bug. `Motion.spring` is nil
+  under System Settings › Accessibility › Reduce motion, which returns every one of
+  those to a snap — so a new animation gets that for free by using it and loses it
+  by hand-rolling one. Two hard rules, both about latency: animate only frames
+  SwiftUI was already drawing (never delay first render), and never let an
+  animation transaction reach the window's arithmetic resize
+  (`pendingContentHeight` → `PounceUI.resizeToFit`), which is instant on purpose —
+  scope `.animation(_:value:)` to the subtree that moves, never to an ancestor of
+  the frame that sizes the window.
 - **Theming**: colors live in `Palette` (`Theme.swift`). The default **nebelung**
   palette is *generated at build time* from the `nebelung` flake input's `palette`
   output into `Palette+nebelung.generated.swift` (see `pkgs/pounce/default.nix`) —

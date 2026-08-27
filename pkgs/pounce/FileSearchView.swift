@@ -12,6 +12,10 @@ struct FileSearchView: View {
     @ObservedObject var state: DaemonState
     @State private var query = ""
     @State private var selectedIndex = 0
+    // Find Files is the launcher's list widget in another window, so it gets the
+    // same one motion language — its own namespace, because a namespace is per
+    // list and the two are never on screen together.
+    @Namespace private var glide
 
     var results: [FileHit] { state.fileResults }
 
@@ -89,7 +93,8 @@ struct FileSearchView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(results.enumerated()), id: \.element.id) { i, hit in
                         ItemRow(item: PounceItem.file(name: hit.name, path: hit.path, parent: hit.parent),
-                                isSelected: i == selectedIndex)
+                                isSelected: i == selectedIndex,
+                                glide: glide, selection: selectedIndex)
                             .frame(height: FileSearchLayout.rowHeight)
                             .id(hit.id)
                             .onTapGesture { selectedIndex = i; commit(action: "enter") }
