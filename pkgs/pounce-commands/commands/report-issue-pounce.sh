@@ -3,50 +3,21 @@
 # pounce: description = Open a pre-filled bug report on GitHub
 # pounce: icon = ladybug
 
-# Opens github.com/hausfold/pounce with a new-issue form pre-filled from a
-# template. No hosted .github/ISSUE_TEMPLATE needed — the title/body/labels ride
-# in the URL query, so this works even against a repo without one.
+# One line, because the work is `pounce report`'s (Entry.swift, ReportMode) and
+# it belongs there: the block it prefills is pounce's own doctor report plus the
+# version, macOS and install cohort, none of which a shell script can assemble
+# without re-deriving all of it.
+#
+# ⚠️ What this file used to be is worth knowing, because it is the mistake the
+# whole door exists to avoid. It hand-built `issues/new?labels=bug&title=&body=`
+# with a markdown skeleton in the query, and its own comment said "no hosted
+# .github/ISSUE_TEMPLATE needed". That was true when it was written and stopped
+# being true when the forms landed: a `body=` prefill opens GitHub's BLANK
+# editor and walks straight past bug.yml — its fields, its "wrong repo? file it
+# anyway" preamble, and the `bug`/`triage` labels it applies. Nothing failed.
+# Every report filed through this row for a year simply arrived shapeless.
+#
+# The form is the ONLY feedback channel pounce has (there is no telemetry in
+# anything we ship), so the row that opens it has to open the real one.
 
-repo="hausfold/pounce"
-
-# Environment footer, best-effort. `pounce --version` prints "pounce <ver>".
-version=$(pounce --version 2>/dev/null | awk '{print $2}')
-[ -z "$version" ] && version="unknown"
-macos=$(sw_vers -productVersion 2>/dev/null)
-[ -z "$macos" ] && macos="unknown"
-
-body="**What happened?**
-
-
-**What did you expect?**
-
-
-**Steps to reproduce**
-1.
-2.
-3.
-
----
-- pounce: ${version}
-- macOS: ${macos}"
-
-# Pure-bash percent-encoding — no python/jq dependency (the daemon inherits
-# launchd's bare PATH, so we can't assume either is on it).
-urlencode() {
-    local s="$1" out="" c i
-    for (( i = 0; i < ${#s}; i++ )); do
-        c="${s:i:1}"
-        case "$c" in
-            [a-zA-Z0-9.~_-]) out+="$c" ;;
-            *) printf -v c '%%%02X' "'$c" ; out+="$c" ;;
-        esac
-    done
-    printf '%s' "$out"
-}
-
-url="https://github.com/${repo}/issues/new"
-url+="?labels=bug"
-url+="&title=$(urlencode '[bug] ')"
-url+="&body=$(urlencode "$body")"
-
-open "$url"
+exec pounce report
