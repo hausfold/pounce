@@ -12,7 +12,7 @@ enum Main {
 
     usage:
       pounce [-p <prompt>] [-i <sf-symbol>] [--max-empty <n>] [--chain [keys]]
-             [--actions <spec>] [--draft <key>] [--dial <spec>]
+             [--actions <spec>] [--draft <key>] [--dial <spec>] [--grid]
         generic picker: reads lines from stdin, prints the chosen one
 
         Return on text that matched no row prints "<action>\\t<text>", where
@@ -40,6 +40,11 @@ enum Main {
                          "<action>\\t<name=value;…>\\t<line-or-text>",
                          and each dial re-opens on the value it committed
                          last time.
+        --grid           lay the rows out as cards, two to a row, instead of
+                         as a list — ↑↓ move by a card row, ←→ by one card.
+                         For a step offering THINGS (projects, machines,
+                         images) rather than names you scan. Purely a shape:
+                         same stdin, same commit, same printed output.
 
     modes:
       --launcher             apps + commands palette (what the hotkey opens)
@@ -416,6 +421,12 @@ struct Invocation {
     // commit. Repeatable --dial flags accumulate here `;`-joined — the same
     // separator the spec grammar uses (Dials.swift).
     var dialSpec: String?
+    // --grid: lay this step's rows out as cards, two to a row, instead of as a
+    // list — ↑↓ move by a row, ←→ by one card (the 2-D navigation the emoji
+    // picker already uses). A shape the CALLER asks for, per invocation:
+    // nothing about the items, the commit or the printed result changes, so a
+    // step is switched between the two by adding or removing this one flag.
+    var grid = false
 }
 
 // MARK: - Daemon Mode
@@ -1314,6 +1325,10 @@ enum DaemonMode {
             // escapes it (Drafts.encode) and it is decoded back here.
             if p.count > 9 && !p[9].isEmpty { inv.query = Drafts.decode(p[9]) }
             if p.count > 10 && !p[10].isEmpty { inv.dialSpec = p[10] }
+            // Field 12 (--grid). Appended like every field before it, so a
+            // daemon older than the flag simply never sees it and draws the
+            // list — the step still works, it just isn't a grid.
+            if p.count > 11 && p[11] == "1" { inv.grid = true }
             itemLines = Array(lines.dropFirst())
         }
 
@@ -1355,7 +1370,8 @@ enum DaemonMode {
                            chainActions: inv.chainActions,
                            freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
                            draftKey: inv.draftKey, seedQuery: inv.query ?? "",
-                           dials: inv.dialSpec.map(Dial.parse) ?? [])
+                           dials: inv.dialSpec.map(Dial.parse) ?? [],
+                           grid: inv.grid)
             }
             ui.resultSink = { r in result = r; semaphore.signal() }
             ui.present()
@@ -1395,6 +1411,7 @@ enum ClientMode {
                     let spec = args.removeFirst()
                     inv.dialSpec = inv.dialSpec.map { "\($0);\(spec)" } ?? spec
                 }
+            case "--grid":              inv.grid = true
             case "--draft":             if !args.isEmpty { inv.draftKey = args.removeFirst() }
             case "--query":             if !args.isEmpty { inv.query = args.removeFirst() }
             case "--chain":
@@ -1491,7 +1508,7 @@ enum ClientMode {
         let dialSpec = (inv.dialSpec ?? "")
             .replacingOccurrences(of: "\t", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
-        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\t\(Drafts.encode(inv.query ?? ""))\t\(dialSpec)\n"
+        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\t\(Drafts.encode(inv.query ?? ""))\t\(dialSpec)\t\(inv.grid ? "1" : "")\n"
         for line in stdinLines { payload += line + "\n" }
 
         if let data = payload.data(using: .utf8) {
@@ -1534,7 +1551,8 @@ enum ClientMode {
                        chainActions: inv.chainActions,
                        freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
                        draftKey: inv.draftKey, seedQuery: inv.query ?? "",
-                       dials: inv.dialSpec.map(Dial.parse) ?? [])
+                       dials: inv.dialSpec.map(Dial.parse) ?? [],
+                       grid: inv.grid)
         }
 
         ui.resultSink = { result in

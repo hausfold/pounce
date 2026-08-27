@@ -42,6 +42,20 @@ the user saying no, not a reason to retry.
 | `--chain [keys]` | this commit feeds *another* pounce step — holds the window up instead of fading |
 | `--draft <key>` | keep typed text on dismissal, filed under `<key>` |
 | `--dial <spec>` | an option the user cycles in place with ⇥ / ⇧⇥: `"model=sonnet\|opus\|haiku"`. Repeatable. **Changes the output shape** — see below |
+| `--grid` | lay the rows out as cards, two to a row — ↑↓ move by a card row, ←→ by one card. Purely a shape; output is unchanged |
+
+`--grid` is for a step offering **things** rather than names — projects,
+machines, images, environments — where each option wants an icon and a line of
+description rather than a filename you scan. Feed it the same `title⇥subtitle⇥icon`
+lines and it draws them two to a row; typing still filters, ⏎ still commits, and
+the printed result is byte-for-byte what the list would have printed. Group
+fields are still honoured as ORDER but no group headers are drawn, and
+`--launcher` ignores the flag.
+
+```sh
+printf 'nebelung\tthe palette\tpaintpalette\npounce\tthe launcher\tbolt\n' \
+  | pounce --grid -p "Which repo?"
+```
 
 `--dial` puts a small chip in the action bar the user steps through without
 leaving the box — "which model", "public or private" — so one step can carry a

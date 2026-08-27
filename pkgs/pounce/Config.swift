@@ -154,6 +154,24 @@ enum EmojiLayout {
     static var gridHeight: CGFloat { pt(320) }
 }
 
+// Geometry for a `--grid` step: the caller's own rows, laid out as cards two to
+// a row instead of as a list. `columns` is a count, not a size — exactly like
+// EmojiLayout's: the window keeps the launcher's width and the cards get wider
+// with it, so a grid step and a list step are the same panel in two shapes.
+// `maxVisibleRows` is deliberately half `LayoutMetrics.standard.maxVisibleItems`
+// — eight things on screen either way, so switching a step to a grid changes
+// how much you can SCAN, never how much you can see.
+enum GridLayout {
+    static let columns = 2
+    static var cardHeight: CGFloat { pt(76) }
+    static var spacing: CGFloat { pt(10) }
+    // The gutter either side of the whole grid. Wider than a list row's own
+    // padding because a card already carries its inner padding; this is the
+    // margin between the outermost cards and the window edge.
+    static var hPadding: CGFloat { pt(14) }
+    static let maxVisibleRows = 4
+}
+
 // Geometry for the recent-screenshots two-pane window. Mirrors the clipboard
 // history layout (list on the left, large preview on the right).
 enum ScreenshotLayout {

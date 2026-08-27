@@ -44,12 +44,16 @@ struct SelectionGlide: View {
     // cannot be conjured per row, so a row rendered outside a list that owns one
     // has to degrade rather than fail.
     var namespace: Namespace.ID? = nil
-    // The shape, for the one caller that isn't a full-width row: the Stage's
+    // The shape, for the callers that aren't a full-width row: the Stage's
     // tiles are square-ish and butt against their neighbours, so they take a
-    // rounder corner and no inset. Both default to what every row has always
-    // drawn, so a still frame of the list is unchanged. They are NOT
-    // interpolated between zones — SwiftUI animates the frame of the matched
-    // pair, and the shape is whatever the arriving view says it is.
+    // rounder corner and no inset, and a grid CARD is already an inset shape
+    // with gutters around it, so it passes 0 and the highlight fills the card
+    // exactly. Both default to what every row has always drawn, so a still
+    // frame of the list is unchanged. They are NOT interpolated between zones —
+    // SwiftUI animates the frame of the matched pair, and the shape is whatever
+    // the arriving view says it is. Same shape, same fill, same spring either
+    // way — the point of one glide is that the thing moving between a row and a
+    // card is ONE view, so only its frame differs.
     var cornerRadius: CGFloat? = nil
     var inset: CGFloat? = nil
 
@@ -71,6 +75,98 @@ struct SelectionGlide: View {
             }
         }
         .padding(.horizontal, inset ?? pt(8))
+    }
+}
+
+// MARK: - GridCard
+
+// One row of a `--grid` step, drawn as a card rather than a band.
+//
+// Same PounceItem, same commit path, same selection body — a grid is a shape a
+// step asks for, not a second kind of item. What changes is what the shape is
+// FOR: a list reads top-to-bottom and is right for names you scan (files,
+// commands), while a two-column grid gives each row a rectangle with room for
+// an icon and two lines of description, which is what a step offering THINGS —
+// projects, machines, images — needs. Height is fixed (GridLayout.cardHeight)
+// so the window's arithmetic resize stays arithmetic.
+struct GridCard: View {
+    static var height: CGFloat { GridLayout.cardHeight }
+
+    let item: PounceItem
+    let isSelected: Bool
+    var glide: Namespace.ID? = nil
+    var selection: Int = 0
+    var glides: Bool = true
+
+    var accent: Color { isSelected ? Theme.mauve : Theme.blue }
+
+    // Same prefix grammar as ItemRow: "app:"/"file:" mean a real Finder icon
+    // for that path.
+    private var iconFilePath: String? {
+        guard let icon = item.icon else { return nil }
+        if icon.hasPrefix("app:") { return String(icon.dropFirst(4)) }
+        if icon.hasPrefix("file:") { return String(icon.dropFirst(5)) }
+        return nil
+    }
+
+    var body: some View {
+        ZStack {
+            // The card at rest. It stays under the highlight rather than
+            // swapping with it, so a selected card reads as the same card lit —
+            // and so the glide has an unchanging backdrop to travel over.
+            RoundedRectangle(cornerRadius: pt(10))
+                .fill(Theme.surface0.opacity(0.5))
+
+            SelectionGlide(isSelected: isSelected, namespace: glide, inset: 0)
+
+            HStack(spacing: pt(12)) {
+                Group {
+                    if let path = iconFilePath {
+                        Image(nsImage: AppIconCache.shared.icon(for: path))
+                            .resizable().aspectRatio(contentMode: .fit)
+                            .frame(width: pt(24), height: pt(24))
+                    } else if let iconName = item.icon {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: pt(8))
+                                .fill(accent.opacity(0.18))
+                            Image(systemName: iconName)
+                                .font(.system(size: pt(16), weight: .semibold))
+                                .foregroundColor(accent)
+                        }
+                    }
+                }
+                .frame(width: pt(34), height: pt(34))
+
+                VStack(alignment: .leading, spacing: pt(3)) {
+                    Text(item.title)
+                        .foregroundColor(Theme.text)
+                        .font(.system(size: pt(15), weight: .medium, design: .rounded))
+                        .lineLimit(1)
+                    if let subtitle = item.subtitle {
+                        // Two lines, unlike a list row's one: a card is half the
+                        // window wide and the description is the reason to use
+                        // a card at all.
+                        Text(subtitle)
+                            .foregroundColor(Theme.subtext0)
+                            .font(.system(size: pt(12), design: .rounded))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, pt(12))
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        // Keyed on the SELECTION for the same reason ItemRow is: the highlight
+        // leaving one card and arriving at another are two halves of one move
+        // and have to animate in one transaction. `glides` withholds the
+        // animation when the LIST moved under the selection rather than the
+        // user moving it. See ContentView.glideArmed.
+        .animation(glides ? Motion.spring : nil, value: selection)
     }
 }
 
