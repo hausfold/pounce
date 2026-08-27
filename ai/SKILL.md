@@ -48,9 +48,11 @@ leaving the box — "which model", "public or private" — so one step can carry
 side-question that doesn't deserve its own picker. When you passed it, the
 output grows **one extra middle field** with the committed values:
 `enter⇥model=opus⇥<line-or-text>`. Only `--dial` callers see three fields, so
-nothing existing breaks — but *you* must split accordingly. Each dial re-opens
-on the value the user committed last time, remembered per option-set; the
-first option is the default until then.
+nothing existing breaks — but *you* must split accordingly, and tolerate the
+middle field being absent (a resident daemon older than this flag ignores it
+and answers in the two-field shape). Each dial re-opens on the value the user
+committed last time, remembered per option-set; the first option is the
+default until then.
 
 The picker works whether or not the daemon is running — it falls back to
 drawing the window itself.

@@ -23,16 +23,26 @@ struct Dial {
     // segment (no `=`, empty name, fewer than two distinct options) is dropped
     // rather than failing the invocation — the step still opens, it just
     // offers less. Which is also why option values must not contain `;` `=`
-    // `|` or tabs: they are the grammar, not data.
+    // `|` or tabs: they are the grammar, not data. Tabs and newlines are
+    // stripped HERE, in the one parser every path shares, because the commit
+    // string and the socket protocol are both tab-and-line delimited — a tab
+    // that survived into an option would corrupt every field after it, and
+    // sanitizing only at the socket writer missed the no-daemon fallback.
     static func parse(_ spec: String) -> [Dial] {
-        spec.split(separator: ";").compactMap { seg in
+        let clean = spec
+            .replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+        return clean.split(separator: ";").compactMap { seg in
             let kv = seg.split(separator: "=", maxSplits: 1).map(String.init)
             guard kv.count == 2 else { return nil }
             let name = kv[0].trimmingCharacters(in: .whitespaces)
+            var seen = Set<String>()
+            // Deduped keeping first-seen order: "a|a|b" offers a, b — cycling
+            // must never visit the same value twice.
             let opts = kv[1].split(separator: "|")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-            guard !name.isEmpty, Set(opts).count >= 2 else { return nil }
+                .filter { !$0.isEmpty && seen.insert($0).inserted }
+            guard !name.isEmpty, opts.count >= 2 else { return nil }
             return Dial(name: name, options: opts)
         }
     }

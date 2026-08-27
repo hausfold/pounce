@@ -35,10 +35,11 @@ enum Main {
         --dial <spec>    an in-place option cycler the user steps with ⇥ / ⇧⇥
                          while the palette is up: "model=sonnet|opus|haiku".
                          Repeatable (or `;`-join several; ⌃⇥ moves between
-                         them). The step's output grows ONE extra middle field
-                         with the committed values — "<action>\\t<name=value;…>
-                         \\t<line-or-text>" — and each dial re-opens on the
-                         value it committed last time.
+                         them). The step's output grows ONE extra middle
+                         field with the committed values, becoming
+                         "<action>\\t<name=value;…>\\t<line-or-text>",
+                         and each dial re-opens on the value it committed
+                         last time.
 
     modes:
       --launcher             apps + commands palette (what the hotkey opens)

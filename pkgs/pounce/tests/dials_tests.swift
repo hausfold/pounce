@@ -33,6 +33,10 @@ func runDialsTests() -> Int {
     expect(Dial.parse("=a|b").isEmpty, "an unnamed dial drops")
     expect(Dial.parse("model=solo").isEmpty, "a single option is not a dial")
     expect(Dial.parse("model=a|a").isEmpty, "two identical options are one option")
+    expect(Dial.parse("model=a|a|b").first?.options == ["a", "b"],
+           "duplicate options dedupe keeping first-seen order")
+    expect(Dial.parse("model=a\t1|b\n2").first?.options == ["a 1", "b 2"],
+           "tabs and newlines are stripped — they are protocol, not data")
     expect(Dial.parse("model=a|b;junk;mode=x|y").count == 2,
            "a malformed middle segment doesn't take its neighbours with it")
 
