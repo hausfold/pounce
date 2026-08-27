@@ -404,8 +404,19 @@ struct ContentView: View {
             else { state.cancel() }
             return
         }
-        guard selectedIndex < visible.count else { state.cancel(); return }
-        state.commit(visible[selectedIndex], action: action)
+        // A stale index is NOT a dismissal. `visible` is derived from the query
+        // and is therefore always current, while `selectedIndex` is @State reset
+        // by .onChange(of: state.query) on the next view update — so a keystroke
+        // that narrows the list, followed a few milliseconds later by a Return,
+        // can arrive with the index still pointing past the end of the shorter
+        // list. Cancelling there closed the palette outright with nothing
+        // committed: type to filter a row far down a menu, commit immediately,
+        // and one time in five the window simply vanished (the repo step of
+        // haus's Spawn Agent is where it showed). Commit the first row instead —
+        // it is what the pending reset was about to select, and it is the row
+        // that draws highlighted a frame later.
+        let index = selectedIndex < visible.count ? selectedIndex : 0
+        state.commit(visible[index], action: action)
     }
 }
 
