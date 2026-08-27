@@ -39,7 +39,7 @@ struct ContentView: View {
     var maxVisibleItems: Int {
         let screen = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.height ?? 900
         let chrome = state.metrics.headerHeight + Self.actionBarHeight
-            + Self.dividerHeight * 2 + Self.listVPadding * 2
+            + Self.dividerHeight * 2 + Self.listVPadding * 2 + stageHeight
         let room = screen * (1 - state.metrics.topInsetFraction) - chrome
         let fits = Int(floor(room / max(rowHeight, 1)))
         return max(3, min(state.metrics.maxVisibleItems, fits))
@@ -117,6 +117,38 @@ struct ContentView: View {
 
     var visible: [PounceItem] { showList ? filtered : [] }
 
+    // MARK: - The Stage (empty query only — see Stage.swift)
+
+    // How many of `visible`'s LEADING rows are drawn as tiles instead of list
+    // rows. Zero everywhere the Stage isn't on: a typed query, a utility menu,
+    // compact mode, `stage.enabled: false` — so every expression below reduces
+    // to exactly today's launcher by arithmetic rather than by a second branch.
+    //
+    // Crucially the strip is a SLICE of the one array, not a second list:
+    // `selectedIndex` indexes across both zones, so ⏎, the action bar, frecency,
+    // the `items` overrides and the pinned update row all keep working with no
+    // second implementation to keep in step.
+    var tileCount: Int {
+        guard queryIsEmpty, showList, state.stageTiles > 0 else { return 0 }
+        return min(state.stageTiles, visible.count)
+    }
+
+    var tileItems: [PounceItem] { Array(visible.prefix(tileCount)) }
+    var listItems: [PounceItem] { Array(visible.dropFirst(tileCount)) }
+
+    // The glance line's contents, or nil for no line. Snapshotted per summon in
+    // DaemonState.load; gated on the empty query here, so the first character
+    // typed takes the whole zone away.
+    var glance: StageGlance? { queryIsEmpty && showList ? state.stageGlance : nil }
+
+    // What the two Stage zones add above the list. Counted by `contentHeight`
+    // (which sizes the window arithmetically) and by `maxVisibleItems` (which
+    // decides how many rows still fit on the screen underneath them).
+    var stageHeight: CGFloat {
+        (glance != nil ? StageLayout.glanceHeight : 0)
+            + (tileCount > 0 ? StageLayout.stripHeight : 0)
+    }
+
     var selectedItem: PounceItem? {
         guard selectedIndex < visible.count else { return nil }
         return visible[selectedIndex]
@@ -139,12 +171,15 @@ struct ContentView: View {
     var renderRows: [RenderRow] {
         var rows: [RenderRow] = []
         var lastGroup: String?? = .none
-        for (i, item) in visible.enumerated() {
+        // The list is what's LEFT after the strip took its prefix; the index
+        // carried in each row is still the one into `visible`, which is what
+        // keeps a click and the keyboard talking about the same row.
+        for (i, item) in listItems.enumerated() {
             if hasGroups, item.group != (lastGroup ?? nil) {
                 if let g = item.group { rows.append(.header(g)) }
                 lastGroup = .some(item.group)
             }
-            rows.append(.item(item, i))
+            rows.append(.item(item, i + tileCount))
         }
         return rows
     }
@@ -154,7 +189,7 @@ struct ContentView: View {
     var hasAnswer: Bool { visible.first?.kind == .answer }
 
     var listHeight: CGFloat {
-        let cap = min(visible.count, maxVisibleItems)
+        let cap = min(listItems.count, maxVisibleItems)
         let answerExtra = hasAnswer && cap > 0 ? AnswerRow.height - rowHeight : 0
         guard hasGroups else { return CGFloat(cap) * rowHeight + answerExtra }
         // Fit `cap` items plus whatever headers precede them in the window.
@@ -254,7 +289,9 @@ struct ContentView: View {
     var contentHeight: CGFloat {
         var h = headerHeight
         if !visible.isEmpty {
-            h += Self.dividerHeight + listHeight + Self.listVPadding * 2
+            // The Stage's zones sit between that divider and the list, and are
+            // zero-height when it's off — see stageHeight.
+            h += Self.dividerHeight + stageHeight + listHeight + Self.listVPadding * 2
             if selectedItem != nil { h += Self.dividerHeight + Self.actionBarHeight }
         } else if showFreeTextBar {
             h += Self.dividerHeight + Self.actionBarHeight
@@ -325,6 +362,7 @@ struct ContentView: View {
                             state: state,
                             onSubmit: { action in select(action: action) },
                             onRevealDown: { revealed = true },
+                            stageTiles: tileCount,
                             wraps: true,
                             calculatedHeight: queryFieldHeight,
                             preferredWidth: queryWidth
@@ -344,6 +382,17 @@ struct ContentView: View {
 
             if !visible.isEmpty {
                 Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
+
+                // The Stage. Both zones are plain views with fixed heights that
+                // `contentHeight` counts — no GeometryReader, no measurement, so
+                // the window still sizes itself in one arithmetic step.
+                if let glance { GlanceLine(glance: glance) }
+
+                if tileCount > 0 {
+                    StageStrip(items: tileItems, selectedIndex: selectedIndex,
+                               glide: glide, glides: glideArmed,
+                               onPick: { i in selectedIndex = i; select(action: "enter") })
+                }
 
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -392,7 +441,11 @@ struct ContentView: View {
                     }
                     .frame(height: listHeight + Self.listVPadding * 2)
                     .onChange(of: selectedIndex) {
-                        if selectedIndex < visible.count { proxy.scrollTo(visible[selectedIndex].id) }
+                        // A selection on the strip has no row in this ScrollView
+                        // to scroll to — it is above it, always on screen.
+                        if selectedIndex >= tileCount, selectedIndex < visible.count {
+                            proxy.scrollTo(visible[selectedIndex].id)
+                        }
                     }
                 }
 

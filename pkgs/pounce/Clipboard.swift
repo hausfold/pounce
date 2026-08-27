@@ -146,6 +146,12 @@ final class ClipboardStore {
 
     func entries() -> [ClipEntry] { queue.sync { entriesCache } }
 
+    // The most recent entry, without copying the whole history out. The Stage's
+    // glance line reads this once per summon (see StageGlance.now) — the point
+    // of a distinct accessor is that it is O(1) and touches no blob on disk:
+    // `preview` is already in the index.
+    var head: ClipEntry? { queue.sync { entriesCache.first } }
+
     func text(for entry: ClipEntry) -> String {
         (try? String(contentsOf: blobURL(entry, ext: "txt"), encoding: .utf8)) ?? entry.preview
     }

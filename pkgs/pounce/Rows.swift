@@ -44,11 +44,19 @@ struct SelectionGlide: View {
     // cannot be conjured per row, so a row rendered outside a list that owns one
     // has to degrade rather than fail.
     var namespace: Namespace.ID? = nil
+    // The shape, for the one caller that isn't a full-width row: the Stage's
+    // tiles are square-ish and butt against their neighbours, so they take a
+    // rounder corner and no inset. Both default to what every row has always
+    // drawn, so a still frame of the list is unchanged. They are NOT
+    // interpolated between zones — SwiftUI animates the frame of the matched
+    // pair, and the shape is whatever the arriving view says it is.
+    var cornerRadius: CGFloat? = nil
+    var inset: CGFloat? = nil
 
     static let id = "pounce.selection"
 
     private var shape: some View {
-        RoundedRectangle(cornerRadius: pt(10))
+        RoundedRectangle(cornerRadius: cornerRadius ?? pt(10))
             .fill(Theme.mauve.opacity(0.20))
     }
 
@@ -62,7 +70,7 @@ struct SelectionGlide: View {
                 }
             }
         }
-        .padding(.horizontal, pt(8))
+        .padding(.horizontal, inset ?? pt(8))
     }
 }
 
@@ -398,6 +406,10 @@ struct CustomTextField: NSViewRepresentable {
     var onRevealDown: () -> Void = {}
     // >1 turns on 2D grid navigation (emoji): ↑↓ move by a row, ←→ by one cell.
     var gridColumns: Int = 1
+    // How many of the host's LEADING items are drawn as the Stage's tile strip
+    // rather than as list rows (ContentView.tileCount). 0 — every caller but the
+    // staged launcher — leaves the arrow keys exactly as they were.
+    var stageTiles: Int = 0
     // Opt-in, and only the launcher opts in: wrapping is only safe where the host
     // grows its header to match (LauncherView.queryLineCount). The clipboard,
     // emoji, screenshot, file-search and cheatsheet headers are fixed-height
@@ -560,8 +572,25 @@ struct CustomTextField: NSViewRepresentable {
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
             let cols = max(1, parent.gridColumns)
+            // The Stage's strip, as an index range. The selection is ONE index
+            // across both zones (see ContentView.tileCount), so the only thing
+            // the keys need to know is where the strip ends: below it ↑↓ walk
+            // rows as they always have, and inside it ← → walk tiles instead.
+            //
+            // ↑ off the first list row is left to the ordinary -1, which lands
+            // on the LAST tile — the strip runs left to right in the same rank
+            // order the list continues, so the rightmost tile is genuinely the
+            // item above list row 0. ↓ can't be the mirror of that: +1 inside
+            // the strip would walk sideways, so it jumps to the list.
+            let tiles = max(0, parent.stageTiles)
+            let onStrip = tiles > 0 && parent.selectedIndex < tiles
             switch sel {
             case #selector(NSResponder.moveDown(_:)):
+                if onStrip {
+                    // Nothing below a strip that is the whole list.
+                    if tiles < itemCount { parent.selectedIndex = tiles }
+                    return true
+                }
                 if itemCount > 0 {
                     if parent.selectedIndex + cols < itemCount { parent.selectedIndex += cols }
                     return true
@@ -571,11 +600,22 @@ struct CustomTextField: NSViewRepresentable {
                 }
                 return false
             case #selector(NSResponder.moveUp(_:)):
+                if onStrip { return true }       // the strip is the top row
                 if itemCount > 0 {
                     if parent.selectedIndex - cols >= 0 { parent.selectedIndex -= cols }
                     return true
                 }
                 return false
+            // ← → walk the strip. Safe to take the keys from the field editor
+            // here and nowhere else: a strip only exists on an EMPTY query, so
+            // there is no text for the caret to move through. Off the strip they
+            // stay AppKit's, which is what keeps ⌥← / ⇧→ editing a typed query.
+            case #selector(NSResponder.moveRight(_:)) where onStrip:
+                if parent.selectedIndex < tiles - 1 { parent.selectedIndex += 1 }
+                return true
+            case #selector(NSResponder.moveLeft(_:)) where onStrip:
+                if parent.selectedIndex > 0 { parent.selectedIndex -= 1 }
+                return true
             case #selector(NSResponder.moveRight(_:)) where cols > 1:
                 if parent.selectedIndex < itemCount - 1 { parent.selectedIndex += 1 }
                 return true
