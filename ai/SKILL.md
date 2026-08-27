@@ -63,6 +63,7 @@ drawing the window itself.
 | what settings exist, with defaults? | `pounce config print` |
 | let the user change a setting themselves | `pounce settings` opens the Settings window |
 | is the hotkey actually working? | `pounce doctor` |
+| **doctor looks fine and it's still broken** | `pounce report --print` — the doctor report plus version, macOS and install cohort, ready to paste into an issue (drop `--print` to open the form) |
 | everything, exhaustively | `pounce --help` |
 
 `pounce config print` is the honest answer to "what can I configure?" — it

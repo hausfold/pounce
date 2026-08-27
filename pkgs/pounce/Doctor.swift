@@ -29,19 +29,34 @@ enum DoctorMode {
         let bindings: [String]
     }
 
-    static func run() {
+    /// `pounce doctor` — print the report, exit 0 when healthy.
+    static func run() -> Never {
+        let report = report()
+        print(report.text)
+        exit(report.healthy ? 0 : 1)
+    }
+
+    /// The same report, as a string.
+    ///
+    /// Split out for `pounce report`, which puts it straight into the bug
+    /// form's diagnostics field. The form asks the reporter to run `pounce
+    /// doctor` and paste the output; this is that, without the two steps where
+    /// a report gets lost — and without the paste that arrives truncated
+    /// because a terminal scrolled.
+    static func report() -> (text: String, healthy: Bool) {
         let settings = Settings.load()
         let status = queryDaemon()
         let combo = status?.hotkeyCombo
             ?? "\(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key)"
 
+        var out: [String] = []
         var lines: [String] = []
         var problems: [String] = []
         func ok(_ s: String)   { lines.append("  \u{2714} \(s)") }
         func warn(_ s: String) { lines.append("  \u{26A0} \(s)") }
         func bad(_ s: String)  { lines.append("  \u{2718} \(s)") }
 
-        print("pounce doctor\n")
+        out.append("pounce doctor\n")
 
         // Daemon + version.
         if let status {
@@ -284,16 +299,16 @@ enum DoctorMode {
                          + "tool's own settings for whatever is bound to \(combo))")
         }
 
-        print(lines.joined(separator: "\n"))
-        print("")
+        out.append(lines.joined(separator: "\n"))
+        out.append("")
 
         if problems.isEmpty {
-            print("\u{25B6} Healthy. \(combo) reaches pounce's fast in-process path.")
-            exit(0)
+            out.append("\u{25B6} Healthy. \(combo) reaches pounce's fast in-process path.")
+            return (out.joined(separator: "\n"), true)
         }
-        print("\u{25B6} Likely issue\(problems.count == 1 ? "" : "s"):")
-        for p in problems { print("  \u{2022} \(p)") }
-        exit(1)
+        out.append("\u{25B6} Likely issue\(problems.count == 1 ? "" : "s"):")
+        for p in problems { out.append("  \u{2022} \(p)") }
+        return (out.joined(separator: "\n"), false)
     }
 
     // MARK: Daemon query

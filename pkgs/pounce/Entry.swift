@@ -72,6 +72,10 @@ enum Main {
                                 in-process hotkey actually firing, or is an
                                 external tool (skhd/AeroSpace/Raycast) or a macOS
                                 shortcut shadowing it
+      report [--print]          file a bug: opens pounce's issue form with the
+                                doctor report, version, macOS and install
+                                already in it. --print writes the block and the
+                                URL to stdout and opens nothing
 
     focus (hush):
       focus status              print on/off from the DoNotDisturb DB
@@ -134,6 +138,10 @@ enum Main {
             // Positional, like `focus`: a health check for the hotkey path that
             // never opens the palette.
             DoctorMode.run()
+        } else if args.count >= 2 && args[1] == "report" {
+            // Positional, like `doctor` — and next to it on purpose: this is
+            // what you run when doctor's answer is "that all looks fine".
+            ReportMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "run" {
             // Positional, like `doctor` and `focus`: run one item by its key
             // ("cmd:emoji", "mode:clipboard", "app:/Applications/Foo.app").
@@ -205,6 +213,59 @@ enum Main {
         } else {
             ClientMode.run()
         }
+    }
+}
+
+// MARK: - `pounce report`
+
+/// The bug-report door's command-line half, and the one place the whole family
+/// keeps its browser call.
+///
+/// It always PRINTS the block, then opens the form — the print is not a
+/// courtesy. Over ssh, from a launchd job, or inside an agent lane there is no
+/// browser to hand the URL to, and a reporter who can read the lines can paste
+/// them into `gh issue create` or into the form by hand. `--print` is that
+/// alone.
+///
+/// Never forwarded to the daemon, unlike every window verb: the palette and the
+/// settings window have to belong to a process that outlives the command, and
+/// this one belongs to a browser that already does. Forwarding it would also
+/// report the DAEMON's environment, which on a stale daemon is a different
+/// version of pounce from the one you just typed.
+enum ReportMode {
+    static func run(args: [String]) -> Never {
+        let quiet = args.contains("--print") || args.contains("-n")
+        for flag in args where !["--print", "-n"].contains(flag) {
+            FileHandle.standardError.write(Data("pounce: report takes no \(flag)\n".utf8))
+            exit(1)
+        }
+
+        let doctor = DoctorMode.report()
+        let block = BugReport.diagnostics(
+            version: pounceVersion,
+            operatingSystem: BugReport.currentOperatingSystem,
+            model: BugReport.currentModel,
+            install: BugReport.describe(
+                InstallKind.detect(
+                    bundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path,
+                    home: FileManager.default.homeDirectoryForCurrentUser.path
+                )
+            ),
+            doctor: doctor.text,
+            home: FileManager.default.homeDirectoryForCurrentUser.path
+        )
+        let destination = BugReport.destination(diagnostics: block)
+
+        print(block)
+        print("")
+        print(destination.url.absoluteString)
+        if destination.overflow != nil {
+            print("")
+            print("Too long to prefill — paste the block above into the form's diagnostics field.")
+        }
+        guard !quiet else { exit(0) }
+        NSWorkspace.shared.open(destination.url)
+        exit(0)
     }
 }
 

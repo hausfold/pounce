@@ -50,7 +50,9 @@ pounce --request-accessibility   # approve the prompt, once
 
 macOS gives ⌘Space to Spotlight — free it in **System Settings → Keyboard →
 Keyboard Shortcuts → Spotlight**, or pick another combo in `config.json`. If a
-key ever does nothing, `pounce doctor` names whatever ate it.
+key ever does nothing, `pounce doctor` names whatever ate it. If it doesn't,
+`pounce report` opens a bug form with that report already pasted into it — there
+is no telemetry in pounce, so that form is the only way we find out.
 
 **No Homebrew?** Grab the DMG from the [latest
 release](https://github.com/hausfold/pounce/releases/latest), drag `Pounce.app`

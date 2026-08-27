@@ -883,6 +883,19 @@ silently from your side, so `doctor` reports what the daemon actually got:
 pounce doctor        # ✔ binding opt+e → cmd:emoji
 ```
 
+### When doctor says everything is fine
+
+`pounce report` opens pounce's bug form with doctor's whole report already in
+it, above a header naming the version, your macOS build, your Mac model and
+which of the four installs this copy is. `--print` writes the block and the URL
+to stdout and opens nothing — for a Mac you reached over ssh, or for pasting into
+`gh issue create`.
+
+The same door is in the palette (**Report Pounce Issue**) and in the Settings
+window's app menu. Your home directory is written back as `~` before the block
+goes anywhere; nothing is sent by opening the form, and **there is no telemetry
+in pounce**, which is why the door exists at all.
+
 ## The hotkey (near-instant open)
 
 When the daemon is running it registers `hotkey` in-process (Carbon

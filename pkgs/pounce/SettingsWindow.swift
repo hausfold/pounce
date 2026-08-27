@@ -128,6 +128,38 @@ final class PounceSettingsWindowController: NSObject, NSWindowDelegate {
 /// Installed once and left in place. It is only ever VISIBLE while the app is
 /// `.regular`, i.e. while the settings window is up; tearing it down again on
 /// close would buy nothing and risks doing it mid-tracking.
+/// Targets for menu items that aren't one of AppKit's own selectors.
+///
+/// A menu item with a nil target sends up the responder chain to NSApp and then
+/// to its delegate; neither answers `reportBug:`, and an unhandled selector
+/// leaves the row permanently greyed out with nothing said anywhere. So the row
+/// gets an explicit target, and this object is it — retained by
+/// `PounceMainMenu`, which is installed once and left in place.
+final class PounceMenuActions: NSObject {
+    static let shared = PounceMenuActions()
+
+    @objc func reportBug(_ sender: Any?) {
+        // Re-exec `pounce report` rather than calling ReportMode in place, for
+        // two reasons that both end badly in-process:
+        //
+        //   ReportMode exits when it's done, and this process is a live
+        //   settings window somebody is still using.
+        //
+        //   The block it builds includes the doctor report, which is a
+        //   round trip to the DAEMON's socket — and when Settings was opened
+        //   from the palette, this process IS that daemon. Asking yourself a
+        //   question over your own socket and waiting on the main thread for
+        //   the answer is a beachball with no visible cause.
+        //
+        // A separate process asks the daemon from outside, which is the
+        // supported direction, and nothing here waits for it.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        process.arguments = ["report"]
+        try? process.run()
+    }
+}
+
 enum PounceMainMenu {
     static func install() {
         guard NSApp.mainMenu == nil else { return }
@@ -137,6 +169,14 @@ enum PounceMainMenu {
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Pounce", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        // The only feedback channel pounce has — there is no telemetry in
+        // anything we ship. The palette carries the same door as a row (the
+        // Report Pounce Issue command) and the terminal as `pounce report`;
+        // this is the one for whoever came to Settings because something was
+        // wrong and found the setting wasn't the problem. All three end at the
+        // same prefilled form. See BugReport.swift.
+        appMenu.addItem(withTitle: "Report a Bug…", action: #selector(PounceMenuActions.reportBug(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Pounce", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
@@ -166,6 +206,12 @@ enum PounceMainMenu {
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
+
+        // The row above targets this explicitly; keep the object alive for as
+        // long as the menu is.
+        for item in appMenu.items where item.action == #selector(PounceMenuActions.reportBug(_:)) {
+            item.target = PounceMenuActions.shared
+        }
 
         NSApp.mainMenu = main
         // Named so macOS puts its own items (Enter Full Screen, the window
