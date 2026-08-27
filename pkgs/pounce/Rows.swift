@@ -77,6 +77,10 @@ struct ItemRow: View {
     // keeps exactly today's behaviour.
     var glide: Namespace.ID? = nil
     var selection: Int = 0
+    // False while the selection is moving because the LIST changed under it
+    // rather than because the user navigated — see ContentView.glideArmed. The
+    // move still happens, it just cuts.
+    var glides: Bool = true
 
     // Both "app:<path>" (launcher) and "file:<path>" (Find Files) render the
     // real Finder icon for that path via NSWorkspace; the prefix just marks it.
@@ -125,7 +129,15 @@ struct ItemRow: View {
         // or matchedGeometryEffect has nothing to interpolate between. It also
         // brings the icon's accent tint along, so the row lights up with the
         // highlight rather than a frame ahead of it.
-        .animation(Motion.spring, value: selection)
+        //
+        // `glides` is what keeps that honest when the list itself moved: a
+        // keystroke resets the selection to row 0 from wherever it was, and the
+        // row it is leaving may be scrolled out of the viewport or gone from the
+        // results altogether — a matched-geometry pair whose source frame is
+        // off-screen (or stale, in a LazyVStack that culled it) swoops in from
+        // outside the panel. The move is real either way; only the animation is
+        // withheld. See ContentView.glideArmed.
+        .animation(glides ? Motion.spring : nil, value: selection)
     }
 }
 
@@ -141,6 +153,7 @@ struct AnswerRow: View {
     let isSelected: Bool
     var glide: Namespace.ID? = nil
     var selection: Int = 0
+    var glides: Bool = true
 
     var accent: Color { isSelected ? Theme.mauve : Theme.blue }
 
@@ -181,7 +194,15 @@ struct AnswerRow: View {
         // or matchedGeometryEffect has nothing to interpolate between. It also
         // brings the icon's accent tint along, so the row lights up with the
         // highlight rather than a frame ahead of it.
-        .animation(Motion.spring, value: selection)
+        //
+        // `glides` is what keeps that honest when the list itself moved: a
+        // keystroke resets the selection to row 0 from wherever it was, and the
+        // row it is leaving may be scrolled out of the viewport or gone from the
+        // results altogether — a matched-geometry pair whose source frame is
+        // off-screen (or stale, in a LazyVStack that culled it) swoops in from
+        // outside the panel. The move is real either way; only the animation is
+        // withheld. See ContentView.glideArmed.
+        .animation(glides ? Motion.spring : nil, value: selection)
     }
 }
 
@@ -315,13 +336,20 @@ struct KeyCap: View {
             .onChange(of: isPressed) { blink() }
     }
 
-    // Lit is set in a bare transaction (it SNAPS on — a key going down has no
-    // ease-in) and released after a hold, from a later runloop turn. Both halves
-    // in one turn would coalesce into a single update and the lit frame would
-    // never be drawn at all.
+    // Lit SNAPS on — a key going down has no ease-in — and is released after a
+    // hold, from a later runloop turn: both halves in one turn would coalesce
+    // into a single update and the lit frame would never be drawn at all.
+    //
+    // The snap is enforced, not assumed. This runs from onChange, so it
+    // inherits whatever transaction published `firedAction`; nothing wraps a
+    // commit in withAnimation today, but that is a fact about the callers, not
+    // a property of this view, and the day one does the blink would fade in
+    // instead of landing.
     private func blink() {
         guard isPressed, !Motion.reduceMotion else { return }
-        lit = true
+        var snap = Transaction()
+        snap.disablesAnimations = true
+        withTransaction(snap) { lit = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + Motion.pressHold) {
             withAnimation(Motion.spring) { lit = false }
         }

@@ -11,6 +11,22 @@ struct ContentView: View {
     // inside one namespace, and the two views here are the highlight leaving
     // the old row and the one arriving at the new. See SelectionGlide.
     @Namespace private var glide
+    // Whether the NEXT selection move is one the user made (↑ ↓, a click) or one
+    // the list made under them. Only the first glides: a keystroke resets the
+    // selection to row 0 from wherever it was, and matched geometry given a
+    // source that scrolled out of the viewport — or that the LazyVStack culled —
+    // animates in from outside the panel. Disarmed in the query hook below,
+    // re-armed the moment the selection settles, so an arrow press right after
+    // typing glides normally.
+    @State private var glideArmed = true
+    // Type-settle's own arming, and a narrower question: is this subtree showing
+    // a list the user has been typing into, or one that was just swapped in
+    // under it? A step swap (reset() → new requestID) rebuilds everything below
+    // `.id(state.requestID)`, so SwiftUI has no previous value to animate from
+    // and the settle cannot fire anyway — this makes that structural instead of
+    // incidental, because the whole point of present()/resizeToFit is that a
+    // step swap is ONE CLEAN CUT and never a crossfade.
+    @State private var settleArmed = false
 
     var rowHeight: CGFloat { state.metrics.rowHeight }
 
@@ -281,6 +297,8 @@ struct ContentView: View {
         .onReceive(state.$requestID) { _ in
             selectedIndex = 0
             revealed = false
+            settleArmed = false
+            glideArmed = true
         }
     }
 
@@ -340,10 +358,12 @@ struct ContentView: View {
                                     Group {
                                         if item.kind == .answer {
                                             AnswerRow(item: item, isSelected: i == selectedIndex,
-                                                      glide: glide, selection: selectedIndex)
+                                                      glide: glide, selection: selectedIndex,
+                                                      glides: glideArmed)
                                         } else {
                                             ItemRow(item: item, isSelected: i == selectedIndex,
-                                                    glide: glide, selection: selectedIndex)
+                                                    glide: glide, selection: selectedIndex,
+                                                    glides: glideArmed)
                                         }
                                     }
                                     .frame(height: item.kind == .answer ? AnswerRow.height : rowHeight)
@@ -368,7 +388,7 @@ struct ContentView: View {
                         // ScrollView's frame below is outside this modifier, so
                         // both still snap; rows on their way out are clipped by a
                         // viewport that has already reached its new size.
-                        .animation(Motion.spring, value: state.query)
+                        .animation(settleArmed ? Motion.spring : nil, value: state.query)
                     }
                     .frame(height: listHeight + Self.listVPadding * 2)
                     .onChange(of: selectedIndex) {
@@ -404,16 +424,38 @@ struct ContentView: View {
         // the header itself changes height now, and typing past the end of a line
         // with the same (or no) results showing is exactly the case a
         // visible.count hook cannot see.
-        .onChange(of: state.query) { selectedIndex = 0; revealed = false; requestResize() }
+        // Disarm the glide for exactly the update this keystroke causes: the
+        // selection is about to jump to row 0 from a row the new results may not
+        // even contain. `.animation(_:value:)` reads its animation at the moment
+        // the value changes, so writing the flag here — in the same handler that
+        // moves the index — is what makes the move land unanimated.
+        .onChange(of: state.query) {
+            glideArmed = false
+            selectedIndex = 0
+            revealed = false
+            requestResize()
+        }
+        // …and re-arm as soon as the selection has settled, which is the update
+        // right after the one above. Nothing visible changes on this pass; it
+        // just means the next ↑/↓ glides.
+        .onChange(of: selectedIndex) { glideArmed = true }
         .onChange(of: visible.count) { requestResize() }
         .onChange(of: renderRows.count) { requestResize() }
         // The answer card can appear/vanish while the row COUNT stays equal
         // (its slot swaps with a match) — that still changes the height.
         .onChange(of: hasAnswer) { requestResize() }
-        .onChange(of: state.requestID) { selectedIndex = 0; revealed = false; requestResize() }
+        .onChange(of: state.requestID) {
+            settleArmed = false
+            selectedIndex = 0
+            revealed = false
+            requestResize()
+        }
         // Seed the window with its arithmetic height before AppKit's first
-        // fitting-size pass installs the multiline field.
-        .onAppear { requestResize() }
+        // fitting-size pass installs the multiline field. This fires per REQUEST
+        // (the subtree above carries `.id(state.requestID)`), which is also what
+        // makes it the right place to arm the settle: the swap itself renders
+        // disarmed, and the first thing typed into the new step settles.
+        .onAppear { settleArmed = true; requestResize() }
     }
 
     func select(action: String) {
@@ -506,6 +548,10 @@ struct SkeletonRow: View {
     let delay: Double
     @State private var pulse = false
 
+    // Where the pulse rests. Brighter when it will never move, so a static
+    // skeleton doesn't read as a row that failed to load.
+    private var resting: Double { Motion.reduceMotion ? 0.6 : 0.3 }
+
     var body: some View {
         HStack(spacing: pt(14)) {
             RoundedRectangle(cornerRadius: pt(6))
@@ -517,8 +563,15 @@ struct SkeletonRow: View {
             Spacer()
         }
         .padding(.horizontal, pt(18))
-        .opacity(pulse ? 0.9 : 0.3)
+        .opacity(pulse ? 0.9 : resting)
         .onAppear {
+            // The one animation in pounce that ISN'T the shared spring, because
+            // it isn't a move — it's a "still working" signal, and a spring has
+            // no forever. It still answers to Reduce motion, and has to: an
+            // indefinitely repeating pulse is the exact thing that setting
+            // exists to stop. There it sits at a steady mid opacity instead,
+            // which still reads as placeholder rather than content.
+            guard !Motion.reduceMotion else { return }
             withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true).delay(delay)) {
                 pulse = true
             }

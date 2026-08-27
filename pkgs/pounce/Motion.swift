@@ -28,15 +28,41 @@ enum Motion {
         reduceMotion ? nil : .spring(response: response, dampingFraction: dampingFraction)
     }
 
-    // Read live on every use rather than cached at daemon start: the daemon
-    // outlives any number of trips to System Settings, and this is cheap
-    // (an AppKit property backed by a cached defaults read).
-    static var reduceMotion: Bool {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    }
+    // Cached, and refreshed from the notification — NOT read per use.
+    //
+    // `Motion.spring` is evaluated in every row's body, so a plain read of
+    // NSWorkspace's property would run once per row per render, on the
+    // keystroke path. It measures at ~5ns when its CFPreferences cache is warm,
+    // but that cache is invalidated process-wide by anything that touches
+    // preferences, and the read after that round-trips to cfprefsd — which is
+    // I/O, on the one code path this repo refuses to put I/O on. Cached, it is
+    // an ivar load and the question stops being interesting.
+    //
+    // Still LIVE, which is the reason for the observer rather than a one-shot
+    // snapshot: the daemon outlives any number of trips to System Settings, and
+    // a value frozen at launch would be wrong for the rest of the session.
+    static var reduceMotion: Bool { ReduceMotionWatcher.shared.value }
 
     // How long a pressed keycap holds its lit state before springing back —
     // long enough to be a blink you can see, short enough to finish inside the
     // 0.4s linger that precedes the window's fade (PounceUI.startLinger).
     static let pressHold: TimeInterval = 0.09
+}
+
+private final class ReduceMotionWatcher {
+    static let shared = ReduceMotionWatcher()
+    private(set) var value: Bool
+
+    // Built on first use (a Swift static is lazy and thread-safe), so a pounce
+    // invocation that never draws a window never registers anything. Both the
+    // initial read and every refresh happen on the main queue, which is also
+    // the only place `value` is read from — SwiftUI bodies.
+    private init() {
+        value = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil, queue: .main) { [weak self] _ in
+                self?.value = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            }
+    }
 }
