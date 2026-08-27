@@ -666,6 +666,14 @@ struct CustomTextField: NSViewRepresentable {
             parent.text = tf.stringValue
         }
 
+        // Is there text left for the caret to move over in that direction? A
+        // non-empty SELECTION counts: collapsing it is caret work too.
+        private func caretHasRoom(_ tv: NSTextView, forward: Bool) -> Bool {
+            let r = tv.selectedRange()
+            if r.length > 0 { return true }
+            return forward ? r.location < (tv.string as NSString).length : r.location > 0
+        }
+
         func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
             let cols = max(1, parent.gridColumns)
             // The Stage's strip, as an index range. The selection is ONE index
@@ -715,10 +723,20 @@ struct CustomTextField: NSViewRepresentable {
             case #selector(NSResponder.moveLeft(_:)) where onStrip:
                 if parent.selectedIndex > 0 { parent.selectedIndex -= 1 }
                 return true
+            // ←→ walk the grid — but in a field that can hold a PARAGRAPH they
+            // belong to the caret first, and only reach the selection at the
+            // text's edge. Escalation, the same shape Esc already uses below:
+            // the emoji picker's box is a single-line filter (`wraps == false`)
+            // and keeps today's behaviour, while the launcher's wrapping box —
+            // the one a `--grid` step draws into, which also carries --query's
+            // handed-back draft and ⇧↵ newlines — would otherwise leave a
+            // pre-filled paragraph with no arrow key that moves through it.
             case #selector(NSResponder.moveRight(_:)) where cols > 1:
+                if parent.wraps, caretHasRoom(textView, forward: true) { return false }
                 if parent.selectedIndex < itemCount - 1 { parent.selectedIndex += 1 }
                 return true
             case #selector(NSResponder.moveLeft(_:)) where cols > 1:
+                if parent.wraps, caretHasRoom(textView, forward: false) { return false }
                 if parent.selectedIndex > 0 { parent.selectedIndex -= 1 }
                 return true
             // Option+Return maps to insertNewlineIgnoringFieldEditor:, rather

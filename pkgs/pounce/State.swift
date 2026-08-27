@@ -125,7 +125,7 @@ final class DaemonState: ObservableObject {
     @Published var dials: [Dial] = []
     @Published var activeDial = 0
     // --grid: draw this step's rows as cards two to a row instead of as a list
-    // (ContentView.gridBody). A SHAPE the caller asked for and nothing else —
+    // (ContentView.gridScroll). A SHAPE the caller asked for and nothing else —
     // the items, the commit path and the printed result are the list step's,
     // byte for byte, so a caller switches a step between the two by adding or
     // removing one flag. Launcher-only in the sense that it applies to

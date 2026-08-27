@@ -41,10 +41,12 @@ enum Main {
                          and each dial re-opens on the value it committed
                          last time.
         --grid           lay the rows out as cards, two to a row, instead of
-                         as a list — ↑↓ move by a card row, ←→ by one card.
-                         For a step offering THINGS (projects, machines,
-                         images) rather than names you scan. Purely a shape:
-                         same stdin, same commit, same printed output.
+                         as a list — ↑↓ move by a card row, ←→ by one card
+                         (at the ends of the typed text; inside it they
+                         still move the caret). For a step offering THINGS
+                         (projects, machines, images) rather than names you
+                         scan. Purely a shape: same stdin, same commit, same
+                         printed output.
 
     modes:
       --launcher             apps + commands palette (what the hotkey opens)

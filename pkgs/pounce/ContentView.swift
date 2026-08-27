@@ -514,7 +514,6 @@ struct ContentView: View {
                             state: state,
                             onSubmit: { action in select(action: action) },
                             onRevealDown: { revealed = true },
-                            stageTiles: tileCount,
                             // The 2-D navigation the emoji picker already uses,
                             // pointed at this step's cards: ↑↓ move by a card
                             // ROW, ←→ by one card. 1 everywhere else, which is
@@ -522,6 +521,7 @@ struct ContentView: View {
                             // both at once: `--grid --launcher` drops the grid
                             // (State.configure), and only the launcher stages.
                             gridColumns: state.grid ? GridLayout.columns : 1,
+                            stageTiles: tileCount,
                             wraps: true,
                             calculatedHeight: queryFieldHeight,
                             preferredWidth: queryWidth

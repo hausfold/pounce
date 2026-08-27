@@ -42,7 +42,7 @@ the user saying no, not a reason to retry.
 | `--chain [keys]` | this commit feeds *another* pounce step — holds the window up instead of fading |
 | `--draft <key>` | keep typed text on dismissal, filed under `<key>` |
 | `--dial <spec>` | an option the user cycles in place with ⇥ / ⇧⇥: `"model=sonnet\|opus\|haiku"`. Repeatable. **Changes the output shape** — see below |
-| `--grid` | lay the rows out as cards, two to a row — ↑↓ move by a card row, ←→ by one card. Purely a shape; output is unchanged |
+| `--grid` | lay the rows out as cards, two to a row — ↑↓ move by a card row, ←→ by one card (at the ends of the typed text; inside it they still move the caret). Purely a shape; output is unchanged |
 
 `--grid` is for a step offering **things** rather than names — projects,
 machines, images, environments — where each option wants an icon and a line of
