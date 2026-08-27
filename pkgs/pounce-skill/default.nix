@@ -12,8 +12,8 @@
 # compiles Swift and bakes in a palette, and a sentence of prose has no business
 # invalidating that.
 #
-# `$out/<tool>/SKILL.md` is the family standard's §6 layout (the workshop's
-# notes/agent-surface.md): one nesting level, named for the skill, so a
+# `$out/<tool>/SKILL.md` is the family standard's compliant-tool layout (the workshop's
+# docs/agent-surface.md): one nesting level, named for the skill, so a
 # consumer links a directory that is already called the right thing and the
 # TOOL decides its skill's folder name rather than whoever installs it. haus's
 # own skill is flat, `$out/SKILL.md` — it predates the standard, and is the one
