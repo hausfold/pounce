@@ -41,6 +41,18 @@ the user saying no, not a reason to retry.
 | `--actions <spec>` | label the action bar — **only when there are no rows**: `"Spawn\|cmd:Screenshot\|opt:Drafts"` |
 | `--chain [keys]` | this commit feeds *another* pounce step — holds the window up instead of fading |
 | `--draft <key>` | keep typed text on dismissal, filed under `<key>` |
+| `--dial <spec>` | an option the user cycles in place with ⇥ / ⇧⇥: `"model=sonnet\|opus\|haiku"`. Repeatable. **Changes the output shape** — see below |
+
+`--dial` puts a small chip in the action bar the user steps through without
+leaving the box — "which model", "public or private" — so one step can carry a
+side-question that doesn't deserve its own picker. When you passed it, the
+output grows **one extra middle field** with the committed values:
+`enter⇥model=opus⇥<line-or-text>`. Only `--dial` callers see three fields, so
+nothing existing breaks — but *you* must split accordingly, and tolerate the
+middle field being absent (a resident daemon older than this flag ignores it
+and answers in the two-field shape). Each dial re-opens on the value the user
+committed last time, remembered per option-set; the first option is the
+default until then.
 
 The picker works whether or not the daemon is running — it falls back to
 drawing the window itself.
