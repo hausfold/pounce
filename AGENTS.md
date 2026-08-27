@@ -113,7 +113,11 @@ exit(0)` / `exit(1)`) and `ClientMode.runDirect` (the no-daemon fallback). The
 through `Window.swift`'s `resultSink`. The repo's own command scripts already
 depend on it — `pkgs/pounce-commands/commands/force-quit.sh` and
 `brew-services.sh` both document "action&lt;TAB&gt;raw_line" — so the skill is the
-third consumer, not the first.
+third consumer, not the first. The one sanctioned variation is `--dial`
+(`Dials.swift`): a step that declared dials gets its committed values back as
+an extra MIDDLE field (`action\tname=value;…\traw`) — strictly opt-in per
+invocation, so a caller that never passed the flag keeps the two-field shape
+forever.
 
 The file also states plainly that pounce has **no `--json` anywhere**, so an
 agent stops rather than writes a parser against human text. That sentence comes

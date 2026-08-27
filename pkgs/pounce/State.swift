@@ -109,6 +109,13 @@ final class DaemonState: ObservableObject {
     // commit, so a stray click into another app can't take a typed paragraph with
     // it. nil → this invocation keeps nothing. See Drafts.swift.
     var draftKey: String? = nil
+    // --dial: the step's in-place option cyclers ("model=sonnet|opus|haiku"),
+    // drawn as chips at the leading edge of the action bar and stepped with
+    // ⇥ / ⇧⇥ (⌃⇥ moves between dials). Committed values ride the client string
+    // as an extra middle field — see takeDialField(). Empty → no dials, and
+    // the published two-field output shape is untouched.
+    @Published var dials: [Dial] = []
+    @Published var activeDial = 0
 
     // The clipboard and emoji views are fixed-size windows; everything else
     // follows the launcher's windowMode width.
@@ -171,6 +178,8 @@ final class DaemonState: ObservableObject {
         chainActions = []
         freeTextActions = []
         draftKey = nil
+        dials = []
+        activeDial = 0
         requestID = UUID()
         displayMode = .list
         clipEntries = []
@@ -382,12 +391,15 @@ final class DaemonState: ObservableObject {
 
     func load(lines: [String], placeholder: String?, icon: String?, launcher: Bool, maxEmpty: Int?,
               chainActions: Set<String> = [], freeTextActions: [ItemAction] = [],
-              draftKey: String? = nil, seedQuery: String = "") {
+              draftKey: String? = nil, seedQuery: String = "", dials: [Dial] = []) {
         globalIcon = icon
         isLauncher = launcher
         self.chainActions = chainActions
         self.freeTextActions = freeTextActions
         self.draftKey = draftKey
+        // Each dial opens on the value it committed last time (see DialMemory).
+        self.dials = DialMemory.recall(dials)
+        self.activeDial = 0
         // reset() cleared this a moment ago; --query is the caller putting text
         // BACK (a draft handed over for editing), so it has to land after.
         self.query = seedQuery
@@ -568,7 +580,8 @@ final class DaemonState: ObservableObject {
             loadingTitle = placeholderText
             loadingIcon = globalIcon ?? "magnifyingglass"
         }
-        onCommit?(Commit(clientString: "\(action)\t\(text)",
+        let body = takeDialField().map { "\($0)\t\(text)" } ?? text
+        onCommit?(Commit(clientString: "\(action)\t\(body)",
                          disposition: chains ? .loading : .linger, appLaunch: nil))
     }
 
@@ -584,6 +597,46 @@ final class DaemonState: ObservableObject {
     func cancel() {
         stashDraft()
         onCommit?(Commit(clientString: "", disposition: .hideNow, appLaunch: nil))
+    }
+
+    // MARK: Dials
+
+    // ⇥ / ⇧⇥ (and a click on the chip): step the active dial through its
+    // options, wrapping both ways. Animated as a state change so the chip's
+    // value rolls rather than swaps.
+    func cycleDial(_ delta: Int) {
+        guard !dials.isEmpty else { return }
+        let i = min(activeDial, dials.count - 1)
+        var d = dials[i]
+        let n = d.options.count
+        d.index = ((d.index + delta) % n + n) % n
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { dials[i] = d }
+    }
+
+    // ⌃⇥: move the ⇥ focus to the next dial. Only meaningful on the rare
+    // several-dial step; with one dial it's a no-op rather than an error.
+    func nextDial() {
+        guard dials.count > 1 else { return }
+        activeDial = (activeDial + 1) % dials.count
+    }
+
+    // A click on a chip focuses that dial and steps it once.
+    func tapDial(_ index: Int) {
+        guard dials.indices.contains(index) else { return }
+        activeDial = index
+        cycleDial(1)
+    }
+
+    // The committed dial values, injected as an extra SECOND tab field —
+    // "<action>\t<name=value;…>\t<payload>" — but ONLY when this invocation
+    // declared dials, so a caller that never passed --dial keeps the exact
+    // two-field shape published in ai/SKILL.md. Committing is also the moment
+    // the values become the memory (DialMemory): Esc and click-away change
+    // nothing, which is why this lives here and not in cycleDial.
+    private func takeDialField() -> String? {
+        guard !dials.isEmpty else { return nil }
+        DialMemory.store(dials)
+        return Dial.encode(dials)
     }
 
     private func buildCommit(_ item: PounceItem, action: String) -> Commit {
@@ -611,7 +664,10 @@ final class DaemonState: ObservableObject {
                           settingOpen: item.payload)
         case .plain:
             let a = item.action(for: action) != nil ? action : "enter"
-            return Commit(clientString: "\(a)\t\(item.raw)", disposition: .linger, appLaunch: nil)
+            // Same opt-in middle field as commitText: a --dial caller reads its
+            // dials back whether the user picked a row or typed free text.
+            let body = takeDialField().map { "\($0)\t\(item.raw)" } ?? item.raw
+            return Commit(clientString: "\(a)\t\(body)", disposition: .linger, appLaunch: nil)
         case .answer:
             // Unreachable — commit() routes .answer to commitAnswer first.
             return Commit(clientString: item.payload, disposition: .hideNow, appLaunch: nil)

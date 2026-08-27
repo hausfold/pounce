@@ -12,7 +12,7 @@ enum Main {
 
     usage:
       pounce [-p <prompt>] [-i <sf-symbol>] [--max-empty <n>] [--chain [keys]]
-             [--actions <spec>] [--draft <key>]
+             [--actions <spec>] [--draft <key>] [--dial <spec>]
         generic picker: reads lines from stdin, prints the chosen one
 
         Return on text that matched no row prints "<action>\\t<text>", where
@@ -32,6 +32,13 @@ enum Main {
                          paragraph, where a stray click would otherwise take it.
         --query <text>   open with the box already holding <text>, caret at the
                          end — a draft handed back for editing, not a filter.
+        --dial <spec>    an in-place option cycler the user steps with ⇥ / ⇧⇥
+                         while the palette is up: "model=sonnet|opus|haiku".
+                         Repeatable (or `;`-join several; ⌃⇥ moves between
+                         them). The step's output grows ONE extra middle field
+                         with the committed values — "<action>\\t<name=value;…>
+                         \\t<line-or-text>" — and each dial re-opens on the
+                         value it committed last time.
 
     modes:
       --launcher             apps + commands palette (what the hotkey opens)
@@ -403,6 +410,11 @@ struct Invocation {
     // Text the box opens with, caret at the end — a draft handed back for
     // editing. Not a filter: it is the user's own text returning.
     var query: String?
+    // In-place option cyclers ("model=sonnet|opus|haiku"), stepped with ⇥
+    // while the palette is up and read back as an extra middle field on the
+    // commit. Repeatable --dial flags accumulate here `;`-joined — the same
+    // separator the spec grammar uses (Dials.swift).
+    var dialSpec: String?
 }
 
 // MARK: - Daemon Mode
@@ -1300,6 +1312,7 @@ enum DaemonMode {
             // characters this line-and-tab protocol is built out of. The client
             // escapes it (Drafts.encode) and it is decoded back here.
             if p.count > 9 && !p[9].isEmpty { inv.query = Drafts.decode(p[9]) }
+            if p.count > 10 && !p[10].isEmpty { inv.dialSpec = p[10] }
             itemLines = Array(lines.dropFirst())
         }
 
@@ -1340,7 +1353,8 @@ enum DaemonMode {
                            launcher: inv.launcher, maxEmpty: inv.maxEmpty,
                            chainActions: inv.chainActions,
                            freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
-                           draftKey: inv.draftKey, seedQuery: inv.query ?? "")
+                           draftKey: inv.draftKey, seedQuery: inv.query ?? "",
+                           dials: inv.dialSpec.map(Dial.parse) ?? [])
             }
             ui.resultSink = { r in result = r; semaphore.signal() }
             ui.present()
@@ -1375,6 +1389,11 @@ enum ClientMode {
                 if let next = args.first, !next.hasPrefix("--") { inv.cheatsheetPath = args.removeFirst() }
             case "--max-empty":         if !args.isEmpty { inv.maxEmpty = Int(args.removeFirst()) }
             case "--actions":           if !args.isEmpty { inv.actionSpec = args.removeFirst() }
+            case "--dial":
+                if !args.isEmpty {
+                    let spec = args.removeFirst()
+                    inv.dialSpec = inv.dialSpec.map { "\($0);\(spec)" } ?? spec
+                }
             case "--draft":             if !args.isEmpty { inv.draftKey = args.removeFirst() }
             case "--query":             if !args.isEmpty { inv.query = args.removeFirst() }
             case "--chain":
@@ -1465,7 +1484,13 @@ enum ClientMode {
         // meeting a newer client just ignores the tail rather than mis-reading a
         // field (see the reader in handleClient).
         let chain = inv.chainActions.sorted().joined(separator: ",")
-        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\t\(Drafts.encode(inv.query ?? ""))\n"
+        // Field 11 (--dial): the spec grammar has no business holding tabs or
+        // newlines, but this line-and-tab protocol cannot survive them — strip
+        // rather than corrupt every field after this one.
+        let dialSpec = (inv.dialSpec ?? "")
+            .replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\t\(Drafts.encode(inv.query ?? ""))\t\(dialSpec)\n"
         for line in stdinLines { payload += line + "\n" }
 
         if let data = payload.data(using: .utf8) {
@@ -1507,7 +1532,8 @@ enum ClientMode {
                        launcher: inv.launcher, maxEmpty: inv.maxEmpty,
                        chainActions: inv.chainActions,
                        freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
-                       draftKey: inv.draftKey, seedQuery: inv.query ?? "")
+                       draftKey: inv.draftKey, seedQuery: inv.query ?? "",
+                       dials: inv.dialSpec.map(Dial.parse) ?? [])
         }
 
         ui.resultSink = { result in

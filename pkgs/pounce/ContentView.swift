@@ -224,7 +224,11 @@ struct ContentView: View {
     // A free-text step (`--actions`) has no rows and so no selected item, which is
     // exactly why it needs the bar: ⌘↵/⌥↵/⇧↵ on typed text are otherwise invisible
     // — nothing on screen says the step can do more than one thing.
-    var showFreeTextBar: Bool { visible.isEmpty && !state.freeTextActions.isEmpty }
+    // Dials count too: a --dial step with no --actions still needs the bar on
+    // screen, or the one interaction it offers is invisible.
+    var showFreeTextBar: Bool {
+        visible.isEmpty && (!state.freeTextActions.isEmpty || !state.dials.isEmpty)
+    }
 
     var contentHeight: CGFloat {
         var h = headerHeight
@@ -351,7 +355,9 @@ struct ContentView: View {
 
                 if let item = selectedItem {
                     Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
-                    ActionBar(actions: item.actions)
+                    ActionBar(actions: item.actions, dials: state.dials,
+                              activeDial: state.activeDial,
+                              onDialTap: { state.tapDial($0) })
                         .frame(height: Self.actionBarHeight)
                 }
             } else if showFreeTextBar {
@@ -359,7 +365,9 @@ struct ContentView: View {
                 // this one just describes what the modifiers do to the text you
                 // typed rather than to a selection.
                 Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
-                ActionBar(actions: state.freeTextActions)
+                ActionBar(actions: state.freeTextActions, dials: state.dials,
+                          activeDial: state.activeDial,
+                          onDialTap: { state.tapDial($0) })
                     .frame(height: Self.actionBarHeight)
             }
         }

@@ -143,9 +143,25 @@ final class AppIconCache {
 
 struct ActionBar: View {
     let actions: [ItemAction]
+    // The step's dials (--dial), drawn as chips at the LEADING edge — the
+    // actions keep their trailing home, so a step with no dials renders
+    // exactly as before. `activeDial` is the one ⇥ steps; `onDialTap` lets a
+    // click focus-and-cycle a chip.
+    var dials: [Dial] = []
+    var activeDial: Int = 0
+    var onDialTap: ((Int) -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
+            if !dials.isEmpty {
+                HStack(spacing: pt(8)) {
+                    ForEach(Array(dials.enumerated()), id: \.offset) { i, dial in
+                        DialChip(dial: dial, isActive: i == min(activeDial, dials.count - 1))
+                            .onTapGesture { onDialTap?(i) }
+                    }
+                    KeyCap("⇥")
+                }
+            }
             Spacer()
             ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
                 if index > 0 {
@@ -163,6 +179,42 @@ struct ActionBar: View {
             }
         }
         .padding(.horizontal, pt(18))
+    }
+}
+
+// One dial as a chip: the name in caps beside the current value, the active
+// dial tinted with the accent. The value change animates as a small vertical
+// roll — the chip reads as a dial, not a label swap — driven by the withAnimation
+// wrapped around DaemonState.cycleDial's mutation.
+struct DialChip: View {
+    let dial: Dial
+    let isActive: Bool
+
+    var body: some View {
+        HStack(spacing: pt(6)) {
+            Text(dial.name.uppercased())
+                .font(.system(size: pt(10), weight: .semibold, design: .rounded))
+                .kerning(0.5)
+                .foregroundColor(Theme.subtext0)
+            Text(dial.value)
+                .font(.system(size: pt(12), weight: .semibold, design: .rounded))
+                .foregroundColor(isActive ? Theme.mauve : Theme.text)
+                .id(dial.value)   // new identity per value → the roll transition below
+                .transition(.asymmetric(insertion: .push(from: .bottom),
+                                        removal: .push(from: .top)))
+        }
+        .padding(.horizontal, pt(9))
+        .frame(height: pt(24))
+        .background(
+            RoundedRectangle(cornerRadius: pt(7))
+                .fill(isActive ? Theme.mauve.opacity(0.14) : Theme.surface1.opacity(0.4))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: pt(7))
+                .strokeBorder(isActive ? Theme.mauve.opacity(0.4) : Color.clear, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: pt(7)))
+        .contentShape(Rectangle())
     }
 }
 
@@ -343,8 +395,20 @@ struct CustomTextField: NSViewRepresentable {
         private func handleModifiedReturn(_ event: NSEvent) -> NSEvent? {
             guard let textField,
                   event.window === textField.window,
-                  textField.currentEditor() != nil,
-                  event.keyCode == 36 || event.keyCode == 76 else { return event }
+                  textField.currentEditor() != nil else { return event }
+
+            // ⌃⇥ moves the ⇥ focus to the next dial (several-dial steps). In
+            // the monitor rather than doCommandBy because AppKit answers
+            // control-tab with a window focus-cycling gesture, never a text
+            // selector the field editor would report.
+            if event.keyCode == 48,
+               event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,
+               !parent.state.dials.isEmpty {
+                parent.state.nextDial()
+                return nil
+            }
+
+            guard event.keyCode == 36 || event.keyCode == 76 else { return event }
 
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             // Match the existing Shift+Return contract: a shift held with any
@@ -420,6 +484,15 @@ struct CustomTextField: NSViewRepresentable {
                 else if flags.contains(.option) { parent.onSubmit("opt") }
                 else if flags.contains(.control) { parent.onSubmit("ctrl") }
                 else { parent.onSubmit("enter") }
+                return true
+            // ⇥ / ⇧⇥ step the active dial. Only when this step declared dials —
+            // everywhere else Tab keeps its default (a no-op in the palette's
+            // single-field windows), so the emoji grid and friends are untouched.
+            case #selector(NSResponder.insertTab(_:)) where !parent.state.dials.isEmpty:
+                parent.state.cycleDial(1)
+                return true
+            case #selector(NSResponder.insertBacktab(_:)) where !parent.state.dials.isEmpty:
+                parent.state.cycleDial(-1)
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
                 // Esc-to-clear, then Esc-to-dismiss — the standard palette idiom,
