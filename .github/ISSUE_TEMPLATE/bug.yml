@@ -49,7 +49,7 @@ body:
       label: |-
         pounce doctor
       description: |-
-        Paste the output of `pounce doctor`. It only reads — it changes nothing and sends nothing anywhere.
+        **`pounce report` fills this in for you** — so does *Report Pounce Issue* in the palette, and *Report a Bug…* in the Settings window's app menu. Each opens this form with the report already here, and sends nothing until you press Submit. By hand: paste the output of `pounce doctor`. It only reads — it changes nothing and sends nothing anywhere.
       render: text
     validations:
       required: false
