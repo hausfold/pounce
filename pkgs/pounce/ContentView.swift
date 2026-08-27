@@ -98,7 +98,15 @@ struct ContentView: View {
         // Deduped, because frecency may already have ranked it into the prefix.
         if queryIsEmpty, let notice = state.updateNoticeItem() {
             rows.removeAll { $0.frecencyKey == notice.frecencyKey }
-            rows.insert(notice, at: 0)
+            // AFTER the Stage's tiles, so it lands as the first row of the
+            // LIST rather than as tile 0. A tile is an icon over a truncated
+            // one-line title with no subtitle — "Update Pounce — 2026.07.30
+            // available" reads as "Update Pou…" and the per-install hint
+            // ("Return to run brew upgrade") is not drawn at all, which is
+            // precisely the invisibility the pin exists to fix. See
+            // UpdateCheck.swift. With no Stage this is `at: 0`, exactly as
+            // before.
+            rows.insert(notice, at: min(stageTileTarget, rows.count))
         }
         // Expression-shaped query? Pin its quick answer (inline calculator,
         // conversions, …) above the matches; ⏎ on it copies.
@@ -128,10 +136,21 @@ struct ContentView: View {
     // `selectedIndex` indexes across both zones, so ⏎, the action bar, frecency,
     // the `items` overrides and the pinned update row all keep working with no
     // second implementation to keep in step.
-    var tileCount: Int {
-        guard queryIsEmpty, showList, state.stageTiles > 0 else { return 0 }
-        return min(state.stageTiles, visible.count)
+    // The count the config asked for, before the list's length caps it. Kept
+    // independent of `filtered` on purpose: `filtered` reads THIS to place the
+    // pinned update notice at the head of the list rather than in the strip,
+    // and a cycle between the two would not compile.
+    //
+    // `state.query.isEmpty`, not `queryIsEmpty`: the trimmed predicate calls a
+    // lone space an empty query, and the strip takes ← / → away from the field
+    // editor (see CustomTextField) — so with a space typed the caret would be
+    // unable to move through text that is really there.
+    var stageTileTarget: Int {
+        guard state.query.isEmpty, showList, state.stageTiles > 0 else { return 0 }
+        return state.stageTiles
     }
+
+    var tileCount: Int { min(stageTileTarget, visible.count) }
 
     var tileItems: [PounceItem] { Array(visible.prefix(tileCount)) }
     var listItems: [PounceItem] { Array(visible.dropFirst(tileCount)) }
@@ -139,7 +158,7 @@ struct ContentView: View {
     // The glance line's contents, or nil for no line. Snapshotted per summon in
     // DaemonState.load; gated on the empty query here, so the first character
     // typed takes the whole zone away.
-    var glance: StageGlance? { queryIsEmpty && showList ? state.stageGlance : nil }
+    var glance: StageGlance? { stageTileTarget > 0 ? state.stageGlance : nil }
 
     // What the two Stage zones add above the list. Counted by `contentHeight`
     // (which sizes the window arithmetically) and by `maxVisibleItems` (which

@@ -607,9 +607,12 @@ struct CustomTextField: NSViewRepresentable {
                 }
                 return false
             // ← → walk the strip. Safe to take the keys from the field editor
-            // here and nowhere else: a strip only exists on an EMPTY query, so
-            // there is no text for the caret to move through. Off the strip they
-            // stay AppKit's, which is what keeps ⌥← / ⇧→ editing a typed query.
+            // here and nowhere else: a strip only exists while the box is
+            // LITERALLY empty (ContentView.stageTileTarget gates on
+            // `state.query.isEmpty`, not on the whitespace-trimmed predicate
+            // the rest of the launcher uses), so there is no text for the caret
+            // to move through — not even a lone space. Off the strip they stay
+            // AppKit's, which is what keeps ⌥← / ⇧→ editing a typed query.
             case #selector(NSResponder.moveRight(_:)) where onStrip:
                 if parent.selectedIndex < tiles - 1 { parent.selectedIndex += 1 }
                 return true
