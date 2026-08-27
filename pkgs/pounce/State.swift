@@ -124,6 +124,13 @@ final class DaemonState: ObservableObject {
     // the published two-field output shape is untouched.
     @Published var dials: [Dial] = []
     @Published var activeDial = 0
+    // --grid: draw this step's rows as cards two to a row instead of as a list
+    // (ContentView.gridScroll). A SHAPE the caller asked for and nothing else —
+    // the items, the commit path and the printed result are the list step's,
+    // byte for byte, so a caller switches a step between the two by adding or
+    // removing one flag. Launcher-only in the sense that it applies to
+    // `displayMode == .list`; the built-in windows own their own layouts.
+    @Published var grid = false
     // The action key that just committed, for the action bar's press blink
     // (see KeyCap). Set at the commit, read for the fraction of a second the
     // window lingers before its fade — it is feedback, never part of the
@@ -195,6 +202,7 @@ final class DaemonState: ObservableObject {
         draftKey = nil
         dials = []
         activeDial = 0
+        grid = false
         firedAction = nil
         requestID = UUID()
         displayMode = .list
@@ -407,9 +415,15 @@ final class DaemonState: ObservableObject {
 
     func load(lines: [String], placeholder: String?, icon: String?, launcher: Bool, maxEmpty: Int?,
               chainActions: Set<String> = [], freeTextActions: [ItemAction] = [],
-              draftKey: String? = nil, seedQuery: String = "", dials: [Dial] = []) {
+              draftKey: String? = nil, seedQuery: String = "", dials: [Dial] = [],
+              grid: Bool = false) {
         globalIcon = icon
         isLauncher = launcher
+        // The launcher itself is never a grid: its rows are names you scan and
+        // its list carries group headers, the quick answer's hero card and the
+        // update nudge — none of which have a card shape. `--grid --launcher`
+        // is therefore the flag being ignored, not an error.
+        self.grid = grid && !launcher
         self.chainActions = chainActions
         self.freeTextActions = freeTextActions
         self.draftKey = draftKey

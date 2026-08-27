@@ -223,6 +223,39 @@ struct ContentView: View {
         return CGFloat(cap) * rowHeight + CGFloat(headers) * GroupHeaderRow.height + answerExtra
     }
 
+    // MARK: - …or the same rows as a grid (--grid)
+
+    // How many card rows the items need, and how many of them the window shows.
+    // The cap is the grid's answer to `maxVisibleItems` and is computed the same
+    // way — the preset's count is a preference, the screen has the last word —
+    // because a card is taller than a row and `scale` multiplies it.
+    var gridRowCount: Int {
+        Int(ceil(Double(visible.count) / Double(GridLayout.columns)))
+    }
+
+    var maxVisibleGridRows: Int {
+        let screen = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.height ?? 900
+        let chrome = state.metrics.headerHeight + Self.actionBarHeight
+            + Self.dividerHeight * 2 + Self.listVPadding * 2
+        let room = screen * (1 - state.metrics.topInsetFraction) - chrome
+        let fits = Int(floor(room / max(GridLayout.cardHeight + GridLayout.spacing, 1)))
+        return max(2, min(GridLayout.maxVisibleRows, fits))
+    }
+
+    // Card rows plus the gutters BETWEEN them (n - 1, not n) — the padding
+    // around the whole grid is listVPadding, counted by contentHeight exactly
+    // as it is for the list.
+    var gridHeight: CGFloat {
+        let rows = min(gridRowCount, maxVisibleGridRows)
+        return CGFloat(rows) * GridLayout.cardHeight
+            + CGFloat(max(rows - 1, 0)) * GridLayout.spacing
+    }
+
+    // The results area's exact height, whichever shape it is in. contentHeight
+    // and the scroll viewport both read this one property, so the arithmetic
+    // resize cannot drift from what is drawn.
+    var resultsHeight: CGFloat { state.grid ? gridHeight : listHeight }
+
     // A hairline stays a hairline: it is a 1px rule, not a size, so it is the one
     // constant here that does not scale.
     static let dividerHeight: CGFloat = 1
@@ -308,9 +341,10 @@ struct ContentView: View {
     var contentHeight: CGFloat {
         var h = headerHeight
         if !visible.isEmpty {
-            // The Stage's zones sit between that divider and the list, and are
-            // zero-height when it's off — see stageHeight.
-            h += Self.dividerHeight + stageHeight + listHeight + Self.listVPadding * 2
+            // The Stage's zones sit between that divider and the results, and
+            // are zero-height when it's off — see stageHeight. `resultsHeight`
+            // is the list's or the grid's, whichever shape this step asked for.
+            h += Self.dividerHeight + stageHeight + resultsHeight + Self.listVPadding * 2
             if selectedItem != nil { h += Self.dividerHeight + Self.actionBarHeight }
         } else if showFreeTextBar {
             h += Self.dividerHeight + Self.actionBarHeight
@@ -358,6 +392,105 @@ struct ContentView: View {
         }
     }
 
+    // The results as a list — the shape every step had before `--grid`.
+    var listScroll: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(renderRows) { row in
+                        switch row {
+                        case .header(let title):
+                            GroupHeaderRow(title: title)
+                                .frame(height: GroupHeaderRow.height)
+                                .id(row.id)
+                        case .item(let item, let i):
+                            Group {
+                                if item.kind == .answer {
+                                    AnswerRow(item: item, isSelected: i == selectedIndex,
+                                              glide: glide, selection: selectedIndex,
+                                              glides: glideArmed)
+                                } else {
+                                    ItemRow(item: item, isSelected: i == selectedIndex,
+                                            glide: glide, selection: selectedIndex,
+                                            glides: glideArmed)
+                                }
+                            }
+                            .frame(height: item.kind == .answer ? AnswerRow.height : rowHeight)
+                            .id(item.id)
+                            .onTapGesture { selectedIndex = i; select(action: "enter") }
+                        }
+                    }
+                }
+                .padding(.vertical, Self.listVPadding)
+                // Type-settle. Rows are keyed by item.id, so a keystroke
+                // that re-ranks the list is a set of MOVES to SwiftUI —
+                // this is what makes it play them instead of cutting to
+                // the new order. Keyed on the query (already in hand) and
+                // not on the row ids: recomputing `renderRows` for a
+                // comparison would re-run the whole scoring pass on every
+                // render, and the keystroke is the thing being settled
+                // anyway.
+                //
+                // Scoped to the STACK, deliberately. The window's height
+                // is arithmetic and instant (requestResize →
+                // PounceUI.resizeToFit, implicit animation off), and the
+                // ScrollView's frame below is outside this modifier, so
+                // both still snap; rows on their way out are clipped by a
+                // viewport that has already reached its new size.
+                .animation(settleArmed ? Motion.spring : nil, value: state.query)
+            }
+            .frame(height: listHeight + Self.listVPadding * 2)
+            .onChange(of: selectedIndex) {
+                // A selection on the strip has no row in this ScrollView
+                // to scroll to — it is above it, always on screen.
+                if selectedIndex >= tileCount, selectedIndex < visible.count {
+                    proxy.scrollTo(visible[selectedIndex].id)
+                }
+            }
+        }
+    }
+
+    // …and the same results as cards, two to a row (`--grid`).
+    //
+    // Deliberately NOT over `renderRows`: a grid step draws no group headers.
+    // A header is a full-width band with a column of rows under it, and a card
+    // grid has no full width to give one — so the grid walks `visible`
+    // directly, which also makes its index the SELECTION index. That is what
+    // lets CustomTextField's 2-D navigation stay pure arithmetic: ←→ is ±1 and
+    // ↑↓ is ±GridLayout.columns, with nothing to skip over. (A grid step whose
+    // lines carry a group field still gets the grouped ORDER out of
+    // `filtered`; it just has nowhere to write the names.)
+    var gridScroll: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: GridLayout.spacing),
+                                   count: GridLayout.columns),
+                    spacing: GridLayout.spacing
+                ) {
+                    ForEach(Array(visible.enumerated()), id: \.element.id) { i, item in
+                        GridCard(item: item, isSelected: i == selectedIndex,
+                                 glide: glide, selection: selectedIndex,
+                                 glides: glideArmed)
+                            .frame(height: GridLayout.cardHeight)
+                            .id(item.id)
+                            .onTapGesture { selectedIndex = i; select(action: "enter") }
+                    }
+                }
+                .padding(.horizontal, GridLayout.hPadding)
+                .padding(.vertical, Self.listVPadding)
+                // Same type-settle as the list, and it earns its place more
+                // here: a re-rank in two columns moves cards sideways as well
+                // as up, which is a swap you can follow rather than a redraw.
+                .animation(settleArmed ? Motion.spring : nil, value: state.query)
+            }
+            .frame(height: gridHeight + Self.listVPadding * 2)
+            .onChange(of: selectedIndex) {
+                if selectedIndex < visible.count { proxy.scrollTo(visible[selectedIndex].id) }
+            }
+        }
+    }
+
     var launcherBody: some View {
         VStack(spacing: 0) {
             // Search header. Top-aligned, because a wrapped query grows DOWN: the
@@ -381,6 +514,13 @@ struct ContentView: View {
                             state: state,
                             onSubmit: { action in select(action: action) },
                             onRevealDown: { revealed = true },
+                            // The 2-D navigation the emoji picker already uses,
+                            // pointed at this step's cards: ↑↓ move by a card
+                            // ROW, ←→ by one card. 1 everywhere else, which is
+                            // the plain ↑↓ list walk it has always been. Never
+                            // both at once: `--grid --launcher` drops the grid
+                            // (State.configure), and only the launcher stages.
+                            gridColumns: state.grid ? GridLayout.columns : 1,
                             stageTiles: tileCount,
                             wraps: true,
                             calculatedHeight: queryFieldHeight,
@@ -413,60 +553,11 @@ struct ContentView: View {
                                onPick: { i in selectedIndex = i; select(action: "enter") })
                 }
 
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(renderRows) { row in
-                                switch row {
-                                case .header(let title):
-                                    GroupHeaderRow(title: title)
-                                        .frame(height: GroupHeaderRow.height)
-                                        .id(row.id)
-                                case .item(let item, let i):
-                                    Group {
-                                        if item.kind == .answer {
-                                            AnswerRow(item: item, isSelected: i == selectedIndex,
-                                                      glide: glide, selection: selectedIndex,
-                                                      glides: glideArmed)
-                                        } else {
-                                            ItemRow(item: item, isSelected: i == selectedIndex,
-                                                    glide: glide, selection: selectedIndex,
-                                                    glides: glideArmed)
-                                        }
-                                    }
-                                    .frame(height: item.kind == .answer ? AnswerRow.height : rowHeight)
-                                    .id(item.id)
-                                    .onTapGesture { selectedIndex = i; select(action: "enter") }
-                                }
-                            }
-                        }
-                        .padding(.vertical, Self.listVPadding)
-                        // Type-settle. Rows are keyed by item.id, so a keystroke
-                        // that re-ranks the list is a set of MOVES to SwiftUI —
-                        // this is what makes it play them instead of cutting to
-                        // the new order. Keyed on the query (already in hand) and
-                        // not on the row ids: recomputing `renderRows` for a
-                        // comparison would re-run the whole scoring pass on every
-                        // render, and the keystroke is the thing being settled
-                        // anyway.
-                        //
-                        // Scoped to the STACK, deliberately. The window's height
-                        // is arithmetic and instant (requestResize →
-                        // PounceUI.resizeToFit, implicit animation off), and the
-                        // ScrollView's frame below is outside this modifier, so
-                        // both still snap; rows on their way out are clipped by a
-                        // viewport that has already reached its new size.
-                        .animation(settleArmed ? Motion.spring : nil, value: state.query)
-                    }
-                    .frame(height: listHeight + Self.listVPadding * 2)
-                    .onChange(of: selectedIndex) {
-                        // A selection on the strip has no row in this ScrollView
-                        // to scroll to — it is above it, always on screen.
-                        if selectedIndex >= tileCount, selectedIndex < visible.count {
-                            proxy.scrollTo(visible[selectedIndex].id)
-                        }
-                    }
-                }
+                // One step, two shapes. Both draw the SAME `visible` items at
+                // the same indices and commit through the same select(), so
+                // `--grid` changes what the step looks like and nothing about
+                // what it does or prints.
+                if state.grid { gridScroll } else { listScroll }
 
                 if let item = selectedItem {
                     Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
