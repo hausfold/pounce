@@ -29,9 +29,11 @@ import AppKit
 //      the highlight interpolates from a 130pt square to a full-width bar
 //      instead of cutting.
 //
-// Compact mode is deliberately NOT staged. `hideEmptyList` means "an empty
-// query shows nothing", and a tile strip is emphatically something; the gate is
-// `showList` in ContentView, so pressing ↓ to reveal brings the stage with it.
+// Compact mode is deliberately NOT staged at all. `hideEmptyList` means "an
+// empty query shows nothing", and a tile strip is emphatically something — the
+// two are answers to the same question and the narrower one wins. The gate is
+// in `DaemonState.load`, which leaves `stageTiles` at 0 and `stageGlance` nil
+// there, so ↓ reveals the plain list exactly as it always has.
 
 enum StageLayout {
     static var tileHeight: CGFloat { pt(74) }
