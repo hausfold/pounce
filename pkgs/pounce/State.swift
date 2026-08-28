@@ -96,6 +96,13 @@ final class DaemonState: ObservableObject {
     @Published var stageTiles = 0
     // The glance line's contents, built once in load(). nil → no line.
     @Published var stageGlance: StageGlance?
+    // Trailing-row key hints ("⌘⇧V"), one lookup per row in the view. Built
+    // once per load from the items map — the glyphs come off a hotkey the
+    // daemon already parsed and registered; the view never walks the map.
+    @Published var hotkeyHints: [String: String] = [:]
+    // Live state badges ("On"/"Off"), filled synchronously from BadgeStore's
+    // cache where fresh and async as runs land. See Badges.swift.
+    @Published var badges: [String: String] = [:]
     // How many settings a single System Settings pane may contribute to one
     // result list (ContentView.filtered). Read off config on every summon like
     // everything else; Int.max outside the launcher, where there are no
@@ -196,6 +203,8 @@ final class DaemonState: ObservableObject {
         maxEmpty = Int.max
         stageTiles = 0
         stageGlance = nil
+        hotkeyHints = [:]
+        badges = [:]
         settingsMaxPerPane = Int.max
         chainActions = []
         freeTextActions = []
@@ -494,6 +503,30 @@ final class DaemonState: ObservableObject {
                 // PROMOTED out of the ranked prefix, not one taken away from it,
                 // so turning the Stage on never costs you list.
                 if self.maxEmpty != Int.max { self.maxEmpty += stageTiles }
+            }
+            // Row hints and state badges. Both are dictionary lookups in the
+            // view — the glyph formatting happens HERE, once per summon, off a
+            // sequence the daemon already parsed. A badge fresh in BadgeStore's
+            // cache lands synchronously (a lookup, no I/O); a stale one is
+            // fetched in the background and published when it arrives, so the
+            // summon path never waits for a shell (see Badges.swift).
+            var hints: [String: String] = [:]
+            for (target, sequence) in settings.items.bindings { hints[target] = sequence.glyphs }
+            for (target, hint) in settings.items.hints where hint != nil {
+                hints[target] = hint!
+            }
+            hotkeyHints = hints
+            let byKey = Dictionary(uniqueKeysWithValues:
+                settings.items.stateCommands.map { ($0.target, $0.command) })
+            for item in built {
+                guard let command = byKey[item.frecencyKey] else { continue }
+                if let cached = BadgeStore.cached(for: command) {
+                    badges[item.frecencyKey] = cached
+                } else {
+                    BadgeStore.fetch(command) { [weak self] value in
+                        self?.badges[item.frecencyKey] = value
+                    }
+                }
             }
             placeholderText = placeholder ?? "Search apps & actions..."
         } else {

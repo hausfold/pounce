@@ -27,6 +27,9 @@ struct ContentView: View {
     // incidental, because the whole point of present()/resizeToFit is that a
     // step swap is ONE CLEAN CUT and never a crossfade.
     @State private var settleArmed = false
+    // When the last keystroke of the current typing burst landed — the settle
+    // cadence gate's other half, see the query onChange below.
+    @State private var lastSettleKeystroke = Date.distantPast
 
     var rowHeight: CGFloat { state.metrics.rowHeight }
 
@@ -155,16 +158,19 @@ struct ContentView: View {
     var tileItems: [PounceItem] { Array(visible.prefix(tileCount)) }
     var listItems: [PounceItem] { Array(visible.dropFirst(tileCount)) }
 
-    // The glance line's contents, or nil for no line. Snapshotted per summon in
+    // The info cards' contents, or nil for no cards. Snapshotted per summon in
     // DaemonState.load; gated on the empty query here, so the first character
-    // typed takes the whole zone away.
+    // typed takes the whole zone away. Drawn along the BOTTOM of the panel, just
+    // above the action bar — see InfoCards.
     var glance: StageGlance? { stageTileTarget > 0 ? state.stageGlance : nil }
 
-    // What the two Stage zones add above the list. Counted by `contentHeight`
+    // What the two Stage zones add to the panel. Counted by `contentHeight`
     // (which sizes the window arithmetically) and by `maxVisibleItems` (which
-    // decides how many rows still fit on the screen underneath them).
+    // decides how many rows still fit on the screen underneath them). The
+    // cards' height counts here even though they DRAW at the bottom — the
+    // arithmetic only cares about the total.
     var stageHeight: CGFloat {
-        (glance != nil ? StageLayout.glanceHeight : 0)
+        (glance != nil ? StageLayout.cardsHeight : 0)
             + (tileCount > 0 ? StageLayout.stripHeight : 0)
     }
 
@@ -412,7 +418,9 @@ struct ContentView: View {
                                 } else {
                                     ItemRow(item: item, isSelected: i == selectedIndex,
                                             glide: glide, selection: selectedIndex,
-                                            glides: glideArmed)
+                                            glides: glideArmed,
+                                            hint: state.hotkeyHints[item.frecencyKey],
+                                            badge: state.badges[item.frecencyKey])
                                 }
                             }
                             .frame(height: item.kind == .answer ? AnswerRow.height : rowHeight)
@@ -544,9 +552,10 @@ struct ContentView: View {
 
                 // The Stage. Both zones are plain views with fixed heights that
                 // `contentHeight` counts — no GeometryReader, no measurement, so
-                // the window still sizes itself in one arithmetic step.
-                if let glance { GlanceLine(glance: glance) }
-
+                // the window still sizes itself in one arithmetic step. The
+                // tiles flow under the header; the info cards draw at the bottom
+                // (below the list), and `stageHeight` counts both wherever they
+                // sit.
                 if tileCount > 0 {
                     StageStrip(items: tileItems, selectedIndex: selectedIndex,
                                glide: glide, glides: glideArmed,
@@ -558,6 +567,10 @@ struct ContentView: View {
                 // `--grid` changes what the step looks like and nothing about
                 // what it does or prints.
                 if state.grid { gridScroll } else { listScroll }
+
+                // The Stage's info cards, along the bottom — time/date and the
+                // clipboard head, the questions you didn't type.
+                if let glance { InfoCards(glance: glance) }
 
                 if let item = selectedItem {
                     Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
@@ -596,6 +609,19 @@ struct ContentView: View {
             glideArmed = false
             selectedIndex = 0
             revealed = false
+            // The settle's cadence gate — the one change that makes fast typing
+            // both FEEL instant and look calm. A keystroke more than ~160ms
+            // after the last one is a deliberate, watchable step: the re-ranked
+            // list plays the spring and rows glide into their new order. A
+            // keystroke INSIDE the window is mid-burst: animate nothing, so no
+            // spring transaction is ever fighting the next character for the
+            // main thread — the rows just are the new order, the instant the
+            // scoring returns. When the burst pauses past the threshold, the
+            // next keystroke (or the first one back) settles animated, which is
+            // the one reorder there is actually time to watch.
+            let now = Date()
+            settleArmed = now.timeIntervalSince(lastSettleKeystroke) > 0.16
+            lastSettleKeystroke = now
             requestResize()
         }
         // …and re-arm as soon as the selection has settled, which is the update

@@ -185,6 +185,18 @@ struct ItemRow: View {
     // rather than because the user navigated — see ContentView.glideArmed. The
     // move still happens, it just cuts.
     var glides: Bool = true
+    // Trailing-slot extras. `hint` is a keybinding chip ("⌘⇧V" — a registered
+    // item hotkey, or a display-only `items` hint for a key an external binder
+    // owns, e.g. haus's launch mode). `badge` is live state ("On"). Both win
+    // over the subtitle in that slot — a key you can press and a state you can
+    // see are worth more than a caption you already read.
+    var hint: String? = nil
+    var badge: String? = nil
+
+    // "On"-sized states read as lit; everything else reads quiet.
+    private var badgeLit: Bool {
+        ["on", "active", "true", "yes", "running"].contains(badge?.lowercased() ?? "")
+    }
 
     // Both "app:<path>" (launcher) and "file:<path>" (Find Files) render the
     // real Finder icon for that path via NSWorkspace; the prefix just marks it.
@@ -216,7 +228,21 @@ struct ItemRow: View {
 
             Spacer(minLength: pt(8))
 
-            if let subtitle = item.subtitle {
+            if let badge {
+                Text(badge)
+                    .font(.system(size: pt(12), weight: .semibold, design: .rounded))
+                    .foregroundColor(badgeLit ? Theme.mauve : Theme.subtext0)
+            } else if let hint {
+                Text(hint)
+                    .font(.system(size: pt(12), weight: .medium, design: .rounded))
+                    .foregroundColor(Theme.subtext)
+                    .padding(.horizontal, pt(7))
+                    .padding(.vertical, pt(3))
+                    .background(
+                        RoundedRectangle(cornerRadius: pt(6))
+                            .fill(Theme.surface1.opacity(0.4))
+                    )
+            } else if let subtitle = item.subtitle {
                 Text(subtitle)
                     .foregroundColor(Theme.subtext0)
                     .font(.system(size: pt(13), design: .rounded))

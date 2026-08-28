@@ -207,7 +207,7 @@ changes `ai/SKILL.md` in the same PR.
   weighed and rejected: those two build through Xcode, this builds through a bare
   `swiftc` in Nix.
 - **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
-  enable / alias / hotkey for anything the palette can address, keyed by the item's
+  enable / alias / hotkey / hint / state for anything the palette can address, keyed by the item's
   **frecency key** — `cmd:<id>`, `app:<path>`, `shortcut:<uuid>`, plus `mode:<name>`
   for the built-in windows. One map, not three parallel keys, because one entry is one row of a
   settings list. `ItemTarget` is the single parser for that grammar (it also backs

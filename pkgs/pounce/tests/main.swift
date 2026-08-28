@@ -53,6 +53,7 @@ if failures == 0 { print("ok — all Frecency ranking tests passed") }
 
 failures += runQuickAnswerTests()
 failures += runItemSettingsTests()
+failures += runBadgesTests()
 failures += runFunctionKeyTests()
 failures += runFunctionKeyRemapTests()
 failures += runCommandRegistryTests()
