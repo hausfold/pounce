@@ -174,8 +174,11 @@ final class PounceUI {
         let light = Theme.isLight
         blur.appearance = NSAppearance(named: light ? .vibrantLight : .vibrantDark)
         blur.material = light ? .popover : .hudWindow
+        // A whisper, not a line. The border exists so the panel reads as one
+        // object against a same-colored backdrop; 0.08 read as a drawn outline
+        // and made the panel feel framed rather than floating.
         blur.layer?.borderColor = (light ? NSColor.black : NSColor.white)
-            .withAlphaComponent(light ? 0.12 : 0.08).cgColor
+            .withAlphaComponent(light ? 0.06 : 0.035).cgColor
     }
 
     let window: PounceWindow

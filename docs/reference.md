@@ -545,10 +545,10 @@ config written by a newer one.
     "hideBundleIds": []     // apps hidden from the launcher entirely (bundle IDs)
   },
   "stage": {
-    "enabled": true,        // the empty query opens on tiles + a glance line
-    "tiles": 5              // how many tiles the strip holds (1–8)
+    "enabled": true,        // the empty query opens on tiles + bottom info cards
+    "tiles": 7              // how many tiles the strip holds (1–12)
   },
-  "items": {}               // per-item enable / alias / hotkey — see below
+  "items": {}               // per-item enable / alias / hotkey / hint / state — see below
 }
 ```
 
@@ -557,10 +557,13 @@ config written by a newer one.
 What you see **before you type**. On (the default), an empty launcher query is
 three zones instead of one list:
 
-- a **strip of tiles** for the handful of things you actually reach for — the
-  top of the same frecency ranking the list has always used;
+- a **strip of tiles** for the things you actually reach for — the top of the
+  same frecency ranking the list has always used. Each tile is sized to its own
+  title (no shared column width) and a strip longer than the window scrolls
+  horizontally;
 - the **familiar list** beneath it, unchanged;
-- a quiet **glance line** above: the time, the date, and what you last copied.
+- a pair of **info cards** along the bottom: the time and date, and what you
+  last copied.
 
 Type a single character and the whole thing yields to today's ranked results —
 search itself is untouched. A tile is not a new kind of thing: it is the same
@@ -573,7 +576,7 @@ on never costs you list.
 
 ```jsonc
 "stage": { "enabled": false }   // the flat list pounce has always shown
-"stage": { "tiles": 3 }         // fewer, wider tiles — suits "compact"
+"stage": { "tiles": 4 }         // a shorter strip — suits "compact"
 ```
 
 In `"windowMode": "compact"` there is no Stage at all: compact means an empty
@@ -841,6 +844,21 @@ and does something you didn't mean.
   leaves out from here — and it fails outright when something asks about
   `workspaces` while `pages.mruFile` is unset or unreadable, which is the case
   that would otherwise look like the setting quietly doing nothing.
+
+- **`hint`** is a display-only keycap chip drawn on the row's right edge. It
+  binds nothing — it is for keys something *else* carries: a launch-mode chord
+  (caps → workspace), a page-scoped binding, anything an external binder owns.
+  An item whose `hotkey` is registered draws its chord as a chip automatically,
+  so this is only for the bindings pounce can't see. Where both exist, `hint`
+  wins.
+
+- **`state`** is a read-only shell command whose first stdout line becomes the
+  row's live badge — `"cmd:focus": { "state": "pounce focus status" }` shows
+  **On** (lit) or **Off** (quiet) beside the row. It never runs on the keystroke
+  that opens the palette: fresh results are cached for 30s, stale ones refresh
+  in the background with a 1.5s timeout, and the row simply appears without a
+  badge until one lands. Commands must be read-only — they run with the
+  daemon's grants, repeatedly, and `status` is the shape, never `toggle`.
 
 ### Leader sequences (two-step keys)
 

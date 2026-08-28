@@ -54,6 +54,20 @@ struct HotKeySpec: Equatable {
     var display: String {
         modifiers.isEmpty ? key : modifiers.joined(separator: "+") + "+" + key
     }
+
+    // Glyph form for the palette's row hints: "cmd+shift+v" → "⌘⇧V". The same
+    // chord a KeyCap draws, arrived at by lookup rather than by art. Unknown
+    // modifiers are skipped (they bind via the modifiers the daemon knows); an
+    // unknown key prints as-is, uppercased.
+    var glyphs: String {
+        let glyphs = ["cmd": "⌘", "alt": "⌥", "opt": "⌥", "ctrl": "⌃",
+                      "control": "⌃", "shift": "⇧", "fn": "fn"]
+        let keys = ["space": "␣", "enter": "↵", "return": "↵", "tab": "⇥",
+                    "escape": "⎋", "delete": "⌫", "up": "↑", "down": "↓",
+                    "left": "←", "right": "→", "fn": "fn"]
+        let mods = modifiers.compactMap { glyphs[$0] }.joined()
+        return mods + (keys[key] ?? key.uppercased())
+    }
 }
 
 // One or more steps pressed in ORDER. A single step is an ordinary chord
@@ -71,6 +85,9 @@ struct HotKeySequence: Equatable {
 
     var isLeader: Bool { steps.count > 1 }
     var display: String { steps.map(\.display).joined(separator: " ") }
+    // "opt+space e" → "⌥␣ e" — a leader step and its chord, spaced the way it's
+    // typed.
+    var glyphs: String { steps.map(\.glyphs).joined(separator: " ") }
 
     static func parse(_ any: Any?) -> HotKeySequence? {
         // Array form: each element is one step.
@@ -142,6 +159,15 @@ struct ItemSetting: Equatable {
     var enabled: Bool = true
     var alias: String?
     var hotkey: HotKeySequence?
+    // A display-only hint drawn in the row's trailing slot — "⌘⇧V" comes free
+    // from `hotkey`, so this is for bindings pounce does NOT register: a haus
+    // launch-mode key ("⇪ t"), a page-scoped chord, anything an external binder
+    // owns. Pure annotation; parsing it changes nothing about how the row runs.
+    var hint: String?
+    // A read-only shell command whose FIRST stdout line becomes the row's live
+    // badge ("On" / "Off" — see Badges.swift). Run off the summon path and
+    // cached; a command that blocks or prints nothing simply shows no badge.
+    var state: String?
     // Empty means "anywhere" for both, which is what an entry that never
     // mentions them keeps meaning.
     var workspaces: [String] = []
@@ -290,6 +316,8 @@ struct ItemSettings {
             if let e = fields["enabled"] as? Bool { entry.enabled = e }
             if let a = fields["alias"] as? String, !a.isEmpty { entry.alias = a }
             entry.hotkey = HotKeySequence.parse(fields["hotkey"])
+            if let h = fields["hint"] as? String, !h.isEmpty { entry.hint = h }
+            if let s = fields["state"] as? String, !s.isEmpty { entry.state = s }
             entry.workspaces = ItemSetting.stringList(fields["workspaces"])
             // Lowercased at parse time so the per-summon comparison stays a
             // plain `contains` — bundle ids are case-insensitive, and this read
@@ -329,6 +357,26 @@ struct ItemSettings {
 
     // A user-assigned search alias ("emo" → Emoji Picker), or nil.
     func alias(for itemKey: String) -> String? { entries[itemKey]?.alias }
+
+    // Every item carrying a display-only hint, as (item key, hint) pairs.
+    // Consumed by DaemonState.load, which folds them over the hotkey glyphs —
+    // a hint wins where both exist, because it is the deliberate override.
+    var hints: [(target: String, hint: String?)] {
+        entries.map { key, entry in (target: key, hint: entry.hint) }
+            .sorted { $0.target < $1.target }
+    }
+
+    // The trailing-keycap hint for one row, or nil. Read once per summon in
+    // DaemonState.load and handed to the views as a dictionary, so a row never
+    // walks the map itself.
+    func hint(for itemKey: String) -> String? { entries[itemKey]?.hint }
+
+    // Every item carrying a live state command, as (item key, command) pairs.
+    // Consumed by BadgeStore at the summon (see Badges.swift).
+    var stateCommands: [(target: String, command: String)] {
+        entries.compactMap { key, entry in entry.state.map { (target: key, command: $0) } }
+            .sorted { $0.target < $1.target }
+    }
 
     // Every item carrying a hotkey, as (target, sequence) pairs. The daemon
     // registers these at startup (see DaemonMode.run). Sorted by target so the

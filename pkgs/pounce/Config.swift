@@ -306,7 +306,7 @@ struct AppLauncherSettings {
 // compact window would be twelve unreadable slivers.
 struct StageSettings {
     var enabled: Bool = true
-    var tiles: Int = 5
+    var tiles: Int = 7
 }
 
 // The daemon's in-process global hotkey (see HotKeyManager). `key` is a named
@@ -605,7 +605,7 @@ struct Settings {
             if let e = st["enabled"] as? Bool { s.stage.enabled = e }
             // Clamped, not rejected — see StageSettings. 0 is spelled
             // "enabled": false, so it is not a value the strip has to draw.
-            if let t = st["tiles"] as? Int { s.stage.tiles = min(8, max(1, t)) }
+            if let t = st["tiles"] as? Int { s.stage.tiles = min(12, max(1, t)) }
         }
         if let hk = obj["hotkey"] as? [String: Any] {
             if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }

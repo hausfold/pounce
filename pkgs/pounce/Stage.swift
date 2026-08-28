@@ -19,10 +19,10 @@ import AppKit
 //      implementation to keep in step.
 //   2. It visualises only what is ALREADY in memory. Frecency (the sorted item
 //      list), the clipboard head, the update nudge — nothing here reads the
-//      disk or the network on the ⌘Space keystroke. The glance line is built
-//      ONCE per summon, in `DaemonState.load`, and handed to the view as a
-//      value; a body that formatted a date or asked the clipboard store for its
-//      head on every render would be doing that work per keystroke.
+//      disk or the network on the ⌘Space keystroke. The info cards' contents
+//      are built ONCE per summon, in `DaemonState.load`, and handed to the view
+//      as a value; a body that formatted a date or asked the clipboard store
+//      for its head on every render would be doing that work per keystroke.
 //   3. It moves on `Motion.spring` or not at all. The selection highlight glides
 //      between a tile and a row exactly as it glides between two rows: the tiles
 //      draw the same `SelectionGlide` in the same namespace the list owns, so
@@ -36,17 +36,22 @@ import AppKit
 // there, so ↓ reveals the plain list exactly as it always has.
 
 enum StageLayout {
-    static var tileHeight: CGFloat { pt(74) }
-    static var tileSpacing: CGFloat { pt(10) }
-    static var stripHPadding: CGFloat { pt(14) }
-    static var stripVPadding: CGFloat { pt(10) }
+    static var tileHeight: CGFloat { pt(80) }
+    static var tileSpacing: CGFloat { pt(8) }
+    static var stripHPadding: CGFloat { pt(10) }
+    static var stripVPadding: CGFloat { pt(8) }
     // Counted by ContentView.contentHeight, which sizes the window
     // arithmetically — this and the frame below must stay one number.
     static var stripHeight: CGFloat { tileHeight + stripVPadding * 2 }
-    static var glanceHeight: CGFloat { pt(30) }
-    // The widest a clipboard preview may get before it truncates, so a copied
-    // paragraph can't push the date off the other end of the line.
-    static var clipWidth: CGFloat { pt(240) }
+    // The bottom info-card row (what the glance line grew into — see below).
+    static var cardsHeight: CGFloat { pt(52) }
+    static var cardSpacing: CGFloat { pt(8) }
+    // A tile is as wide as its title needs, capped — past the cap the title
+    // truncates instead of the tile eating the strip. There is no measuring and
+    // no shared column width: the strip is a horizontal ScrollView, so tiles of
+    // different widths just flow, and an overflow SCROLLS rather than squeezing.
+    static var tileMaxWidth: CGFloat { pt(150) }
+    static var tileMinWidth: CGFloat { pt(76) }
 }
 
 // MARK: - The glance line's contents
@@ -115,23 +120,37 @@ struct StageStrip: View {
     let onPick: (Int) -> Void
 
     var body: some View {
-        HStack(spacing: StageLayout.tileSpacing) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
-                StageTile(item: item, isSelected: i == selectedIndex,
-                          glide: glide, selection: selectedIndex, glides: glides)
-                    .onTapGesture { onPick(i) }
+        // Horizontal overflow, not a shared column width. Tiles are sized by
+        // their own title (StageTile), so nothing here measures anything and no
+        // two tiles have to agree; a strip longer than the window scrolls, and
+        // the reader keeps the selected tile in view. The height stays the one
+        // arithmetic constant — width is the only dimension that flows.
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: StageLayout.tileSpacing) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                        StageTile(item: item, isSelected: i == selectedIndex,
+                                  glide: glide, selection: selectedIndex, glides: glides)
+                            .id(item.id)
+                            .onTapGesture { onPick(i) }
+                    }
+                }
+                .padding(.horizontal, StageLayout.stripHPadding)
+            }
+            .frame(height: StageLayout.stripHeight)
+            .onChange(of: selectedIndex) {
+                guard selectedIndex < items.count else { return }
+                proxy.scrollTo(items[selectedIndex].id, anchor: .center)
             }
         }
-        .padding(.horizontal, StageLayout.stripHPadding)
-        .padding(.vertical, StageLayout.stripVPadding)
-        .frame(height: StageLayout.stripHeight)
     }
 }
 
-// One tile: the item's own icon over its own name. Tiles share the row's width
-// equally (`maxWidth: .infinity`) rather than computing a column width, so the
-// strip fits whatever `stage.tiles` says without arithmetic that could disagree
-// with the window's.
+// One tile: the item's own icon over its own name, sized to the name. No
+// `maxWidth: .infinity` — that shared-width strip is what made five tiles eat
+// the window's width each. A tile is as wide as its title (capped at
+// StageLayout.tileMaxWidth, min StageLayout.tileMinWidth) so short names read
+// tight and long ones scroll the strip instead of truncating every neighbour.
 struct StageTile: View {
     let item: PounceItem
     let isSelected: Bool
@@ -156,20 +175,21 @@ struct StageTile: View {
                         .resizable().aspectRatio(contentMode: .fit)
                 } else if let iconName = item.icon {
                     Image(systemName: iconName)
-                        .font(.system(size: pt(22), weight: .medium))
+                        .font(.system(size: pt(26), weight: .medium))
                         .foregroundColor(isSelected ? Theme.mauve : Theme.subtext)
                 }
             }
-            .frame(width: pt(32), height: pt(32))
+            .frame(width: pt(38), height: pt(38))
 
             Text(item.title)
-                .font(.system(size: pt(11), weight: .medium, design: .rounded))
+                .font(.system(size: pt(13), weight: .medium, design: .rounded))
                 .foregroundColor(isSelected ? Theme.text : Theme.subtext)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .padding(.horizontal, pt(5))
+                .padding(.horizontal, pt(2))
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, pt(12))
+        .frame(minWidth: StageLayout.tileMinWidth, maxWidth: StageLayout.tileMaxWidth)
         .frame(height: StageLayout.tileHeight)
         // Zero inset and a squarer corner: the same highlight body the rows
         // draw, shaped for a tile. Because it is the same matchedGeometryEffect
@@ -185,49 +205,60 @@ struct StageTile: View {
     }
 }
 
-// MARK: - The glance line
+// MARK: - The bottom info cards
 
-// Deliberately not selectable and deliberately not clickable. It is the one
-// zone that answers a question you didn't type — what time is it, what did I
-// just copy, is there an update — and the moment it becomes a control it is
-// competing with the list for the same ⏎.
-struct GlanceLine: View {
+// The glance line's data, drawn the way the sketch wanted it: CARDS along the
+// bottom, one per fact, instead of a quiet line the eye has to hunt for at the
+// top. Same value, same snapshotting rules — still built ONCE per summon in
+// DaemonState.load, never per render — and deliberately still not selectable or
+// clickable: they answer questions you didn't type, and the moment one becomes
+// a control it competes with the list for the same ⏎.
+struct InfoCards: View {
     let glance: StageGlance
 
     var body: some View {
-        HStack(spacing: pt(8)) {
-            Text(glance.time)
-                .font(.system(size: pt(11), weight: .semibold, design: .rounded))
-                .foregroundColor(Theme.subtext)
-            Text(glance.date)
-                .font(.system(size: pt(11), design: .rounded))
-                .foregroundColor(Theme.subtext0)
-                .lineLimit(1)
-
-            Spacer(minLength: pt(10))
-
+        HStack(spacing: StageLayout.cardSpacing) {
+            InfoCard(label: "TODAY", icon: "clock",
+                     value: "\(glance.time) · \(glance.date)",
+                     flexible: glance.clip == nil)
             if let clip = glance.clip {
-                chip("doc.on.clipboard", clip, tint: Theme.subtext0,
-                     maxWidth: StageLayout.clipWidth)
+                InfoCard(label: "CLIPBOARD", icon: "doc.on.clipboard", value: clip)
             }
         }
-        .padding(.horizontal, pt(18))
-        .frame(height: StageLayout.glanceHeight)
+        .padding(.horizontal, pt(12))
+        .frame(height: StageLayout.cardsHeight)
     }
+}
 
-    private func chip(_ symbol: String, _ text: String, tint: Color,
-                      maxWidth: CGFloat?) -> some View {
-        HStack(spacing: pt(5)) {
-            Image(systemName: symbol)
-                .font(.system(size: pt(10), weight: .medium))
-                .foregroundColor(tint)
-            Text(text)
-                .font(.system(size: pt(11), design: .rounded))
+// One card: a small caps label over the value. The clipboard card flexes to
+// take the remaining width (it's the one worth reading); the date card sizes
+// to its own text unless it's alone.
+struct InfoCard: View {
+    let label: String
+    let icon: String
+    let value: String
+    var flexible: Bool = true
+
+    var body: some View {
+        HStack(spacing: pt(8)) {
+            Image(systemName: icon)
+                .font(.system(size: pt(12), weight: .medium))
                 .foregroundColor(Theme.subtext0)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: maxWidth, alignment: .leading)
+            VStack(alignment: .leading, spacing: pt(1)) {
+                Text(label)
+                    .font(.system(size: pt(9), weight: .semibold, design: .rounded))
+                    .kerning(0.8)
+                    .foregroundColor(Theme.subtext0)
+                Text(value)
+                    .font(.system(size: pt(12), weight: .medium, design: .rounded))
+                    .foregroundColor(Theme.subtext)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
-        .fixedSize(horizontal: maxWidth == nil, vertical: false)
+        .padding(.horizontal, pt(12))
+        .padding(.vertical, pt(7))
+        .frame(maxWidth: flexible ? .infinity : nil, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: pt(10)).fill(Theme.surface0.opacity(0.45)))
     }
 }

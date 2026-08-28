@@ -234,14 +234,14 @@ enum ConfigSpec {
                 fields: [
                     ConfigField(
                         name: "enabled",
-                        doc: "Open the launcher on a strip of tiles for the handful of things you actually reach for, with the usual list beneath them and a quiet line above showing the time, the date and what you last copied. Off gives you the flat list pounce has always shown. Typing anything yields the whole thing to the ranked results either way — this only changes the first thing you see.",
+                        doc: "Open the launcher on a strip of tiles for the things you actually reach for, with the usual list beneath them and a pair of info cards (the time, and what you last copied) along the bottom. Off gives you the flat list pounce has always shown. Typing anything yields the whole thing to the ranked results either way — this only changes the first thing you see.",
                         json: json(s.stage.enabled),
                         control: .toggle, symbol: "rectangle.topthird.inset.filled"),
                     ConfigField(
                         name: "tiles",
-                        doc: "How many tiles the strip holds. They share the window's width, so more of them means narrower ones — 5 fits the default width comfortably and 3 or 4 suits a compact palette. The list below grows by the same number, so promoting rows into tiles never costs you list.",
+                        doc: "How many tiles the strip holds. Each tile is sized to its own title — no shared column width — and a strip longer than the window scrolls horizontally, so the count is a ceiling rather than a fitting problem. The list below grows by the same number, so promoting rows into tiles never costs you list.",
                         json: json(s.stage.tiles),
-                        control: .number(1...8, unit: "tiles"), symbol: "square.grid.3x1.below.line.grid.1x2"),
+                        control: .number(1...12, unit: "tiles"), symbol: "square.grid.3x1.below.line.grid.1x2"),
                 ]),
 
             ConfigSection(
@@ -410,8 +410,8 @@ enum ConfigSpec {
             ConfigSection(
                 name: "items",
                 pane: "keys",
-                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\", \"shortcut:<uuid>\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too — see \"fnKey\" above for the two ways it can be carried. \"workspaces\"/\"bundleIds\" scope the ROW to where you summoned the palette from — never the item's hotkey, which stays global. \"workspaces\" reads the same \"pages\".mruFile the ⌃⇥ page walk does, and filters nothing when that file is unset or missing.",
-                // Five fields, and only five — see ItemSettings.parse.
+                doc: "Per-item overrides, keyed by item key (\"cmd:emoji\", \"mode:clipboard\", \"app:/Applications/Safari.app\", \"shortcut:<uuid>\"). Empty by default — an untouched config behaves as if this section didn't exist. `pounce --help` lists the keys. A bare \"fn\"/\"globe\" hotkey is supported too — see \"fnKey\" above for the two ways it can be carried. \"workspaces\"/\"bundleIds\" scope the ROW to where you summoned the palette from — never the item's hotkey, which stays global. \"workspaces\" reads the same \"pages\".mruFile the ⌃⇥ page walk does, and filters nothing when that file is unset or missing. An item whose hotkey is registered draws its chord as a keycap chip on the row automatically; \"hint\" draws a chip for a key something ELSE binds (a launch-mode chord, a page-scoped binding) and \"state\" runs a read-only command per summon whose first output line becomes the row's live badge (\"On\"/\"Off\") — status, never toggle.",
+                // Seven fields, and only seven — see ItemSettings.parse.
                 raw: """
                 // "cmd:emoji": {
                 //   "enabled": true,   // false removes the item from the palette
@@ -424,6 +424,8 @@ enum ConfigSpec {
                 //   "workspaces": ["T"],                    // only on T and its T/… pages
                 //   "bundleIds": ["com.mitchellh.ghostty"], // …and only with this app in front
                 // },
+                // "app:/Applications/Ghostty.app": { "hint": "⇪ t" },   // display-only keycap
+                // "cmd:focus":        { "state": "pounce focus status" }, // live badge on the row
                 """),
         ]
     }
