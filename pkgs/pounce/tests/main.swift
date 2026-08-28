@@ -67,6 +67,7 @@ failures += runAppScannerTests()
 failures += runShortcutsTests()
 failures += runSystemSettingsTests()
 failures += runDialsTests()
+failures += runFullscreenGateTests()
 
 if failures == 0 {
     exit(0)

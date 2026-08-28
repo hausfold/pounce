@@ -488,15 +488,12 @@ enum Aerospace {
     // neither needs nor causes a focus change: the mouse chord (MouseChords.swift)
     // focuses separately, and deliberately.
     //
-    // Gated: `fullscreen` is a MODE, and arming it on a solo window is a silent
-    // trap — the window already fills its workspace, so nothing visible happens,
-    // but `window-is-fullscreen` flips and the NEXT window to open there is
-    // hidden behind this one. So the toggle fires only when the window is
-    // already fullscreen (the OFF take, always allowed — a window whose siblings
-    // all closed must still have a way out) or shares its workspace with
-    // another window. A listing that doesn't answer degrades to the ungated
-    // toggle: a guard that strands the chord on an AeroSpace hiccup costs more
-    // than the trap it prevents.
+    // Gated by FullscreenGate.swift (its header has the trap this prevents); a
+    // listing that doesn't answer degrades to the ungated toggle: a guard that
+    // strands the chord on an AeroSpace hiccup costs more than the trap it
+    // prevents. nil (target absent from a successful listing — closed mid-gesture,
+    // or unmanaged/floating, for which the toggle was a no-op anyway) degrades
+    // the same way.
     static func fullscreen(windowID: CGWindowID) {
         // One listing answers both halves of the guard: the window's own
         // fullscreen flag and how many siblings share its workspace.
@@ -504,31 +501,9 @@ enum Aerospace {
             status,
             output in
             guard status == 0 else { zoom(windowID); return }
-
-            // Collect first, decide second: `list-windows` emits per workspace
-            // in tree order, so the target's line is frequently not first and
-            // a single pass would miss every sibling listed before it.
-            var rows: [(id: CGWindowID, workspace: String, fullscreen: Bool)] = []
-            for line in output.split(separator: "\n") {
-                let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
-                guard parts.count >= 3,
-                      let id = UInt32(parts[0].trimmingCharacters(in: .whitespaces))
-                else { continue }
-                rows.append((
-                    CGWindowID(id),
-                    String(parts[1]).trimmingCharacters(in: .whitespaces),
-                    parts[2].trimmingCharacters(in: .whitespaces) == "true"
-                ))
-            }
-            // Target absent from a successful listing — window closed between
-            // the click and the spawn, or unmanaged (a floating window): — is
-            // the same listing hiccup as status != 0, so degrade the same way.
-            // For an unmanaged window the toggle was a no-op anyway.
-            guard let target = rows.first(where: { $0.id == windowID }) else {
-                zoom(windowID)
-                return
-            }
-            if target.fullscreen || rows.contains(where: { $0.id != windowID && $0.workspace == target.workspace }) {
+            if FullscreenGate.decide(target: UInt32(windowID), listing: output) != .hold {
+                // .zoom (OFF take or a sibling shares the workspace) and nil
+                // (target absent — closed mid-gesture, or unmanaged) both fire.
                 zoom(windowID)
             }
         }
