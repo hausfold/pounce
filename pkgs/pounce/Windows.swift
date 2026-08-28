@@ -505,21 +505,30 @@ enum Aerospace {
             output in
             guard status == 0 else { zoom(windowID); return }
 
-            var target: (workspace: String, fullscreen: Bool)?
-            var siblings = 0
+            // Collect first, decide second: `list-windows` emits per workspace
+            // in tree order, so the target's line is frequently not first and
+            // a single pass would miss every sibling listed before it.
+            var rows: [(id: CGWindowID, workspace: String, fullscreen: Bool)] = []
             for line in output.split(separator: "\n") {
                 let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
                 guard parts.count >= 3,
                       let id = UInt32(parts[0].trimmingCharacters(in: .whitespaces))
                 else { continue }
-                let ws = String(parts[1])
-                if CGWindowID(id) == windowID {
-                    target = (ws, parts[2] == "true")
-                } else if let t = target, ws == t.workspace {
-                    siblings += 1
-                }
+                rows.append((
+                    CGWindowID(id),
+                    String(parts[1]).trimmingCharacters(in: .whitespaces),
+                    parts[2].trimmingCharacters(in: .whitespaces) == "true"
+                ))
             }
-            if target?.fullscreen == true || siblings > 0 {
+            // Target absent from a successful listing — window closed between
+            // the click and the spawn, or unmanaged (a floating window): — is
+            // the same listing hiccup as status != 0, so degrade the same way.
+            // For an unmanaged window the toggle was a no-op anyway.
+            guard let target = rows.first(where: { $0.id == windowID }) else {
+                zoom(windowID)
+                return
+            }
+            if target.fullscreen || rows.contains(where: { $0.id != windowID && $0.workspace == target.workspace }) {
                 zoom(windowID)
             }
         }
