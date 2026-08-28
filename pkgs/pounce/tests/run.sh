@@ -65,6 +65,7 @@ fi
   Currency.swift ItemSettings.swift FunctionKeyGesture.swift FunctionKeyRemap.swift CommandRegistry.swift UpdateCheck.swift \
   ConfigTemplate.swift ConfigWriter.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \
   Dials.swift \
+  FullscreenGate.swift \
   BugReport.swift \
   Shortcuts.swift SystemSettings.swift \
   "$scratch/version_stub.swift" \
@@ -73,5 +74,6 @@ fi
   tests/commandregistry_tests.swift tests/update_tests.swift tests/symbols_tests.swift \
   tests/configtemplate_tests.swift tests/configwriter_tests.swift tests/drafts_tests.swift tests/autoquit_tests.swift \
   tests/appscanner_tests.swift tests/shortcuts_tests.swift \
-  tests/systemsettings_tests.swift tests/bugreport_tests.swift tests/dials_tests.swift
+  tests/systemsettings_tests.swift tests/bugreport_tests.swift tests/dials_tests.swift \
+  tests/fullscreengate_tests.swift
 "$bin"
