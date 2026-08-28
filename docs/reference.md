@@ -1107,7 +1107,10 @@ chord** — a modifier plus a click — acts on the window **under the pointer**
 
 That makes **⌥ + right-click** zoom whichever window you clicked to fill its own
 workspace, focusing it on the way. `fullscreen` is a toggle, so the same chord
-puts it back. Needs [AeroSpace](https://github.com/nikitabobko/AeroSpace) (the
+puts it back. One exception, deliberate: a **solo, non-fullscreen** window is
+left alone — toggling it would arm AeroSpace's fullscreen mode (invisible on a
+solo window) and hide the next window that opens there. Needs
+[AeroSpace](https://github.com/nikitabobko/AeroSpace) (the
 action runs `aerospace fullscreen --window-id`) and the Accessibility grant every
 consuming event tap needs; read once at daemon start.
 
