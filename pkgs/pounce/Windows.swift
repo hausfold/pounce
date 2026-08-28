@@ -488,10 +488,47 @@ enum Aerospace {
     // neither needs nor causes a focus change: the mouse chord (MouseChords.swift)
     // focuses separately, and deliberately.
     //
-    // Fire-and-forget for the same reason focusWorkspace is: the caller is a
-    // gesture, and a window that evaporated between the click and the spawn
-    // should leave the screen alone rather than report anything.
+    // Gated: `fullscreen` is a MODE, and arming it on a solo window is a silent
+    // trap — the window already fills its workspace, so nothing visible happens,
+    // but `window-is-fullscreen` flips and the NEXT window to open there is
+    // hidden behind this one. So the toggle fires only when the window is
+    // already fullscreen (the OFF take, always allowed — a window whose siblings
+    // all closed must still have a way out) or shares its workspace with
+    // another window. A listing that doesn't answer degrades to the ungated
+    // toggle: a guard that strands the chord on an AeroSpace hiccup costs more
+    // than the trap it prevents.
     static func fullscreen(windowID: CGWindowID) {
+        // One listing answers both halves of the guard: the window's own
+        // fullscreen flag and how many siblings share its workspace.
+        run(["list-windows", "--all", "--format", "%{window-id}\t%{workspace}\t%{window-is-fullscreen}"]) {
+            status,
+            output in
+            guard status == 0 else { zoom(windowID); return }
+
+            var target: (workspace: String, fullscreen: Bool)?
+            var siblings = 0
+            for line in output.split(separator: "\n") {
+                let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+                guard parts.count >= 3,
+                      let id = UInt32(parts[0].trimmingCharacters(in: .whitespaces))
+                else { continue }
+                let ws = String(parts[1])
+                if CGWindowID(id) == windowID {
+                    target = (ws, parts[2] == "true")
+                } else if let t = target, ws == t.workspace {
+                    siblings += 1
+                }
+            }
+            if target?.fullscreen == true || siblings > 0 {
+                zoom(windowID)
+            }
+        }
+    }
+
+    // The toggle itself, fire-and-forget: the caller is a gesture, and a window
+    // that evaporated between the click and the spawn should leave the screen
+    // alone rather than report anything.
+    private static func zoom(_ windowID: CGWindowID) {
         run(["fullscreen", "--window-id", String(windowID)]) { _, _ in }
     }
 
