@@ -191,12 +191,22 @@ struct StageTile: View {
         .padding(.horizontal, pt(12))
         .frame(minWidth: StageLayout.tileMinWidth, maxWidth: StageLayout.tileMaxWidth)
         .frame(height: StageLayout.tileHeight)
-        // Zero inset and a squarer corner: the same highlight body the rows
-        // draw, shaped for a tile. Because it is the same matchedGeometryEffect
-        // id in the same namespace, ↓ off the strip glides the highlight from
-        // here down into the list rather than cutting.
-        .background(SelectionGlide(isSelected: isSelected, namespace: glide,
-                                   cornerRadius: pt(12), inset: 0))
+        // A resting card under the highlight, exactly the GridCard pattern: a
+        // selected tile reads as the same tile lit, and the glide has an
+        // unchanging backdrop to travel over. Without it the unselected tiles
+        // float as bare icon-over-label and the strip reads unfinished — the
+        // card is what makes a tile a TILE.
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: pt(12)).fill(Theme.surface0.opacity(0.5))
+                // Zero inset and a squarer corner: the same highlight body the
+                // rows draw, shaped for a tile. Because it is the same
+                // matchedGeometryEffect id in the same namespace, ↓ off the
+                // strip glides the highlight from here down into the list
+                // rather than cutting.
+                SelectionGlide(isSelected: isSelected, namespace: glide,
+                               cornerRadius: pt(12), inset: 0)
+            })
         .contentShape(Rectangle())
         // Keyed on the SELECTION, for the reason ItemRow documents at length:
         // the highlight leaving one view and arriving at another are two halves

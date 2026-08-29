@@ -62,5 +62,6 @@ func runBadgesTests() -> Int {
     }
     check(hung == nil, "a command past the timeout delivers nothing")
 
+    if failures == 0 { print("ok — all badges tests passed") }
     return failures
 }
