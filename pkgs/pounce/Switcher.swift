@@ -271,7 +271,7 @@ final class WindowSwitcher {
                 .compactMap { w -> (WindowInfo, Double)? in
                     guard let s = Fuzzy.score(chars, w.searchText) else { return nil }
                     let f = frecency.score(for: w.frecencyKey)
-                    return (w, s + (f / (f + 5)) * 1.5)   // same shaping as the launcher
+                    return (w, s + Frecency.rankWeight(f))   // same shaping as the launcher
                 }
                 .sorted { $0.1 > $1.1 }
                 .map { $0.0 }

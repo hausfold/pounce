@@ -59,11 +59,13 @@ final class AppScanner {
     private let lock = NSLock()
 
     // Rarely-launched apps get pushed below everything at an empty query, so they
-    // never squat the top slot on their own. It's a soft demotion: the penalty is
-    // sized to the frecency scale (see Frecency: steady daily use lands in the
-    // single digits), so actually using one lifts it back — "rely on frequency to
-    // move up at all". Typed search is unaffected: matchScore only reads
-    // baseBoost > 0, so a negative boost is treated as neutral there.
+    // never squat the top slot on their own. It's a soft demotion, and the only
+    // thing the size has to buy is "below an item with no history at all", which
+    // scores exactly 0 — so using one lifts it straight back out, and keeping it
+    // there is what continuing to use it is for (a single use is worth ~16 on the
+    // frecency scale, but that is mostly `short`, which is spent within days —
+    // see Frecency). Typed search is unaffected:
+    // matchScore only reads baseBoost > 0, so a negative boost is neutral there.
     static let demotionPenalty = 5.0
 
     // Curated default: the Apple system utilities nobody opens from a palette.

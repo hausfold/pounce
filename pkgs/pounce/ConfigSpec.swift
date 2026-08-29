@@ -245,6 +245,23 @@ enum ConfigSpec {
                 ]),
 
             ConfigSection(
+                name: "ranking",
+                pane: "launcher",
+                doc: "How the launcher learns. Turning both off leaves fuzzy match plus frecency — the ranking pounce had before these existed.",
+                fields: [
+                    ConfigField(
+                        name: "learnFromQueries",
+                        doc: "Remember which row you took for which query, and for each prefix of it, so \"vs\" comes to mean whatever you keep picking for it — however tightly something else fuzzy-matches those letters. It is also the only way pounce can learn a pairing your keystrokes don't spell, like \"mail\" meaning Superhuman. Two picks for the same query is enough to surface a row the search itself would have rejected.",
+                        json: json(s.ranking.learnFromQueries),
+                        control: .toggle, symbol: "brain"),
+                    ConfigField(
+                        name: "stickyTiles",
+                        doc: "Let the tiles hold their positions across summons, so the third tile is the same thing next week that it is today. Slots go to habit alone — a 30-day average, with today's burst deliberately left out — and change one tile at a time, only when something new clearly outgrows the weakest tile. Off, the strip is the ranked list's first few rows again and moves whenever the list does. On a pounce with no history yet there are no tiles at all: the strip grows as habits form.",
+                        json: json(s.ranking.stickyTiles),
+                        control: .toggle, symbol: "pin"),
+                ]),
+
+            ConfigSection(
                 name: "hotkey",
                 pane: "keys",
                 doc: "The global key that summons the palette. Read ONCE when the daemon starts — changing it needs a daemon restart, unlike everything above.",

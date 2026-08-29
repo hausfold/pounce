@@ -57,8 +57,10 @@ final class ShortcutsStore {
     // purely on alphabetical luck among zero-frecency items. Typed search is
     // unaffected — matchScore only reads `baseBoost > 0`, so a negative boost is
     // neutral there, and "add to perch" lands on the shortcut exactly as it
-    // would have. Sized to the frecency scale (see Frecency), so using one lifts
-    // it back out of the basement.
+    // would have. It only has to sit below an item with no history, which scores
+    // exactly 0 — so using one lifts it back out of the basement, and using it
+    // again is what keeps it there (see Frecency: one use is worth ~16, but most
+    // of that is `short`, which a couple of quiet days spends).
     static let emptyQueryPenalty = 5.0
 
     private var cache: [ShortcutEntry]? = nil     // nil until the first list

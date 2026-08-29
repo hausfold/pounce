@@ -193,11 +193,15 @@ final class FileSearchController {
         let week = 7.0 * 86400
         return hits.map { h -> (FileHit, Double) in
             let name = Fuzzy.score(q, h.name.lowercased()) ?? 0
-            let frec = frecency("file:\(h.path)")
-            let normFrec = frec / (frec + 5)                       // 0..1
+            // Same shaping as the launcher and the emoji grid — see
+            // Frecency.rankWeight. The saturating ratio this replaced read a
+            // scale that has since moved by more than an order of magnitude,
+            // which would have pinned any file opened even once against the top
+            // of its range and stopped it separating one from forty.
+            let frec = Frecency.rankWeight(frecency("file:\(h.path)"))
             let age = max(0, now - h.modified)
             let recency = age < week ? (1 - age / week) : 0        // 0..1, last week only
-            return (h, name + normFrec * 2.0 + recency * 0.75)
+            return (h, name + frec + recency * 0.75)
         }
         .sorted { $0.1 > $1.1 }
         .map { $0.0 }

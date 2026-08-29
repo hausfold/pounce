@@ -292,18 +292,49 @@ struct AppLauncherSettings {
     var hideBundleIds: [String] = []
 }
 
-// The Stage — what an EMPTY launcher query looks like (Stage.swift). On: the
-// top-frecency prefix is drawn as a strip of tiles with the familiar list
-// beneath it and one quiet glance line above. Off: exactly the flat list pounce
+// How the launcher LEARNS, as opposed to how it looks. Both defaults are on:
+// they are most of the difference between a palette that ranks and one that is
+// shaped by the person using it. Off, ranking falls back to fuzzy match plus
+// frecency, which is what pounce did before these existed.
+struct RankingSettings {
+    // Remember which row you took for which query — and for each prefix of it —
+    // so typing "vs" can come to mean Cursor however tightly something else
+    // fuzzy-matches those two letters. It is also the only way a pairing your
+    // keystrokes do not spell ("mail" → Superhuman) can ever be learned. See
+    // QueryMemory.swift.
+    var learnFromQueries: Bool = true
+    // Let the Stage's tiles hold their positions across summons, so ⌘3 is the
+    // same thing this week that it was last week. The slots are chosen by habit
+    // alone (a 30-day half-life, today's burst excluded) and change one tile at
+    // a time, only when a challenger clearly outgrows the weakest incumbent —
+    // see StageSlots.swift. Off, the strip is simply the ranked list's first
+    // few rows again, which moves whenever the list does.
+    //
+    // A consequence worth knowing: with this on, a pounce that has never been
+    // used has no tiles at all, because no item has earned a slot yet. The
+    // strip grows as habits form rather than opening on seven alphabetical
+    // accidents that then have to be unlearned.
+    var stickyTiles: Bool = true
+}
+
+// The Stage — what an EMPTY launcher query looks like (Stage.swift). On: a strip
+// of tiles for the things you actually reach for, with the familiar list beneath
+// it and a pair of info cards along the bottom. Off: exactly the flat list pounce
 // has always shown, which is the whole point of the switch — this changes the
 // first thing you see every time you press ⌘Space, and that is not a taste
 // everyone shares.
 //
-// `tiles` is a COUNT, not a size: the strip divides the window's width between
-// however many are asked for, and the list beneath grows by the same number so
-// promoting rows into tiles never costs you list. Clamped in load() rather than
-// rejected — one tile is a legitimate (if odd) answer, and twelve on a 600pt
-// compact window would be twelve unreadable slivers.
+// `tiles` is a COUNT, not a size: tiles are sized to their own titles and a strip
+// longer than the window scrolls, so the count is a ceiling rather than a fitting
+// problem. The list beneath grows by the same number, so promoting rows into
+// tiles never costs you list. Clamped in load() rather than rejected — one tile
+// is a legitimate (if odd) answer, and twelve on a 600pt compact window would be
+// twelve unreadable slivers.
+//
+// WHICH items get the tiles, and whether they hold their positions, is
+// `ranking.stickyTiles` above — the strip and the list are ranked by different
+// numbers (StageSlots.swift), which is what stops the strip being a copy of the
+// list's own head.
 struct StageSettings {
     var enabled: Bool = true
     var tiles: Int = 7
@@ -449,6 +480,7 @@ struct Settings {
     var clipboard = ClipboardSettings()
     var appLauncher = AppLauncherSettings()
     var stage = StageSettings()
+    var ranking = RankingSettings()
     var hotkey = HotKeyConfig()
     var windows = WindowSwitcherSettings()
     var appHotkeys = AppHotkeysSettings()
@@ -606,6 +638,10 @@ struct Settings {
             // Clamped, not rejected — see StageSettings. 0 is spelled
             // "enabled": false, so it is not a value the strip has to draw.
             if let t = st["tiles"] as? Int { s.stage.tiles = min(12, max(1, t)) }
+        }
+        if let r = obj["ranking"] as? [String: Any] {
+            if let q = r["learnFromQueries"] as? Bool { s.ranking.learnFromQueries = q }
+            if let t = r["stickyTiles"] as? Bool { s.ranking.stickyTiles = t }
         }
         if let hk = obj["hotkey"] as? [String: Any] {
             if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }

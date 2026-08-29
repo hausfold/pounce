@@ -532,6 +532,12 @@ struct CustomTextField: NSViewRepresentable {
     // rather than as list rows (ContentView.tileCount). 0 — every caller but the
     // staged launcher — leaves the arrow keys exactly as they were.
     var stageTiles: Int = 0
+    // ⌘1…⌘9 commits that tile outright. Passed as its own callback rather than
+    // driven through `selectedIndex`: that is a @Binding, so a write here is not
+    // visible to the host's `select(action:)` until the next view update, and
+    // the commit would fire against the OLD selection. Default is a no-op —
+    // only the staged launcher wires it.
+    var onTileShortcut: (Int) -> Void = { _ in }
     // Opt-in, and only the launcher opts in: wrapping is only safe where the host
     // grows its header to match (LauncherView.queryLineCount). The clipboard,
     // emoji, screenshot, file-search and cheatsheet headers are fixed-height
@@ -634,7 +640,7 @@ struct CustomTextField: NSViewRepresentable {
             // modified Return cannot degrade into a plain Return and submit the
             // prompt by accident.
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                self?.handleModifiedReturn(event) ?? event
+                self?.handleKey(event) ?? event
             }
         }
 
@@ -647,10 +653,31 @@ struct CustomTextField: NSViewRepresentable {
             }
         }
 
-        private func handleModifiedReturn(_ event: NSEvent) -> NSEvent? {
+        private func handleKey(_ event: NSEvent) -> NSEvent? {
             guard let textField,
                   event.window === textField.window,
                   textField.currentEditor() != nil else { return event }
+
+            // ⌘1…⌘9 fires the tile in that position. The whole point of a strip
+            // whose slots hold still (StageSlots.swift) is that its positions
+            // become numbers you know, and a number you know is worth a key.
+            // Only ever claims a digit while the strip is actually on screen,
+            // so ⌘1 stays free everywhere else.
+            //
+            // ⇧ is accepted alongside ⌘ because on AZERTY and its relatives the
+            // digit row is the SHIFTED layer: the unshifted key reports "&", so
+            // a ⌘-only test means those layouts can never reach a tile at all.
+            // `charactersIgnoringModifiers` ignores everything but shift, which
+            // is exactly the reading that makes ⌘⇧& arrive here as "1".
+            let stage = max(0, parent.stageTiles)
+            let chord = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if stage > 0,
+               chord == .command || chord == [.command, .shift],
+               let digit = event.charactersIgnoringModifiers.flatMap({ Int($0) }),
+               digit >= 1, digit <= stage {
+                parent.onTileShortcut(digit - 1)
+                return nil
+            }
 
             // ⌃⇥ moves the ⇥ focus to the next dial (several-dial steps). In
             // the monitor rather than doCommandBy because AppKit answers

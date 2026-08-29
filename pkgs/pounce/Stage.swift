@@ -3,10 +3,17 @@ import AppKit
 
 // MARK: - The Stage
 
-// What an EMPTY query looks like: a strip of top-frecency TILES, the familiar
-// list beneath them, and one quiet glance line. Type a single character and the
-// whole thing yields to today's ranked list — search itself is untouched, and
-// every code path below is gated on `queryIsEmpty` in ContentView.
+// What an EMPTY query looks like: a strip of TILES, the familiar list beneath
+// them, and a pair of info cards. Type a single character and the whole thing
+// yields to today's ranked list — search itself is untouched, and every code
+// path below is gated on `queryIsEmpty` in ContentView.
+//
+// The strip and the list are ranked by DIFFERENT numbers, which is the point of
+// having two zones at all. The list is live: it ranks on the full frecency score
+// so this afternoon's burst floats to the top. The strip is muscle memory: it
+// ranks on habit alone and then holds its positions across summons, so ⌘3 is the
+// same thing this week that it was last week. `StageSlots.swift` owns that rule;
+// `DaemonState.hoistSlots` is what puts the result at the head of the array.
 //
 // Three rules it is built to:
 //
@@ -16,10 +23,13 @@ import AppKit
 //      few you actually reach for. `ContentView.visible` stays one flat array
 //      and `selectedIndex` indexes across both zones, which is what keeps ⏎,
 //      the action bar and `ItemSettings` working here with no second
-//      implementation to keep in step.
+//      implementation to keep in step. The strip's own ranking is expressed as
+//      the ORDER of that one array, never as a second list.
 //   2. It visualises only what is ALREADY in memory. Frecency (the sorted item
 //      list), the clipboard head, the update nudge — nothing here reads the
-//      disk or the network on the ⌘Space keystroke. The info cards' contents
+//      disk or the network on the ⌘Space keystroke. The slot order is the one
+//      thing that is persisted, and it is read once at daemon start and written
+//      off the main thread only when it changes (StageSlotStore). The info cards' contents
 //      are built ONCE per summon, in `DaemonState.load`, and handed to the view
 //      as a value; a body that formatted a date or asked the clipboard store
 //      for its head on every render would be doing that work per keystroke.
@@ -129,7 +139,7 @@ struct StageStrip: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: StageLayout.tileSpacing) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
-                        StageTile(item: item, isSelected: i == selectedIndex,
+                        StageTile(item: item, index: i, isSelected: i == selectedIndex,
                                   glide: glide, selection: selectedIndex, glides: glides)
                             .id(item.id)
                             .onTapGesture { onPick(i) }
@@ -153,6 +163,8 @@ struct StageStrip: View {
 // tight and long ones scroll the strip instead of truncating every neighbour.
 struct StageTile: View {
     let item: PounceItem
+    // Position in the strip, drawn as its ⌘-digit — see below.
+    var index: Int = 0
     let isSelected: Bool
     var glide: Namespace.ID? = nil
     var selection: Int = 0
@@ -189,6 +201,20 @@ struct StageTile: View {
                 .padding(.horizontal, pt(2))
         }
         .padding(.horizontal, pt(12))
+        // The tile's own number, because ⌘1…⌘9 fires it (CustomTextField's key
+        // monitor). Drawn quietly in the corner rather than as a keycap: it is
+        // the answer to a question you only ask once, and the strip's job is to
+        // be scanned. Only ever for the first nine — a tenth tile has no chord
+        // to advertise, and a bare "10" would read as part of the name.
+        .overlay(alignment: .topTrailing) {
+            if index < 9 {
+                Text("\(index + 1)")
+                    .font(.system(size: pt(9), weight: .semibold, design: .rounded))
+                    .foregroundColor(isSelected ? Theme.subtext : Theme.surface2)
+                    .padding(.top, pt(5))
+                    .padding(.trailing, pt(6))
+            }
+        }
         .frame(minWidth: StageLayout.tileMinWidth, maxWidth: StageLayout.tileMaxWidth)
         .frame(height: StageLayout.tileHeight)
         // A resting card under the highlight, exactly the GridCard pattern: a
