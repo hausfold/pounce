@@ -25,10 +25,11 @@ done
 Keep the 2048 master rather than upscaling a slot — `512x512@2x` already wants
 1024.
 
-The tile is **full-bleed** — its squircle spans the whole canvas rather than
-sitting inside Apple's ~824/1024 inset with a shadow. That is deliberate: perch
-and trill ship the same way, and the three marks are meant to read as one set.
-Insetting is a family-wide change, not a pounce one.
+The master is deliberately flat and full-bleed — no inset, no drop shadow, no
+gloss. macOS 26 adds all three itself when it draws any app icon, so baking
+them in would double them; perch ships exactly this flat and renders with the
+padding and depth you see in Finder. An Icon Composer `.icon` file is the only
+way to control that pass per-layer, and no repo in the family has one.
 
 The README carries no imagery — the banner, the animated demo clip and the
 "a command is a file" illustration were dropped in 2026-08. Re-render from the
