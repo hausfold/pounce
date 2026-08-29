@@ -1,5 +1,11 @@
 # assets
 
+`pounce-banner-rounded.png` — the identity banner the README opens with
+(1200×348): the peach wordmark beside the cat-ears mark over a palette input
+bar, on a rounded `surface0` tile — the family's shared banner lockup. Flat
+pixels, no vector master and no recipe here: re-render from the brand kit to
+change it, including when a nebelung token moves.
+
 `pounce-square.png` / `pounce-square-inverted.png` — the app-icon mark
 (2048²): peach cat-ears over a command-palette input bar. `-square` is the
 dark-squircle version (light backgrounds); `-square-inverted` is the peach
@@ -31,6 +37,6 @@ them in would double them; perch ships exactly this flat and renders with the
 padding and depth you see in Finder. An Icon Composer `.icon` file is the only
 way to control that pass per-layer, and no repo in the family has one.
 
-The README carries no imagery — the banner, the animated demo clip and the
-"a command is a file" illustration were dropped in 2026-08. Re-render from the
-brand kit if a future README wants one back.
+The animated demo clip and the "a command is a file" illustration were dropped
+in 2026-08 and have not come back. Re-render from the brand kit if a future
+README wants them.

@@ -1,6 +1,7 @@
 <div align="center">
 
-# 🐾 pounce
+<!-- identity banner — peach wordmark (assets/pounce-banner-rounded.png) -->
+<img src="./assets/pounce-banner-rounded.png" alt="pounce" width="480">
 
 **summon, aim, pounce**
 
