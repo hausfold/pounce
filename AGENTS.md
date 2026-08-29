@@ -85,6 +85,8 @@ update haus` in the consumer — whatever that flake names the input).
 pkgs/pounce/            Swift sources (daemon/UI, one file per concern), Info.plist, emoji.json, ports
                         Config*.swift = the settings table + its two renderers;
                         Settings*.swift = the Settings window over them
+                        AppIcon.iconset/ = the app-icon slots build.sh feeds to iconutil.
+                        Here, not ../assets, because `src = ./.` is this dir alone
 pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh (official plugins)
 pkgs/pounce-skill/      the agent skill as a derivation — see below
 ai/SKILL.md             its source

@@ -85,6 +85,18 @@ cp Info.plist Pounce.app/Contents/
 # also how the two version strings land.
 /usr/bin/plutil -replace LSMinimumSystemVersion -string "$MACOS_MIN" Pounce.app/Contents/Info.plist
 
+# The app icon. Pounce is LSUIElement so this never reaches the Dock — it is
+# what System Settings' Login Items / Privacy rows, Finder, and any launcher
+# that resolves the bundle draw instead of macOS's blank white squircle.
+#
+# Assembled here from AppIcon.iconset rather than checked in as a built .icns,
+# so every slot stays a PNG that reviews and diffs on its own; assets/README.md
+# documents regenerating the set from the 2048 master. The iconset lives beside
+# this script because the Nix derivation sets `src = ./.` (pkgs/pounce alone) —
+# ../assets is outside its sandbox, the same reason the command library is
+# copied from a path the derivation never reaches.
+/usr/bin/iconutil -c icns AppIcon.iconset -o Pounce.app/Contents/Resources/AppIcon.icns
+
 # Bundle the picker datasets (read at runtime via Bundle.main). Both feed the
 # one emoji-mode grid: emoji.json is the vendored emoji superset, symbols.json
 # the curated plain-text symbols (⌘ ⌥ ⇧, arrows, math, box drawing).
