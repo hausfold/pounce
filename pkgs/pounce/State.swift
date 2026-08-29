@@ -172,6 +172,9 @@ final class DaemonState: ObservableObject {
     private var answerItem: PounceItem?
     private var noticeVersion: String?
     private var noticeItem: PounceItem?
+    // The scored match list, memoized per query string — see rankedMatches().
+    private var rankedQuery: String?
+    private var rankedRows: [PounceItem] = []
 
     var onCommit: ((Commit) -> Void)?
     var onResize: (() -> Void)?       // content height changed; window should refit
@@ -226,6 +229,8 @@ final class DaemonState: ObservableObject {
         pendingContentHeight = nil
         noticeVersion = nil
         noticeItem = nil
+        rankedQuery = nil
+        rankedRows = []
     }
 
     // The quick answer pinned above the launcher's results, if the query is
@@ -534,6 +539,7 @@ final class DaemonState: ObservableObject {
             placeholderText = placeholder ?? (lines.isEmpty ? "Input..." : "Search...")
         }
         items = built
+        rankedQuery = nil   // new items → any memoized ranking is stale
         frecencyScores = Dictionary(uniqueKeysWithValues: built.map { ($0.id, frecency.score(for: $0.frecencyKey)) })
 
         // Tie-break: the launcher's own items have no meaningful input order
@@ -558,6 +564,35 @@ final class DaemonState: ObservableObject {
     // by definition: this IS the no-query case.
     var emptyQueryRows: [PounceItem] {
         Array(itemsSorted.lazy.filter { $0.minQueryLength == 0 }.prefix(maxEmpty))
+    }
+
+    // The scored, sorted, per-pane-capped matches for a typed query, memoized
+    // on the query string. ContentView.filtered is a computed property, and
+    // SwiftUI reads it well over a dozen times per render pass — every derived
+    // property there (the tile slice, the list slice, the heights, the three
+    // onChange watchers, contentHeight via requestResize) bottoms out in it.
+    // The scoring pass fuzzy-matches every item on title, aliases, subtitle
+    // AND each settings keyword (~3300 of those alone), so uncached it
+    // multiplied the one genuinely expensive pass per keystroke by ~15 — which
+    // was the typing lag. Memoized, a keystroke pays for exactly one pass.
+    // Invalidated by reset() and load(); same pattern as the quick answer and
+    // the update notice above.
+    func rankedMatches(for trimmed: String) -> [PounceItem] {
+        if rankedQuery == trimmed { return rankedRows }
+        let q = Array(trimmed.lowercased())
+        let scored = items.compactMap { item -> (PounceItem, Double)? in
+            guard let s = matchScore(item, query: q) else { return nil }
+            return (item, s)
+        }
+        // One System Settings pane can hold hundreds of settings (Accessibility
+        // alone ships 342), so a short query would otherwise return one pane's
+        // worth of rows and nothing else. Applied after sorting, so what
+        // survives is that pane's best matches — and it touches nothing but
+        // settings sub-items.
+        rankedRows = SettingsPaneStore.capPerPane(scored.sorted { $0.1 > $1.1 }.map { $0.0 },
+                                                  limit: settingsMaxPerPane)
+        rankedQuery = trimmed
+        return rankedRows
     }
 
     // Combined relevance for a typed query. nil → no match.

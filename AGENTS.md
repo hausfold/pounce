@@ -264,7 +264,10 @@ changes `ai/SKILL.md` in the same PR.
   response 0.25 / damping 0.85 — and every *move* reads it: the selection glide
   between rows (`SelectionGlide`, one highlight body tied across rows by
   `matchedGeometryEffect` in a namespace the LIST owns), the dial roll, the action
-  bar's press blink, the type-settle on the launcher's `LazyVStack`. A second
+  bar's press blink. A typed re-rank is deliberately NOT one of them: the list
+  snaps into its new order the instant scoring returns — a reorder driven by
+  keystrokes retargets several times a second, and springing it both reads as
+  churn and taxes the keystroke being handled. A second
   `.spring(response:…)` literal in the sources IS the bug. `Motion.spring` is nil
   under System Settings › Accessibility › Reduce motion, so a new animation
   inherits that by using it and loses it by hand-rolling one — `SkeletonRow`'s

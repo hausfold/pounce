@@ -19,17 +19,6 @@ struct ContentView: View {
     // re-armed the moment the selection settles, so an arrow press right after
     // typing glides normally.
     @State private var glideArmed = true
-    // Type-settle's own arming, and a narrower question: is this subtree showing
-    // a list the user has been typing into, or one that was just swapped in
-    // under it? A step swap (reset() → new requestID) rebuilds everything below
-    // `.id(state.requestID)`, so SwiftUI has no previous value to animate from
-    // and the settle cannot fire anyway — this makes that structural instead of
-    // incidental, because the whole point of present()/resizeToFit is that a
-    // step swap is ONE CLEAN CUT and never a crossfade.
-    @State private var settleArmed = false
-    // When the last keystroke of the current typing burst landed — the settle
-    // cadence gate's other half, see the query onChange below.
-    @State private var lastSettleKeystroke = Date.distantPast
 
     var rowHeight: CGFloat { state.metrics.rowHeight }
 
@@ -76,23 +65,11 @@ struct ContentView: View {
 
     var filtered: [PounceItem] {
         let trimmed = state.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base: [PounceItem]
-        if queryIsEmpty {
-            base = state.emptyQueryRows
-        } else {
-            let q = Array(trimmed.lowercased())
-            let scored = state.items.compactMap { item -> (PounceItem, Double)? in
-                guard let s = state.matchScore(item, query: q) else { return nil }
-                return (item, s)
-            }
-            // One System Settings pane can hold hundreds of settings
-            // (Accessibility alone ships 342), so a short query would otherwise
-            // return one pane's worth of rows and nothing else. Applied after
-            // sorting, so what survives is that pane's best matches — and it
-            // touches nothing but settings sub-items.
-            base = SettingsPaneStore.capPerPane(scored.sorted { $0.1 > $1.1 }.map { $0.0 },
-                                                limit: state.settingsMaxPerPane)
-        }
+        // The scoring pass lives behind a per-query memo in DaemonState: this
+        // property is re-read a dozen-plus times per render (every slice and
+        // height below derives from it), and re-scoring every item on each
+        // read was the typing lag.
+        let base = queryIsEmpty ? state.emptyQueryRows : state.rankedMatches(for: trimmed)
         var rows = grouped(base)
         // A pending update rides the launcher's first row until it's taken —
         // pinned AFTER grouped() for the same reason the quick answer is:
@@ -393,7 +370,6 @@ struct ContentView: View {
         .onReceive(state.$requestID) { _ in
             selectedIndex = 0
             revealed = false
-            settleArmed = false
             glideArmed = true
         }
     }
@@ -430,22 +406,14 @@ struct ContentView: View {
                     }
                 }
                 .padding(.vertical, Self.listVPadding)
-                // Type-settle. Rows are keyed by item.id, so a keystroke
-                // that re-ranks the list is a set of MOVES to SwiftUI —
-                // this is what makes it play them instead of cutting to
-                // the new order. Keyed on the query (already in hand) and
-                // not on the row ids: recomputing `renderRows` for a
-                // comparison would re-run the whole scoring pass on every
-                // render, and the keystroke is the thing being settled
-                // anyway.
-                //
-                // Scoped to the STACK, deliberately. The window's height
-                // is arithmetic and instant (requestResize →
-                // PounceUI.resizeToFit, implicit animation off), and the
-                // ScrollView's frame below is outside this modifier, so
-                // both still snap; rows on their way out are clipped by a
-                // viewport that has already reached its new size.
-                .animation(settleArmed ? Motion.spring : nil, value: state.query)
+                // A keystroke's re-rank deliberately does NOT animate: rows are
+                // simply IN the new order the instant scoring returns. A list
+                // that reorders several times a second has no reorder worth
+                // watching — springing each one read as churn, and every
+                // in-flight transaction taxed the very keystroke being handled.
+                // The launcher's motion belongs to moves the USER makes (the
+                // selection glide, the dial roll, the press blink), never to
+                // moves the list makes under them.
             }
             .frame(height: listHeight + Self.listVPadding * 2)
             .onChange(of: selectedIndex) {
@@ -487,10 +455,8 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, GridLayout.hPadding)
                 .padding(.vertical, Self.listVPadding)
-                // Same type-settle as the list, and it earns its place more
-                // here: a re-rank in two columns moves cards sideways as well
-                // as up, which is a swap you can follow rather than a redraw.
-                .animation(settleArmed ? Motion.spring : nil, value: state.query)
+                // Same rule as the list: a typed re-rank snaps, it never
+                // springs. See listScroll.
             }
             .frame(height: gridHeight + Self.listVPadding * 2)
             .onChange(of: selectedIndex) {
@@ -609,19 +575,6 @@ struct ContentView: View {
             glideArmed = false
             selectedIndex = 0
             revealed = false
-            // The settle's cadence gate — the one change that makes fast typing
-            // both FEEL instant and look calm. A keystroke more than ~160ms
-            // after the last one is a deliberate, watchable step: the re-ranked
-            // list plays the spring and rows glide into their new order. A
-            // keystroke INSIDE the window is mid-burst: animate nothing, so no
-            // spring transaction is ever fighting the next character for the
-            // main thread — the rows just are the new order, the instant the
-            // scoring returns. When the burst pauses past the threshold, the
-            // next keystroke (or the first one back) settles animated, which is
-            // the one reorder there is actually time to watch.
-            let now = Date()
-            settleArmed = now.timeIntervalSince(lastSettleKeystroke) > 0.16
-            lastSettleKeystroke = now
             requestResize()
         }
         // …and re-arm as soon as the selection has settled, which is the update
@@ -634,17 +587,14 @@ struct ContentView: View {
         // (its slot swaps with a match) — that still changes the height.
         .onChange(of: hasAnswer) { requestResize() }
         .onChange(of: state.requestID) {
-            settleArmed = false
             selectedIndex = 0
             revealed = false
             requestResize()
         }
         // Seed the window with its arithmetic height before AppKit's first
-        // fitting-size pass installs the multiline field. This fires per REQUEST
-        // (the subtree above carries `.id(state.requestID)`), which is also what
-        // makes it the right place to arm the settle: the swap itself renders
-        // disarmed, and the first thing typed into the new step settles.
-        .onAppear { settleArmed = true; requestResize() }
+        // fitting-size pass installs the multiline field. Fires per REQUEST —
+        // the subtree above carries `.id(state.requestID)`.
+        .onAppear { requestResize() }
     }
 
     func select(action: String) {
