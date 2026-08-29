@@ -12,6 +12,11 @@
     <string>Pounce</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <!-- AppIcon.icns is built by build.sh from AppIcon.iconset; it is not a
+         checked-in file. Renaming one without the other leaves the bundle
+         pointing at an icon that isn't there, which reads as a white squircle. -->
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>LSUIElement</key>
