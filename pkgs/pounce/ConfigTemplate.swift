@@ -232,7 +232,7 @@ struct ConfigSection {
 }
 
 enum ConfigTemplate {
-    static let docsURL = "https://hausfold.co/docs/haus/reference/pounce/"
+    static let docsURL = "https://hausfold.co/docs/pounce/config/"
 
     /// Wrap prose to `width` columns. Docs are authored as single paragraphs, so
     /// this is the only thing standing between a 300-character sentence and a
