@@ -158,6 +158,11 @@ final class DaemonState: ObservableObject {
         }
     }
 
+    // The updater's own row. Named because three places have to agree about it:
+    // the pin that hoists it, the ⌘⏎ that dismisses it, and the Stage, which
+    // must never give it a tile.
+    static let updateItemKey = "cmd:update-pounce"
+
     let frecency = Frecency()
     // What each query has been answered with before — the pairing memory that
     // makes the palette teachable rather than merely adaptive (QueryMemory.swift).
@@ -274,7 +279,7 @@ final class DaemonState: ObservableObject {
         else { return nil }
         if noticeVersion != version {
             noticeVersion = version
-            let source = items.first { $0.frecencyKey == "cmd:update-pounce" }
+            let source = items.first { $0.frecencyKey == Self.updateItemKey }
             noticeItem = source.map { row in
                 // Same payload/kind, so ⏎ still runs the script through the
                 // usual path — only the advertised actions change. ⌘⏎ is the
@@ -413,10 +418,13 @@ final class DaemonState: ObservableObject {
     func emojiFrecency(_ c: String) -> Double { frecency.score(for: "emoji:\(c)") }
 
     // Relevance of an emoji for a typed query (name + keywords), nil → no match.
+    // Habit is shaped by the same `rankWeight` the launcher uses, and has to be:
+    // the raw scale it reads moved by more than an order of magnitude when
+    // frecency grew two timescales, and the saturating ratio this replaced would
+    // now put a once-used emoji within a rounding error of a daily one.
     func emojiMatch(_ e: EmojiEntry, query: [Character]) -> Double? {
         guard let s = Fuzzy.score(query, e.search) else { return nil }
-        let frec = emojiFrecency(e.c)
-        return s + (frec / (frec + 5)) * 1.5
+        return s + Frecency.rankWeight(emojiFrecency(e.c))
     }
 
     // Copy the emoji to the clipboard, record frecency, and echo it to the client.
@@ -529,6 +537,15 @@ final class DaemonState: ObservableObject {
                 // of the one array happens after the sort below.
                 if settings.ranking.stickyTiles {
                     let candidates = built
+                        // The update nudge is PINNED to the head of the list
+                        // while a release is pending (see ContentView.filtered),
+                        // and that pin removes it from wherever it was ranked.
+                        // A slot it held would therefore go missing for exactly
+                        // as long as an update is available, shifting every tile
+                        // after it up one — ⌘3 firing a different thing for a
+                        // week is the precise failure sticky slots exist to
+                        // prevent. It is a notice, not a habit; it gets no tile.
+                        .filter { $0.frecencyKey != Self.updateItemKey }
                         .filter { $0.minQueryLength == 0 }
                         .map { (key: $0.frecencyKey, score: frecency.longScore(for: $0.frecencyKey)) }
                         .filter { $0.score > 0 }
@@ -712,7 +729,7 @@ final class DaemonState: ObservableObject {
         // of running the updater. The pin is the only thing that takes over a
         // row you didn't ask for, so it owes you a way out — especially for
         // the Nix cohorts, where ⏎ can't clear it by installing.
-        if action == "cmd", item.frecencyKey == "cmd:update-pounce",
+        if action == "cmd", item.frecencyKey == Self.updateItemKey,
            UpdateNudge.shared.availableVersion != nil {
             UpdateNudge.shared.dismiss()
             noticeVersion = nil

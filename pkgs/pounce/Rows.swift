@@ -663,9 +663,16 @@ struct CustomTextField: NSViewRepresentable {
             // become numbers you know, and a number you know is worth a key.
             // Only ever claims a digit while the strip is actually on screen,
             // so ⌘1 stays free everywhere else.
+            //
+            // ⇧ is accepted alongside ⌘ because on AZERTY and its relatives the
+            // digit row is the SHIFTED layer: the unshifted key reports "&", so
+            // a ⌘-only test means those layouts can never reach a tile at all.
+            // `charactersIgnoringModifiers` ignores everything but shift, which
+            // is exactly the reading that makes ⌘⇧& arrive here as "1".
             let stage = max(0, parent.stageTiles)
+            let chord = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if stage > 0,
-               event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+               chord == .command || chord == [.command, .shift],
                let digit = event.charactersIgnoringModifiers.flatMap({ Int($0) }),
                digit >= 1, digit <= stage {
                 parent.onTileShortcut(digit - 1)

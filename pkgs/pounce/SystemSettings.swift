@@ -121,7 +121,7 @@ final class SettingsPaneStore {
     // and ShortcutsStore to the library. Fifty panes would otherwise squat the
     // seven empty-query slots on the day this ships, purely on alphabetical luck
     // among zero-frecency items. Typed search is unaffected (matchScore only
-    // reads `baseBoost > 0`), and one use lifts a pane back out. Sub-items don't
+    // reads `baseBoost > 0`), and using a pane lifts it back out. Sub-items don't
     // need it: they're gated out of the empty query entirely by minQueryLength.
     static let emptyQueryPenalty = 5.0
 

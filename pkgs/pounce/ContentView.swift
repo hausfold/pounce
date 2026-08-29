@@ -139,7 +139,15 @@ struct ContentView: View {
     // DaemonState.load; gated on the empty query here, so the first character
     // typed takes the whole zone away. Drawn along the BOTTOM of the panel, just
     // above the action bar — see InfoCards.
-    var glance: StageGlance? { stageTileTarget > 0 ? state.stageGlance : nil }
+    // The cards answer questions you didn't type, so they are gated on the Stage
+    // being ON and the query being empty — NOT on there being tiles. Those are
+    // different conditions the moment slots are sticky: a pounce nobody has used
+    // yet has earned no tiles, and there is no reason for the clock and the
+    // clipboard to disappear along with them.
+    var glance: StageGlance? {
+        guard state.query.isEmpty, showList else { return nil }
+        return state.stageGlance
+    }
 
     // What the two Stage zones add to the panel. Counted by `contentHeight`
     // (which sizes the window arithmetically) and by `maxVisibleItems` (which

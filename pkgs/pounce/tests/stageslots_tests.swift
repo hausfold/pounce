@@ -11,7 +11,12 @@ func runStageSlotsTests() -> Int {
             failures += 1
         }
     }
+    // Keys only, for the assertions that are about ORDER rather than credit.
     func resolve(_ previous: [String], _ candidates: [(String, Double)], _ slots: Int) -> [String] {
+        full(previous.map { StageSlots.Slot(key: $0) }, candidates, slots).map { $0.key }
+    }
+    func full(_ previous: [StageSlots.Slot], _ candidates: [(String, Double)],
+              _ slots: Int) -> [StageSlots.Slot] {
         StageSlots.resolve(previous: previous,
                            candidates: candidates.map { (key: $0.0, score: $0.1) },
                            slots: slots)
@@ -49,10 +54,43 @@ func runStageSlotsTests() -> Int {
     expect(stormed.filter { ["a", "b", "c"].contains($0) }.count == 2,
            "a strip never reshuffles: one tile at a time (got \(stormed))")
 
-    // An item that no longer exists is the one thing evicted instantly — a slot
-    // pointing at nothing is a hole, not stability.
-    expect(resolve(["a", "gone", "c"], [("a", 10), ("c", 8), ("d", 6)], 3) == ["a", "c", "d"],
-           "a vanished item frees its slot at once and the next candidate fills it")
+    // MARK: absence is not the same question as gone
+
+    // THE regression that matters most here. Several item sources legitimately
+    // return nothing on a given summon — the Shortcuts library and the System
+    // Settings panes both give up past a 0.25s cold budget, and `items` scoping
+    // hides workspace-pinned rows elsewhere. Evicting on the first absence
+    // backfilled the slot from the live ranking and PERSISTED it, so one cold
+    // login permanently rearranged a strip whose whole value is not rearranging.
+    let cold = full([StageSlots.Slot(key: "a"), StageSlots.Slot(key: "shortcut:x"),
+                     StageSlots.Slot(key: "c")],
+                    [("a", 10), ("c", 8), ("d", 6)], 3)
+    expect(cold.map { $0.key } == ["a", "shortcut:x", "c"],
+           "a source that did not load keeps its slot, and nothing backfills over it")
+    expect(cold.first { $0.key == "shortcut:x" }?.misses == 1, "…on credit, counted")
+
+    // …and it finds its position again the moment the source warms up.
+    let warm = full(cold, [("a", 10), ("shortcut:x", 9), ("c", 8), ("d", 6)], 3)
+    expect(warm.map { $0.key } == ["a", "shortcut:x", "c"], "a warmed source returns to its slot")
+    expect(warm.first { $0.key == "shortcut:x" }?.misses == 0, "…with a clean sheet")
+
+    // A genuinely gone item still frees its slot — just not on the first miss.
+    var fading = [StageSlots.Slot(key: "a"), StageSlots.Slot(key: "gone"), StageSlots.Slot(key: "c")]
+    for _ in 1..<StageSlots.evictAfterMisses {
+        fading = full(fading, [("a", 10), ("c", 8), ("d", 6)], 3)
+        expect(fading.map { $0.key }.contains("gone"), "an absence short of the limit is not an eviction")
+    }
+    fading = full(fading, [("a", 10), ("c", 8), ("d", 6)], 3)
+    expect(fading.map { $0.key } == ["a", "c", "d"],
+           "…but a sustained one is, and the next candidate fills the slot")
+
+    // A slot waiting out a miss cannot be taken by a challenger either: it has
+    // no score to be compared against, and treating a missing score as 0 would
+    // be eviction-on-absence wearing a different hat.
+    let besieged = full([StageSlots.Slot(key: "a"), StageSlots.Slot(key: "away"), StageSlots.Slot(key: "c")],
+                        [("x", 999), ("a", 10), ("c", 8)], 3)
+    expect(besieged.map { $0.key }.contains("away"),
+           "a challenger cannot take the slot of an item that merely did not load")
 
     // Config changes, both directions.
     expect(resolve(["a", "b", "c", "d"], [("a", 10), ("b", 9), ("c", 8), ("d", 7)], 2) == ["a", "b"],
