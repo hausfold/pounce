@@ -73,7 +73,7 @@ enum ConfigMode {
             Change it there and run `haus rebuild`; a copy written here would be
             replaced by the next rebuild without saying so.
 
-            See https://hausfold.co/docs/haus/reference/pounce/
+            See https://hausfold.co/docs/pounce/config/
 
             """.utf8))
             exit(1)

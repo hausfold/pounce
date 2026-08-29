@@ -24,7 +24,7 @@ import Carbon
 // app, so it re-shows on every later app switch, which is why the symptom
 // gets misread as ⌘Tab spawning the picker. No CGEventTap placement
 // suppresses that path; `pounce doctor` flags the system setting instead
-// (see docs/reference.md's Fn/Globe section).
+// (see hausfold.co/docs/pounce/config, "The Fn/Globe key").
 final class FunctionKeyHotKey {
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?

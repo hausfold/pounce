@@ -123,7 +123,7 @@ enum Main {
     housekeeping:
       --daemon                  run the resident daemon (launchd uses this; also
                                 hosts the MRU window switcher when config.json
-                                sets windows.enabled — see docs/reference.md)
+                                sets windows.enabled)
       autostart on|off|status   start the daemon at login via a self-registered
                                 login item (System Settings → Login Items).
                                 For drag-installs of Pounce.app; Homebrew users
@@ -139,7 +139,7 @@ enum Main {
       -h, --help                this text
 
     config: ~/.config/pounce/config.json   commands: ~/.config/pounce/commands
-    docs:   https://hausfold.co/docs/haus/reference/pounce/
+    docs:   https://hausfold.co/docs/pounce/config/
     """
 
     static func main() {
