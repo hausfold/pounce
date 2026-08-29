@@ -234,7 +234,7 @@ enum ConfigSpec {
                 fields: [
                     ConfigField(
                         name: "enabled",
-                        doc: "Open the launcher on a strip of tiles for the things you actually reach for, with the usual list beneath them and a pair of info cards (the time, and what you last copied) along the bottom. Off gives you the flat list pounce has always shown. Typing anything yields the whole thing to the ranked results either way — this only changes the first thing you see.",
+                        doc: "Open the launcher on a strip of tiles for the things you actually reach for, with the usual list beneath them and a row of info cards along the bottom. A card draws only when it has something to say — what usually comes next, what you last copied — and falls back to the date and time when neither does. Off gives you the flat list pounce has always shown. Typing anything yields the whole thing to the ranked results either way — this only changes the first thing you see.",
                         json: json(s.stage.enabled),
                         control: .toggle, symbol: "rectangle.topthird.inset.filled"),
                     ConfigField(

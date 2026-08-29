@@ -96,10 +96,15 @@ func runContextMemoryTests() -> Int {
     let ceiling = ContextMemory.multiplier(lift: ContextMemory.maxLift)
     expect(ceiling == 1 + ContextMemory.beta * ContextMemory.maxLift,
            "the strongest possible context is worth exactly β × maxLift")
-    // The calibration that matters: on a Fuzzy score of 20 — an exact hit on a
-    // name — the biggest tilt this can apply must stay under what a
-    // word-boundary match is worth, or typing a name would stop meaning it.
-    expect(20 * (ceiling - 1) < 4, "even a maximal nudge cannot outrun the query itself")
+    // The calibration that matters, and the reason the nudge is multiplicative:
+    // it is a SHARE of the score, so the guarantee holds at every scale rather
+    // than at the one somebody happened to check. A row scoring 86% of the
+    // leader's is the closest a maximal nudge can come to overtaking it — above
+    // that margin the better match always wins, whatever the query's length.
+    for leader in [8.0, 12.0, 20.0, 45.0] {
+        expect(leader * 0.86 * ceiling < leader,
+               "a maximal nudge cannot overtake a match 14% better (leader \(leader))")
+    }
     expect(ContextMemory.multiplier(lift: -5) == 1, "a negative lift can never demote")
 
     // MARK: capped
@@ -109,12 +114,24 @@ func runContextMemoryTests() -> Int {
     for i in 0..<6 { picks["app:/old\(i)"] = .init(weight: Double(10 + i), lastUsed: now) }
     picks["cmd:new"] = .init(weight: 1, lastUsed: now)
     let kept = ContextMemory.capped(picks, keeping: "cmd:new", limit: 4, now: now)
-    expect(kept.count == 4, "a facet is trimmed to its limit")
+    expect(kept.filter { $0.key != ContextMemory.otherKey }.count == 4,
+           "a facet is trimmed to its limit")
     expect(kept["cmd:new"] != nil,
            "the row just recorded survives — it enters at weight 1 and would " +
            "otherwise be cut on every commit, so a new habit could never form")
     expect(kept["app:/old0"] == nil && kept["app:/old5"] != nil,
            "…and what it costs is the weakest of the others")
+
+    // A share computed over the survivors is not a share. The `hour:` and `day:`
+    // facets see EVERY commit and keep forty, so a cap that shrank the
+    // denominator would inflate p(item | facet) for precisely the rows that
+    // survived it — which are the rows frecency already ranks first, i.e. it
+    // would quietly re-rank by frecency a second time.
+    let bucket = kept[ContextMemory.otherKey]
+    expect(bucket != nil, "the weight a cap dropped keeps counting, as one bucket")
+    expect((bucket?.weight ?? 0) == 10 + 11 + 12,
+           "…and it is exactly what was dropped (got \(bucket?.weight ?? 0))")
+    expect(kept.count == 5, "the bucket rides outside the limit rather than inside it")
 
     if failures == 0 { print("ok — ContextMemory tests passed") }
     return failures

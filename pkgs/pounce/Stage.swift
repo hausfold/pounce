@@ -316,11 +316,31 @@ struct InfoCard: View {
     var key: String? = nil
     var flexible: Bool = true
 
+    // The same two prefixes `ItemRow` and `StageTile` honour. The NEXT card
+    // draws a real item's icon, and a real item's icon is usually a PATH
+    // ("app:/Applications/Safari.app") rather than an SF Symbol name — the two
+    // cards that came before it only ever passed symbols, so an unconditional
+    // `Image(systemName:)` here drew an empty slot for the commonest prediction
+    // there is.
+    private var iconFilePath: String? {
+        if icon.hasPrefix("app:") { return String(icon.dropFirst(4)) }
+        if icon.hasPrefix("file:") { return String(icon.dropFirst(5)) }
+        return nil
+    }
+
     var body: some View {
         HStack(spacing: pt(8)) {
-            Image(systemName: icon)
-                .font(.system(size: pt(12), weight: .medium))
-                .foregroundColor(Theme.subtext0)
+            Group {
+                if let path = iconFilePath {
+                    Image(nsImage: AppIconCache.shared.icon(for: path))
+                        .resizable().aspectRatio(contentMode: .fit)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: pt(12), weight: .medium))
+                }
+            }
+            .frame(width: pt(14), height: pt(14))
+            .foregroundColor(Theme.subtext0)
             VStack(alignment: .leading, spacing: pt(1)) {
                 Text(label)
                     .font(.system(size: pt(9), weight: .semibold, design: .rounded))

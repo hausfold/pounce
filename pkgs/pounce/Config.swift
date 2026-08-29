@@ -330,7 +330,8 @@ struct RankingSettings {
 
 // The Stage — what an EMPTY launcher query looks like (Stage.swift). On: a strip
 // of tiles for the things you actually reach for, with the familiar list beneath
-// it and a pair of info cards along the bottom. Off: exactly the flat list pounce
+// it and a row of info cards along the bottom (each drawn only when it has
+// something to say — see Stage.swift's InfoCards). Off: exactly the flat list pounce
 // has always shown, which is the whole point of the switch — this changes the
 // first thing you see every time you press ⌘Space, and that is not a taste
 // everyone shares.

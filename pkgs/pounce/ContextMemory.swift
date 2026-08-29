@@ -70,14 +70,15 @@ final class ContextMemory {
     // wide.
     static let hourBucket = 4
 
-    // How hard a lift is allowed to tilt a score. The scoring pass adds up
-    // numbers on the Fuzzy scale (5–20 for a real match), so at β = 0.08 a
-    // maximally-lifted row gains ~0.16 × its own score — a point and a half on a
-    // typical match, about the same as `Frecency.rankWeight` gives a
-    // well-established habit. That is enough to settle a near-tie in favour of
-    // the thing you actually use HERE, and nowhere near enough to put it above
-    // an exact hit on someone else's name. Typing "safari" must still mean
-    // Safari, in every app and at every hour.
+    // How hard a lift is allowed to tilt a score. It is a share of the score
+    // rather than a number of points — a row the query barely matches is nudged
+    // barely — so the ceiling is 16% (β × maxLift) of whatever the row already
+    // scored: about 1.3 points on a short query's typical match, and more on a
+    // long exact one, which is the right direction. What matters is that it is a
+    // SHARE: a nudge can never overtake a row that scores more than 1/(1 + β ×
+    // maxLift) — 86% — of the leader, so a genuinely better match is never
+    // displaced by context, only a near-tie is settled by it. Typing "safari"
+    // must still mean Safari, in every app and at every hour.
     static let beta = 0.08
 
     // A lift is capped before it is weighted: an item three times likelier here
@@ -92,9 +93,26 @@ final class ContextMemory {
     // commit in a new app should not immediately reorder that app's launcher.
     static let priorWeight = 3.0
 
+    // Where the weight of everything a cap threw away is kept. Not an item — no
+    // frecency key is empty, they all carry a `cmd:` / `app:` / `mode:` prefix —
+    // so it can never be mistaken for one, and `nudges` never emits an opinion
+    // about it.
+    //
+    // It exists because a share computed over a TRUNCATED map is not a share.
+    // `hour:` and `day:` facets see every commit there has ever been, keep 40 of
+    // them, and would then divide by the survivors — inflating p(item | facet)
+    // for exactly the rows that survived the cap, which are the rows frecency
+    // already ranks first. That is the "just re-rank by frecency a second time"
+    // this whole file exists to avoid. Rolling the dropped weight into one
+    // bucket keeps every denominator honest at a cost of one entry per facet.
+    // (QueryMemory does not do this; its cap is 4 picks on a query somebody
+    // typed, where the tail really is noise. Here the tail is most of the data.)
+    static let otherKey = ""
+
     // Ceilings, enforced on write. A facet remembers the items that mean
     // something there, not everything that ever happened there; the baseline is
-    // allowed more because it is the denominator for all of them.
+    // allowed more because it is the denominator for all of them. Both count
+    // real items — the `otherKey` bucket rides along outside the limit.
     static let maxKeysPerFacet = 40
     static let maxBaselineKeys = 400
     static let maxFacets = 300
@@ -192,12 +210,21 @@ final class ContextMemory {
     // become one.
     static func capped(_ picks: [String: Count], keeping key: String,
                        limit: Int, now: Double) -> [String: Count] {
-        guard picks.count > limit else { return picks }
-        let others = picks.filter { $0.key != key }
+        let real = picks.filter { $0.key != otherKey }
+        guard real.count > limit else { return picks }
+        let ranked = real.filter { $0.key != key }
             .sorted { decayed($0.value, now: now) > decayed($1.value, now: now) }
-        var kept = Dictionary(uniqueKeysWithValues:
-            others.prefix(max(limit - 1, 0)).map { ($0.key, $0.value) })
+        let survivors = ranked.prefix(max(limit - 1, 0))
+        var kept = Dictionary(uniqueKeysWithValues: survivors.map { ($0.key, $0.value) })
         kept[key] = picks[key]
+        // Everything cut keeps counting, as one number. Rolled up decayed to
+        // `now`, which is what a bucket with no single moment of its own can
+        // honestly claim.
+        var carried = picks[otherKey].map { decayed($0, now: now) } ?? 0
+        for dropped in ranked.dropFirst(survivors.count) {
+            carried += decayed(dropped.value, now: now)
+        }
+        if carried > 0 { kept[otherKey] = Count(weight: carried, lastUsed: now) }
         return kept
     }
 
@@ -228,8 +255,10 @@ final class ContextMemory {
         for (key, count) in base {
             let w = Self.decayed(count, now: now)
             guard w > 0 else { continue }
-            baseWeights[key] = w
+            // The bucket counts towards the total and never towards an answer:
+            // it is the weight of everything the cap dropped, not an item.
             baseTotal += w
+            if key != Self.otherKey { baseWeights[key] = w }
         }
         guard baseTotal > 0 else { return [:] }
         for facet in facets {

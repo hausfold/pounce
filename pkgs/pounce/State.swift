@@ -5,8 +5,13 @@ import ApplicationServices
 // MARK: - Where a summon came from
 //
 // The AppKit half of ItemSettings' context predicates (the rest is
-// Foundation-only so tests/run.sh can compile it). Called at most once per
-// launcher build, and only when the config scopes something.
+// Foundation-only so tests/run.sh can compile it), and the input the context
+// conditioning is built from (ContextMemory.swift). Called at most once per
+// launcher build, and only when something asks: a scoped `items` entry, or
+// `ranking.useContext` — which is on by default, so on most machines this now
+// runs on every launcher summon rather than on almost none. The frontmost app
+// is an in-process lookup; the workspace is a read of `pages.mruFile`, which
+// is capped at 8KB and opens nothing at all when no such file is configured.
 extension ItemContext {
     static func current(settings: Settings) -> ItemContext {
         // The palette hasn't activated yet at this point — every path calls

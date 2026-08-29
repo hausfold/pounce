@@ -49,7 +49,8 @@ final class NextActionStore {
 
     // What the store thinks is coming, and how sure it is. `evidence` is the
     // decayed number of times the predecessor has been followed by ANYTHING —
-    // the n behind the p.
+    // the n behind the p — including the continuations a cap has since rolled
+    // into `otherKey`, which is what keeps that claim true.
     struct Prediction: Equatable {
         let key: String
         let probability: Double
@@ -79,7 +80,19 @@ final class NextActionStore {
     static let minProbability = 0.5
     static let minEvidence = 5.0
 
-    // Ceilings, enforced on write — same shape as QueryMemory's.
+    // Where the weight of every continuation the cap threw away is kept, so the
+    // `total` a probability is divided by stays the number of times you did
+    // ANYTHING after this — not the number of times you did one of the six
+    // things that survived. Without it the cap manufactures confidence: a
+    // predecessor followed by one thing eight times and by thirty other things
+    // once each has a true p of 0.2 and would report 0.6, clearing both bars and
+    // drawing a card that is wrong four times in five. Not an item key — every
+    // frecency key carries a prefix, so the empty string can never be one — and
+    // `predict` never offers it as an answer.
+    static let otherKey = ""
+
+    // Ceilings, enforced on write. `maxNexts` counts real continuations; the
+    // bucket above rides along outside it.
     static let maxNexts = 6
     static let maxKeys = 1500
     static let pruneTo = 1300
@@ -140,6 +153,9 @@ final class NextActionStore {
             let w = decayed(count, now: now)
             guard w > 0 else { continue }
             total += w
+            // The dropped-weight bucket is part of the denominator and can never
+            // be the answer — see `otherKey`.
+            guard key != otherKey else { continue }
             if w > (best?.weight ?? 0) { best = (key, w) }
         }
         guard let best, total >= minEvidence else { return nil }
@@ -154,12 +170,20 @@ final class NextActionStore {
     // be learned.
     static func capped(_ nexts: [String: Count], keeping key: String,
                        now: Double) -> [String: Count] {
-        guard nexts.count > maxNexts else { return nexts }
-        let others = nexts.filter { $0.key != key }
+        let real = nexts.filter { $0.key != otherKey }
+        guard real.count > maxNexts else { return nexts }
+        let ranked = real.filter { $0.key != key }
             .sorted { decayed($0.value, now: now) > decayed($1.value, now: now) }
-        var kept = Dictionary(uniqueKeysWithValues:
-            others.prefix(maxNexts - 1).map { ($0.key, $0.value) })
+        let survivors = ranked.prefix(maxNexts - 1)
+        var kept = Dictionary(uniqueKeysWithValues: survivors.map { ($0.key, $0.value) })
         kept[key] = nexts[key]
+        // What was cut keeps counting, as one number decayed to `now` — the
+        // denominator has to remember the tail even when the map does not.
+        var carried = nexts[otherKey].map { decayed($0, now: now) } ?? 0
+        for dropped in ranked.dropFirst(survivors.count) {
+            carried += decayed(dropped.value, now: now)
+        }
+        if carried > 0 { kept[otherKey] = Count(weight: carried, lastUsed: now) }
         return kept
     }
 

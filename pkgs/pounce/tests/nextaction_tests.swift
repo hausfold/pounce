@@ -80,11 +80,31 @@ func runNextActionTests() -> Int {
     for i in 0..<NextActionStore.maxNexts + 2 { nexts["old\(i)"] = count(Double(10 + i)) }
     nexts["fresh"] = count(1)
     let kept = NextActionStore.capped(nexts, keeping: "fresh", now: now)
-    expect(kept.count == NextActionStore.maxNexts, "a predecessor's continuations are bounded")
+    expect(kept.filter { $0.key != NextActionStore.otherKey }.count == NextActionStore.maxNexts,
+           "a predecessor's continuations are bounded")
     expect(kept["fresh"] != nil,
            "the pair just recorded survives the trim, or a workflow that changed " +
            "could never be learned (QueryMemory.capped's reason, verbatim)")
     expect(kept["old0"] == nil, "…and the weakest of the others is what it costs")
+
+    // …but what it costs the MAP it must not cost the denominator. A cap that
+    // shrank `total` would compute p over the survivors alone — exactly the
+    // tail-heavy case where that answer is wrong.
+    let bucket = kept[NextActionStore.otherKey]
+    expect(bucket != nil, "the dropped continuations keep counting, as one number")
+    expect((bucket?.weight ?? 0) == 10 + 11 + 12, "…and it is their weight, not a token")
+
+    var trimmed: [String: NextActionStore.Count] = [:]
+    for i in 0..<30 {
+        trimmed["once\(i)"] = count(1)
+        trimmed = NextActionStore.capped(trimmed, keeping: "once\(i)", now: now)
+    }
+    trimmed["often"] = count(8)
+    trimmed = NextActionStore.capped(trimmed, keeping: "often", now: now)
+    expect(trimmed.count <= NextActionStore.maxNexts + 1, "the map stays bounded")
+    expect(NextActionStore.predict(trimmed, now: now) == nil,
+           "eight times out of thirty-eight is not a prediction, however many of " +
+           "the other thirty the cap has forgotten by name")
 
     if failures == 0 { print("ok — NextAction prediction tests passed") }
     return failures
