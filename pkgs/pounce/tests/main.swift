@@ -1,5 +1,6 @@
 // Unit tests for pounce's pure logic: the ranking math (tests/frecency_tests.swift,
-// querymemory_tests.swift, stageslots_tests.swift) and the quick-answer
+// querymemory_tests.swift, contextmemory_tests.swift, nextaction_tests.swift,
+// stageslots_tests.swift) and the quick-answer
 // engines (tests/quickanswer_tests.swift). Deliberately assertion-based
 // (no XCTest/SwiftPM) so it compiles with the very same `xcrun swiftc` the app
 // build uses — see tests/run.sh. Lives under tests/ so pkgs/pounce/*.swift (the
@@ -9,7 +10,8 @@
 // under test.
 //
 // Everything under test here is a pure function or a pure static. The stores
-// they belong to (Frecency, QueryMemory, StageSlotStore) touch the filesystem
+// they belong to (Frecency, QueryMemory, ContextMemory, NextActionStore,
+// StageSlotStore) touch the filesystem
 // and the wall clock in their instance halves, which is exactly what the pure
 // halves were split out to avoid.
 
@@ -19,6 +21,8 @@ var failures = 0
 
 failures += runFrecencyTests()
 failures += runQueryMemoryTests()
+failures += runContextMemoryTests()
+failures += runNextActionTests()
 failures += runStageSlotsTests()
 failures += runQuickAnswerTests()
 failures += runItemSettingsTests()

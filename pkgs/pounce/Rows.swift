@@ -538,6 +538,12 @@ struct CustomTextField: NSViewRepresentable {
     // the commit would fire against the OLD selection. Default is a no-op —
     // only the staged launcher wires it.
     var onTileShortcut: (Int) -> Void = { _ in }
+    // ⇥ accepts the Stage's predicted next action (NextAction.swift). Armed only
+    // while that card is actually on screen — ContentView.predicted gates on the
+    // same condition that draws it — so ⇥ keeps its old meaning (nothing, in a
+    // palette with no dials) everywhere else.
+    var predictionArmed: Bool = false
+    var onPredictionAccept: () -> Void = {}
     // Opt-in, and only the launcher opts in: wrapping is only safe where the host
     // grows its header to match (LauncherView.queryLineCount). The clipboard,
     // emoji, screenshot, file-search and cheatsheet headers are fixed-height
@@ -824,6 +830,14 @@ struct CustomTextField: NSViewRepresentable {
                 return true
             case #selector(NSResponder.insertBacktab(_:)) where !parent.state.dials.isEmpty:
                 parent.state.cycleDial(-1)
+                return true
+            // ⇥ takes the predicted next action. Dials win — their cases are
+            // above this one and a switch takes the first that matches — and the
+            // launcher never has dials anyway, so the two readings of ⇥ can
+            // never both be live. ⇧⇥ is deliberately not a second accept: one
+            // key, one meaning.
+            case #selector(NSResponder.insertTab(_:)) where parent.predictionArmed:
+                parent.onPredictionAccept()
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
                 // Esc-to-clear, then Esc-to-dismiss — the standard palette idiom,

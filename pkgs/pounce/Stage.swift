@@ -4,7 +4,7 @@ import AppKit
 // MARK: - The Stage
 
 // What an EMPTY query looks like: a strip of TILES, the familiar list beneath
-// them, and a pair of info cards. Type a single character and the whole thing
+// them, and a row of info cards that draw only when they have something to say. Type a single character and the whole thing
 // yields to today's ranked list — search itself is untouched, and every code
 // path below is gated on `queryIsEmpty` in ContentView.
 //
@@ -74,6 +74,16 @@ struct StageGlance {
     let date: String        // "Thursday 27 August"
     let time: String        // "14:32"
     let clip: String?       // the clipboard head's one-line preview
+    let next: Next?         // what usually follows what you just did
+
+    // The predicted follow-up, flattened to what the card draws. A title and an
+    // icon, not the item — the view has no business committing anything, and
+    // ⇥ goes through `DaemonState.predictedItem` and the ordinary commit path
+    // exactly as ⏎ on a row does.
+    struct Next {
+        let title: String
+        let icon: String?
+    }
 
     // Two things the glance deliberately does NOT carry:
     //
@@ -91,14 +101,15 @@ struct StageGlance {
     // Snapshotted at summon time, which is also the only time it could be
     // meaningfully right: the window lives for seconds, so a clock that ticked
     // would be animation for its own sake on the one surface that refuses it.
-    static func now(clipboardEnabled: Bool) -> StageGlance {
+    static func now(clipboardEnabled: Bool, next: Next? = nil) -> StageGlance {
         let now = Date()
         let clip = clipboardEnabled ? ClipboardStore.shared.head?.preview : nil
         return StageGlance(
             date: dateFormatter.string(from: now),
             time: timeFormatter.string(from: now),
             clip: clip.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .flatMap { $0.isEmpty ? nil : $0 })
+                .flatMap { $0.isEmpty ? nil : $0 },
+            next: next)
     }
 
     // Built once for the life of the process. A DateFormatter costs about as
@@ -246,19 +257,46 @@ struct StageTile: View {
 // The glance line's data, drawn the way the sketch wanted it: CARDS along the
 // bottom, one per fact, instead of a quiet line the eye has to hunt for at the
 // top. Same value, same snapshotting rules — still built ONCE per summon in
-// DaemonState.load, never per render — and deliberately still not selectable or
-// clickable: they answer questions you didn't type, and the moment one becomes
-// a control it competes with the list for the same ⏎.
+// DaemonState.load, never per render.
+//
+// **A card draws when it has something to say.** That is the rule the row is
+// built to now, and the clock is what taught it: `TODAY 14:32` drew on every
+// single summon, saying a thing macOS already draws in the menu bar all day.
+// A panel element that is always there and never new stops being read at all —
+// and takes the cards that ARE new down with it, because the eye learns to skip
+// the strip rather than the card.
+//
+// So the row is news-first:
+//
+//   NEXT       what usually follows what you just did (NextAction.swift). Rare
+//              by construction — it appears only when the pairing is strong —
+//              and the one card that is actionable.
+//   CLIPBOARD  the clipboard head. Genuinely invisible otherwise: the only way
+//              to find out what you are about to paste is to paste it.
+//   TODAY      the panel's RESTING FACE, drawn only when neither of the others
+//              has anything to say. Not because the time is news, but because
+//              an empty strip where a row of cards belongs reads as broken, and
+//              the clock is the cheapest honest thing to put there — it is
+//              already snapshotted, and it is never wrong.
+//
+// The NEXT card is a suggestion, not a control. It takes ⇥ — never ⏎, which
+// belongs to the selection — and it is deliberately NOT clickable: ⇥ is a
+// deliberate act, a click that lands on a card nobody selected is not.
 struct InfoCards: View {
     let glance: StageGlance
 
     var body: some View {
         HStack(spacing: StageLayout.cardSpacing) {
-            InfoCard(label: "TODAY", icon: "clock",
-                     value: "\(glance.time) · \(glance.date)",
-                     flexible: glance.clip == nil)
+            if let next = glance.next {
+                InfoCard(label: "NEXT", icon: next.icon ?? "arrow.turn.down.right",
+                         value: next.title, key: "⇥", flexible: glance.clip == nil)
+            }
             if let clip = glance.clip {
                 InfoCard(label: "CLIPBOARD", icon: "doc.on.clipboard", value: clip)
+            }
+            if glance.next == nil && glance.clip == nil {
+                InfoCard(label: "TODAY", icon: "clock",
+                         value: "\(glance.time) · \(glance.date)")
             }
         }
         .padding(.horizontal, pt(12))
@@ -273,6 +311,9 @@ struct InfoCard: View {
     let label: String
     let icon: String
     let value: String
+    // A keycap on the trailing edge, for the one card you can act on. nil — every
+    // other card — draws exactly what it always did.
+    var key: String? = nil
     var flexible: Bool = true
 
     var body: some View {
@@ -290,6 +331,12 @@ struct InfoCard: View {
                     .foregroundColor(Theme.subtext)
                     .lineLimit(1)
                     .truncationMode(.tail)
+            }
+            // The same KeyCap the action bar draws, so the affordance reads as
+            // the same kind of promise the bar's ⏎ and ⌘⏎ make.
+            if let key {
+                Spacer(minLength: pt(8))
+                KeyCap(key)
             }
         }
         .padding(.horizontal, pt(12))

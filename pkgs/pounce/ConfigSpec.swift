@@ -247,7 +247,7 @@ enum ConfigSpec {
             ConfigSection(
                 name: "ranking",
                 pane: "launcher",
-                doc: "How the launcher learns. Turning both off leaves fuzzy match plus frecency — the ranking pounce had before these existed.",
+                doc: "How the launcher learns. Turning them all off leaves fuzzy match plus frecency — the ranking pounce had before these existed.",
                 fields: [
                     ConfigField(
                         name: "learnFromQueries",
@@ -259,6 +259,16 @@ enum ConfigSpec {
                         doc: "Let the tiles hold their positions across summons, so the third tile is the same thing next week that it is today. Slots go to habit alone — a 30-day average, with today's burst deliberately left out — and change one tile at a time, only when something new clearly outgrows the weakest tile. Off, the strip is the ranked list's first few rows again and moves whenever the list does. On a pounce with no history yet there are no tiles at all: the strip grows as habits form.",
                         json: json(s.ranking.stickyTiles),
                         control: .toggle, symbol: "pin"),
+                    ConfigField(
+                        name: "useContext",
+                        doc: "Tilt the ranking towards what you reach for from where you are — the app you pressed the key over, the workspace in front, the part of the day, weekday or weekend. An item is lifted only by how much likelier it is here than it is in general, so a habit that belongs to one place surfaces in that place and nothing is ever buried for being new somewhere. Deliberately a small tilt: typing a name still means that name, in every app and at every hour.",
+                        json: json(s.ranking.useContext),
+                        control: .toggle, symbol: "location"),
+                    ConfigField(
+                        name: "predictNext",
+                        doc: "Offer what usually comes next. Two things you keep doing in that order, within a few minutes, become a suggestion on the info cards — press Tab to take it. It never moves anything in the list and never takes Return, which belongs to the selection, and it only appears when the pairing is strong enough to be right most of the time, so most summons show nothing at all.",
+                        json: json(s.ranking.predictNext),
+                        control: .toggle, symbol: "arrow.turn.down.right"),
                 ]),
 
             ConfigSection(

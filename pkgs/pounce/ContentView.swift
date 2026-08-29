@@ -149,6 +149,15 @@ struct ContentView: View {
         return state.stageGlance
     }
 
+    // The predicted follow-up, when there is one AND its card is on screen.
+    // Gated on exactly the condition that draws the card, so ⇥ never commits
+    // something the panel isn't offering — a key that acts on an invisible
+    // suggestion is indistinguishable from a bug.
+    var predicted: PounceItem? {
+        guard glance?.next != nil else { return nil }
+        return state.predictedItem
+    }
+
     // What the two Stage zones add to the panel. Counted by `contentHeight`
     // (which sizes the window arithmetically) and by `maxVisibleItems` (which
     // decides how many rows still fit on the screen underneath them). The
@@ -512,6 +521,15 @@ struct ContentView: View {
                                 guard i < tileCount, i < visible.count else { return }
                                 state.commit(visible[i], action: "enter")
                             },
+                            // ⇥ takes the prediction — through the ordinary
+                            // commit path, so it records frecency, the query
+                            // pairing, the context and the chain exactly as ⏎
+                            // on the row would have.
+                            predictionArmed: predicted != nil,
+                            onPredictionAccept: {
+                                guard let predicted else { return }
+                                state.commit(predicted, action: "enter")
+                            },
                             wraps: true,
                             calculatedHeight: queryFieldHeight,
                             preferredWidth: queryWidth
@@ -550,8 +568,8 @@ struct ContentView: View {
                 // what it does or prints.
                 if state.grid { gridScroll } else { listScroll }
 
-                // The Stage's info cards, along the bottom — time/date and the
-                // clipboard head, the questions you didn't type.
+                // The Stage's info cards, along the bottom — the prediction,
+                // the clipboard head, the questions you didn't type.
                 if let glance { InfoCards(glance: glance) }
 
                 if let item = selectedItem {
