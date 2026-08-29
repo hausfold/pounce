@@ -292,9 +292,9 @@ struct AppLauncherSettings {
     var hideBundleIds: [String] = []
 }
 
-// How the launcher LEARNS, as opposed to how it looks. Both defaults are on:
+// How the launcher LEARNS, as opposed to how it looks. Every default is on:
 // they are most of the difference between a palette that ranks and one that is
-// shaped by the person using it. Off, ranking falls back to fuzzy match plus
+// shaped by the person using it. All off, ranking falls back to fuzzy match plus
 // frecency, which is what pounce did before these existed.
 struct RankingSettings {
     // Remember which row you took for which query — and for each prefix of it —
@@ -315,11 +315,23 @@ struct RankingSettings {
     // strip grows as habits form rather than opening on seven alphabetical
     // accidents that then have to be unlearned.
     var stickyTiles: Bool = true
+    // Tilt the ranking towards what you reach for FROM HERE — the app you
+    // pressed the key over, the workspace in front, the part of the day, the
+    // weekday/weekend split. It is a nudge and not a re-sort: an item is lifted
+    // only in proportion to how much likelier it is in this context than in
+    // general, and never demoted for being new here. See ContextMemory.swift.
+    var useContext: Bool = true
+    // Offer what usually comes NEXT. Two things you keep doing in that order
+    // become a suggestion on the info cards, accepted with ⇥ — never with ⏎,
+    // which belongs to the selection. It appears only when the pairing is
+    // strong (see NextAction.swift), so most summons show nothing at all.
+    var predictNext: Bool = true
 }
 
 // The Stage — what an EMPTY launcher query looks like (Stage.swift). On: a strip
 // of tiles for the things you actually reach for, with the familiar list beneath
-// it and a pair of info cards along the bottom. Off: exactly the flat list pounce
+// it and a row of info cards along the bottom (each drawn only when it has
+// something to say — see Stage.swift's InfoCards). Off: exactly the flat list pounce
 // has always shown, which is the whole point of the switch — this changes the
 // first thing you see every time you press ⌘Space, and that is not a taste
 // everyone shares.
@@ -642,6 +654,8 @@ struct Settings {
         if let r = obj["ranking"] as? [String: Any] {
             if let q = r["learnFromQueries"] as? Bool { s.ranking.learnFromQueries = q }
             if let t = r["stickyTiles"] as? Bool { s.ranking.stickyTiles = t }
+            if let c = r["useContext"] as? Bool { s.ranking.useContext = c }
+            if let n = r["predictNext"] as? Bool { s.ranking.predictNext = n }
         }
         if let hk = obj["hotkey"] as? [String: Any] {
             if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }

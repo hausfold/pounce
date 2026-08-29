@@ -150,8 +150,9 @@ changes `ai/SKILL.md` in the same PR.
   names every row it hides. At runtime the palette also discovers user commands from
   `~/.config/pounce/commands`, `$POUNCE_COMMAND_PATH`, and Nix `extraCommandDirs`
   (later wins on filename clash, so users can shadow built-ins).
-- **Changing how the launcher ranks**: four numbers, in three files, and they are
-  calibrated against each other — move one and the others need re-deriving.
+- **Changing how the launcher ranks**: a handful of numbers, spread over five
+  files, and they are calibrated against each other — move one and the others
+  need re-deriving.
   `Frecency.swift` holds usage as TWO decayed averages (`short`, 24h half-life —
   what I'm doing today; `long`, 30d — who I am), each decayed **at write time**,
   which is what stops one click un-decaying a whole history the way the old
@@ -164,11 +165,33 @@ changes `ai/SKILL.md` in the same PR.
   which left habit worth ~4% of the decision. `QueryMemory.swift` is the pairing
   memory — query (and each prefix) → the row taken — and is the only thing that
   can rank an item the fuzzy pass rejects outright (`rescueBoost`, two picks
-  minimum). `StageSlots.swift` ranks the tile strip on `long` ALONE and holds its
-  positions, because ⌘1–⌘9 fire tiles and a number that moves is worse than no
-  number. All of it is pure statics over data already in memory: the scoring pass
+  minimum). `ContextMemory.swift` conditions all of it on WHERE you were — the
+  frontmost app, the workspace, a four-hour block of the day, weekday/weekend —
+  as a multiplicative `× (1 + β·lift)` where the lift is how much likelier an
+  item is under its strongest facet than in general. Deliberately small (β 0.08)
+  and promotion-only: context settles near-ties, it never buries a row for being
+  new somewhere, and typing a name still means that name. `StageSlots.swift`
+  ranks the tile strip on `long` ALONE and holds its positions, because ⌘1–⌘9
+  fire tiles and a number that moves is worse than no number.
+  `NextAction.swift` is the odd one out and stays that way ON PURPOSE: a bigram
+  (what you committed → what you committed next, inside five minutes) that never
+  enters the scoring pass at all. A confident one becomes the Stage's NEXT card,
+  taken with ⇥ — never ⏎, which belongs to the selection — so a wrong guess costs
+  a glance and can't displace the row you were reaching for.
+  All of it is pure statics over data already in memory: the scoring pass
   runs on every keystroke over every item, so a new signal is a dictionary lookup
-  precomputed once per query in `rankedMatches`, never a second `Fuzzy` pass.
+  precomputed once per query in `rankedMatches` (or once per SUMMON in `load`,
+  where the context nudge and the prediction are built), never a second `Fuzzy`
+  pass. The stores each own one JSON file under `~/.local/share/pounce`, written
+  off the main thread on the commit path, and each splits its math into pure
+  statics so `tests/run.sh` can pin it without a clock or a disk.
+- **The Stage's info cards** (`Stage.swift`, `InfoCards`): **a card draws when it
+  has something to say.** The clock taught that rule by breaking it — `TODAY
+  14:32` drew on every summon, saying what the menu bar says all day, and a panel
+  element that is never new trains the eye to skip the whole strip. So the row is
+  news-first: NEXT (the prediction, rare and actionable), CLIPBOARD (invisible
+  otherwise), and TODAY only as the resting face when neither has anything. A new
+  card needs a predicate, not just a value.
 - **New quick-answer engine (inline calculator)**: the launcher answers
   expression-shaped queries inline — math (`2*847`), units (`72 f in c`),
   timezones (`14:00 utc in pst`) — via the engines registered in

@@ -5,8 +5,13 @@ import ApplicationServices
 // MARK: - Where a summon came from
 //
 // The AppKit half of ItemSettings' context predicates (the rest is
-// Foundation-only so tests/run.sh can compile it). Called at most once per
-// launcher build, and only when the config scopes something.
+// Foundation-only so tests/run.sh can compile it), and the input the context
+// conditioning is built from (ContextMemory.swift). Called at most once per
+// launcher build, and only when something asks: a scoped `items` entry, or
+// `ranking.useContext` — which is on by default, so on most machines this now
+// runs on every launcher summon rather than on almost none. The frontmost app
+// is an in-process lookup; the workspace is a read of `pages.mruFile`, which
+// is capped at 8KB and opens nothing at all when no such file is configured.
 extension ItemContext {
     static func current(settings: Settings) -> ItemContext {
         // The palette hasn't activated yet at this point — every path calls
@@ -96,6 +101,11 @@ final class DaemonState: ObservableObject {
     @Published var stageTiles = 0
     // The glance line's contents, built once in load(). nil → no line.
     @Published var stageGlance: StageGlance?
+    // What the store thinks you are about to do (NextAction.swift), resolved to
+    // a real row so ⇥ can commit it through the ordinary path. Published
+    // alongside the glance that advertises it, and nil on almost every summon —
+    // which is the point: a prediction that is not confident does not appear.
+    @Published var predictedItem: PounceItem?
     // Trailing-row key hints ("⌘⇧V"), one lookup per row in the view. Built
     // once per load from the items map — the glyphs come off a hotkey the
     // daemon already parsed and registered; the view never walks the map.
@@ -169,6 +179,12 @@ final class DaemonState: ObservableObject {
     let queryMemory = QueryMemory()
     // Which items hold the Stage's tile slots, and in which order (StageSlots.swift).
     let stageSlots = StageSlotStore()
+    // What you reach for from where you are — the context nudge (ContextMemory.swift).
+    let contextMemory = ContextMemory()
+    // What usually follows what you just did (NextAction.swift). Read at daemon
+    // start like every other store here; the prediction itself is one dictionary
+    // lookup per summon.
+    let nextAction = NextActionStore()
     // Lazily created the first time Find Files mode opens (no cost otherwise);
     // holds the live NSMetadataQuery. reset() stops it so it never runs on after
     // the palette closes.
@@ -180,7 +196,19 @@ final class DaemonState: ObservableObject {
     // step — a utility menu's lines are its caller's payload, not a vocabulary
     // the user is building, and the same word means something different in each.
     private var learnFromQueries = false
-
+    // Mirrors `ranking.useContext` / `ranking.predictNext`, captured per summon
+    // for the reason above. Both false for every non-launcher step: a utility
+    // menu's lines are its caller's payload, so "what you take from Ghostty" and
+    // "what usually follows this" are questions about a list that will never be
+    // shown again.
+    private var learnFromContext = false
+    private var predictNext = false
+    // This summon's context, as ContextMemory facets. Kept from load() to the
+    // commit, which is the moment the other half of the pair is known.
+    private var contextFacets: [String] = []
+    // key → score multiplier for this context. Computed once per summon; read
+    // as a dictionary lookup per item in the scoring pass.
+    private var contextNudge: [String: Double] = [:]
     // Quick answer (inline calculator & friends) for the current launcher
     // query. Memoized per query string because ContentView.filtered — where
     // this is read — re-evaluates on every render, not just on keystrokes.
@@ -217,6 +245,11 @@ final class DaemonState: ObservableObject {
         itemsSorted = []
         frecencyScores = [:]
         learnFromQueries = false
+        learnFromContext = false
+        predictNext = false
+        contextFacets = []
+        contextNudge = [:]
+        predictedItem = nil
         placeholderText = "Search..."
         globalIcon = nil
         isLauncher = false
@@ -499,22 +532,49 @@ final class DaemonState: ObservableObject {
                 built.append(contentsOf: SettingsPaneStore.shared.items(
                     subItemMinQuery: settings.systemSettings.subItemMinQuery))
             }
+            // Where this summon came from. TWO things want it now — the rows
+            // that asked to be scoped to it (`workspaces` / `bundleIds` — see
+            // ItemSetting) and the context conditioning below — so it is built
+            // ONCE, here, and only when one of them actually asks: a config
+            // that scopes nothing and a `useContext: false` pay nothing for the
+            // feature on the ⌘Space path.
+            //
+            // The one thing in it that is not free is the workspace, which
+            // reads `pages.mruFile` — a single 8KB-capped read of a file the
+            // user configured, and exactly the read the scoped-row path has
+            // always done on this same keystroke. With no `mruFile` set (the
+            // default) it opens nothing at all.
+            learnFromContext = settings.ranking.useContext
+            // Set here rather than beside the card it draws: the chain has to be
+            // RECORDED on every launcher commit, or a Mac with the Stage turned
+            // off would build no history and turning it on would start from
+            // nothing. Only the surfacing is a Stage concern.
+            predictNext = settings.ranking.predictNext
+            let wantsContext = settings.items.isScoped || learnFromContext
+            let context = wantsContext ? ItemContext.current(settings: settings) : .unknown
             // Apply the per-item overrides from config.json's `items` map. Both
             // passes key off frecencyKey ("cmd:<id>" / "app:<path>"), which is
             // exactly how the map is addressed — see ItemSetting. Done here, on
             // the assembled list, so commands and apps obey the same rules and a
             // future settings UI has one place to reason about.
             if !settings.items.isEmpty {
-                // Where this summon came from, for the rows that asked to be
-                // scoped to it (`workspaces` / `bundleIds` — see ItemSetting).
-                // Built only when some entry actually asks, so an unscoped
-                // config pays nothing for the feature on the ⌘Space path.
-                let context = settings.items.isScoped
-                    ? ItemContext.current(settings: settings) : .unknown
                 built.removeAll { !settings.items.isVisible($0.frecencyKey, in: context) }
                 for i in built.indices {
                     built[i].userAlias = settings.items.alias(for: built[i].frecencyKey)
                 }
+            }
+            // Context conditioning: what you reach for FROM HERE. Both halves
+            // are computed once per summon — the facets because the context
+            // cannot change while a window is open, the nudges because the
+            // scoring pass may only afford a dictionary lookup per item (see
+            // ContextMemory.nudges and rankedMatches). The facets are kept for
+            // the commit, which is the moment the other half of the pair — what
+            // you actually took from here — becomes known.
+            if learnFromContext {
+                contextFacets = ContextMemory.facets(bundleId: context.bundleId,
+                                                     workspace: context.workspace,
+                                                     at: Date().timeIntervalSince1970)
+                contextNudge = contextMemory.nudges(for: contextFacets)
             }
             // The Stage. Snapshotted HERE — once, on the summon — and never in
             // a view body: formatting a date or asking the clipboard store for
@@ -526,7 +586,23 @@ final class DaemonState: ObservableObject {
             // something — the two are answers to the same question and the
             // narrower one wins.
             if settings.stage.enabled && !settings.metrics.hideEmptyList {
-                stageGlance = StageGlance.now(clipboardEnabled: settings.clipboard.enabled)
+                // What usually follows what you just did. Resolved to a row
+                // HERE, off `built`, so the card can only ever name something
+                // this palette can actually commit — a prediction pointing at
+                // an app you uninstalled, or at a command hidden by a
+                // `whenFile`, simply does not appear. The update nudge is
+                // excluded for StageSlots' reason: it is a notice, not a habit.
+                if predictNext, let guess = nextAction.prediction() {
+                    predictedItem = built.first {
+                        $0.frecencyKey == guess.key
+                            && $0.frecencyKey != Self.updateItemKey
+                            && $0.minQueryLength == 0
+                    }
+                }
+                stageGlance = StageGlance.now(clipboardEnabled: settings.clipboard.enabled,
+                                              next: predictedItem.map {
+                                                  StageGlance.Next(title: $0.title, icon: $0.icon)
+                                              })
                 // Which items get tiles, and where each one sits. The strip is
                 // ranked by HABIT ALONE — `longScore`, a 30-day average with
                 // today's burst deliberately excluded — and then holds its
@@ -601,9 +677,14 @@ final class DaemonState: ObservableObject {
         // ranked it (a search engine's relevance order, a curated menu), and
         // alphabetizing that throws the ranking away. Keep the caller's order.
         let rank = Dictionary(uniqueKeysWithValues: built.enumerated().map { ($0.element.id, $0.offset) })
+        // The context nudge applies here too, and it is the same multiplier the
+        // typed pass uses. On an empty query the score IS the habit, so a row
+        // with no history is unmoved by it (0 × anything is 0) — context can
+        // only reorder things you have actually used, which is the right shape
+        // for a list whose entire job is to be your history.
         itemsSorted = built.sorted { a, b in
-            let sa = (frecencyScores[a.id] ?? 0) + a.baseBoost
-            let sb = (frecencyScores[b.id] ?? 0) + b.baseBoost
+            let sa = ((frecencyScores[a.id] ?? 0) + a.baseBoost) * (contextNudge[a.frecencyKey] ?? 1)
+            let sb = ((frecencyScores[b.id] ?? 0) + b.baseBoost) * (contextNudge[b.frecencyKey] ?? 1)
             if sa != sb { return sa > sb }
             if launcher { return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending }
             return (rank[a.id] ?? 0) < (rank[b.id] ?? 0)
@@ -656,7 +737,11 @@ final class DaemonState: ObservableObject {
         // the same items is exactly the budget it does not have.
         let taught = learnFromQueries ? queryMemory.boosts(for: trimmed) : [:]
         let scored = items.compactMap { item -> (PounceItem, Double)? in
-            guard let s = matchScore(item, query: q, taught: taught[item.frecencyKey] ?? 0)
+            // Both learned signals arrive as plain numbers the caller looked up:
+            // `taught` per query (above), `contextNudge` per summon (load()).
+            // Neither costs the pass a second string comparison.
+            guard let s = matchScore(item, query: q, taught: taught[item.frecencyKey] ?? 0,
+                                     nudge: contextNudge[item.frecencyKey] ?? 1)
             else { return nil }
             return (item, s)
         }
@@ -673,9 +758,12 @@ final class DaemonState: ObservableObject {
 
     // Combined relevance for a typed query. nil → no match.
     // `taught` is what QueryMemory has learned about this exact query and this
-    // item (0 when it has learned nothing). It is passed in rather than looked
-    // up here for the reason rankedMatches gives.
-    func matchScore(_ item: PounceItem, query: [Character], taught: Double = 0) -> Double? {
+    // item (0 when it has learned nothing). `nudge` is what ContextMemory has
+    // learned about this item HERE — a multiplier, 1 when it has no opinion.
+    // Both are passed in rather than looked up here for the reason
+    // rankedMatches gives.
+    func matchScore(_ item: PounceItem, query: [Character], taught: Double = 0,
+                    nudge: Double = 1) -> Double? {
         // Gated rows (a setting inside a System Settings pane) join the list
         // only once the query is specific enough to be asking for one. The
         // panes themselves are ungated and always searchable.
@@ -711,6 +799,11 @@ final class DaemonState: ObservableObject {
             // earned. The threshold is two confident picks (QueryMemory.
             // rescueBoost), never one: a row conjured out of nowhere on the
             // strength of a single accident is worse than no learning.
+            //
+            // Deliberately NOT nudged: this row is here on the strength of a
+            // pairing you taught by hand, and the threshold it had to clear is
+            // calibrated against QueryMemory's own scale. Context may tilt
+            // things that matched; it may not decide what appears.
             return taught >= QueryMemory.rescueBoost ? taught : nil
         }
         // Habit, shaped to the scale a Fuzzy score lives on — see
@@ -718,7 +811,12 @@ final class DaemonState: ObservableObject {
         // saturating ratio it replaced.
         let frec = Frecency.rankWeight(frecency(for: item))
         let boost = item.baseBoost > 0 ? 0.8 : 0
-        return best + frec + boost + taught
+        // Context tilts the whole thing multiplicatively rather than adding a
+        // term of its own: what it knows is "this row is likelier HERE", which
+        // is a statement about the row's relevance and not a quantity of
+        // relevance to hand out. A row the query barely matches is nudged
+        // barely; the ceiling on all of it is ContextMemory.beta.
+        return (best + frec + boost + taught) * nudge
     }
 
     func commit(_ item: PounceItem, action: String) {
@@ -744,6 +842,14 @@ final class DaemonState: ObservableObject {
             let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if !typed.isEmpty { queryMemory.record(query: typed, key: item.frecencyKey) }
         }
+        // …and where you were when you took it, and what it follows. Both are
+        // recorded against the row actually taken, at the only moment either
+        // pair is complete. `contextFacets` is this summon's, snapshotted in
+        // load() — not re-derived here, where the frontmost app is Pounce.
+        if learnFromContext, !contextFacets.isEmpty {
+            contextMemory.record(key: item.frecencyKey, facets: contextFacets)
+        }
+        if predictNext { nextAction.record(key: item.frecencyKey) }
         // Light the keycap this commit actually used — which is not always the
         // one you pressed: buildCommit falls back to the plain Return when the
         // row declares nothing for the modifier you held, and the bar has to
