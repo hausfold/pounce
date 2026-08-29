@@ -496,6 +496,14 @@ struct ContentView: View {
                             // (State.configure), and only the launcher stages.
                             gridColumns: state.grid ? GridLayout.columns : 1,
                             stageTiles: tileCount,
+                            // ⌘1…⌘7 commits that tile. Straight to `commit`
+                            // rather than through `selectedIndex`, which is
+                            // @State and would not have moved yet — see
+                            // CustomTextField.onTileShortcut.
+                            onTileShortcut: { i in
+                                guard i < tileCount, i < visible.count else { return }
+                                state.commit(visible[i], action: "enter")
+                            },
                             wraps: true,
                             calculatedHeight: queryFieldHeight,
                             preferredWidth: queryWidth

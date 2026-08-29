@@ -159,11 +159,22 @@ final class DaemonState: ObservableObject {
     }
 
     let frecency = Frecency()
+    // What each query has been answered with before — the pairing memory that
+    // makes the palette teachable rather than merely adaptive (QueryMemory.swift).
+    let queryMemory = QueryMemory()
+    // Which items hold the Stage's tile slots, and in which order (StageSlots.swift).
+    let stageSlots = StageSlotStore()
     // Lazily created the first time Find Files mode opens (no cost otherwise);
     // holds the live NSMetadataQuery. reset() stops it so it never runs on after
     // the palette closes.
     private var fileSearcher: FileSearchController?
     private var frecencyScores: [UUID: Double] = [:]
+    // Mirrors `ranking.learnFromQueries`, captured per summon rather than read
+    // at commit time: config lives on disk, and the commit path already has
+    // enough to do without a second read of it. False for every non-launcher
+    // step — a utility menu's lines are its caller's payload, not a vocabulary
+    // the user is building, and the same word means something different in each.
+    private var learnFromQueries = false
 
     // Quick answer (inline calculator & friends) for the current launcher
     // query. Memoized per query string because ContentView.filtered — where
@@ -200,6 +211,7 @@ final class DaemonState: ObservableObject {
         items = []
         itemsSorted = []
         frecencyScores = [:]
+        learnFromQueries = false
         placeholderText = "Search..."
         globalIcon = nil
         isLauncher = false
@@ -450,8 +462,12 @@ final class DaemonState: ObservableObject {
         self.maxEmpty = maxEmpty ?? (launcher ? 7 : Int.max)
 
         var built: [PounceItem] = []
+        // The Stage's slot order, resolved below once `built` is final and
+        // applied after the sort — see hoistSlots.
+        var slotKeys: [String] = []
         if launcher {
             let settings = Settings.load()
+            learnFromQueries = settings.ranking.learnFromQueries
             built.append(contentsOf: lines.filter { !$0.isEmpty }.map { PounceItem.parseCommand($0) })
             built.append(contentsOf: AppScanner.shared.apps(
                 demotedBundleIds: settings.appLauncher.demoteBundleIds,
@@ -502,8 +518,28 @@ final class DaemonState: ObservableObject {
             // something — the two are answers to the same question and the
             // narrower one wins.
             if settings.stage.enabled && !settings.metrics.hideEmptyList {
-                stageTiles = settings.stage.tiles
                 stageGlance = StageGlance.now(clipboardEnabled: settings.clipboard.enabled)
+                // Which items get tiles, and where each one sits. The strip is
+                // ranked by HABIT ALONE — `longScore`, a 30-day average with
+                // today's burst deliberately excluded — and then holds its
+                // positions, because a tile you can hit without looking is
+                // worth more than a tile that is optimally ranked. The list
+                // beneath keeps the live ranking. See StageSlots.swift for the
+                // promotion rule; the reordering that makes the strip a SLICE
+                // of the one array happens after the sort below.
+                if settings.ranking.stickyTiles {
+                    let candidates = built
+                        .filter { $0.minQueryLength == 0 }
+                        .map { (key: $0.frecencyKey, score: frecency.longScore(for: $0.frecencyKey)) }
+                        .filter { $0.score > 0 }
+                        .sorted { $0.score > $1.score }
+                    // Fewer slots than asked for is the honest answer on a
+                    // pounce that has not been used yet: nothing has earned one.
+                    slotKeys = stageSlots.resolve(candidates: candidates, slots: settings.stage.tiles)
+                    stageTiles = slotKeys.count
+                } else {
+                    stageTiles = settings.stage.tiles
+                }
                 // The list beneath keeps its full length: a tile is a row
                 // PROMOTED out of the ranked prefix, not one taken away from it,
                 // so turning the Stage on never costs you list.
@@ -555,6 +591,22 @@ final class DaemonState: ObservableObject {
             if launcher { return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending }
             return (rank[a.id] ?? 0) < (rank[b.id] ?? 0)
         }
+        if !slotKeys.isEmpty { itemsSorted = Self.hoistSlots(slotKeys, in: itemsSorted) }
+    }
+
+    // Put the Stage's slots at the head of the empty-query order, in SLOT order.
+    // That is the whole mechanism behind the strip/list split: ContentView reads
+    // `visible.prefix(tileCount)` as the strip and `dropFirst(tileCount)` as the
+    // list, so hoisting here gives the strip its own stable ranking AND stops
+    // the list from repeating it — with no second array, and no second meaning
+    // for `selectedIndex`. See Stage.swift, rule 1.
+    private static func hoistSlots(_ keys: [String], in sorted: [PounceItem]) -> [PounceItem] {
+        var byKey: [String: PounceItem] = [:]
+        for item in sorted where byKey[item.frecencyKey] == nil { byKey[item.frecencyKey] = item }
+        let tiles = keys.compactMap { byKey[$0] }
+        guard !tiles.isEmpty else { return sorted }
+        let tileIDs = Set(tiles.map { $0.id })
+        return tiles + sorted.filter { !tileIDs.contains($0.id) }
     }
 
     private func frecency(for item: PounceItem) -> Double { frecencyScores[item.id] ?? 0 }
@@ -580,8 +632,15 @@ final class DaemonState: ObservableObject {
     func rankedMatches(for trimmed: String) -> [PounceItem] {
         if rankedQuery == trimmed { return rankedRows }
         let q = Array(trimmed.lowercased())
+        // What THIS query has been answered with before. Looked up once, here,
+        // and read as a dictionary lookup per item inside the scoring pass —
+        // the pass already fuzzy-matches every title, alias, subtitle and
+        // settings keyword on every keystroke, and a second string pass over
+        // the same items is exactly the budget it does not have.
+        let taught = learnFromQueries ? queryMemory.boosts(for: trimmed) : [:]
         let scored = items.compactMap { item -> (PounceItem, Double)? in
-            guard let s = matchScore(item, query: q) else { return nil }
+            guard let s = matchScore(item, query: q, taught: taught[item.frecencyKey] ?? 0)
+            else { return nil }
             return (item, s)
         }
         // One System Settings pane can hold hundreds of settings (Accessibility
@@ -596,7 +655,10 @@ final class DaemonState: ObservableObject {
     }
 
     // Combined relevance for a typed query. nil → no match.
-    func matchScore(_ item: PounceItem, query: [Character]) -> Double? {
+    // `taught` is what QueryMemory has learned about this exact query and this
+    // item (0 when it has learned nothing). It is passed in rather than looked
+    // up here for the reason rankedMatches gives.
+    func matchScore(_ item: PounceItem, query: [Character], taught: Double = 0) -> Double? {
         // Gated rows (a setting inside a System Settings pane) join the list
         // only once the query is specific enough to be asking for one. The
         // panes themselves are ungated and always searchable.
@@ -624,11 +686,22 @@ final class DaemonState: ObservableObject {
         let keyword = item.searchKeywords.isEmpty ? nil
             : item.searchKeywords.compactMap { Fuzzy.score(query, $0) }.max().map { $0 * 0.9 }
         let candidates = [title, alias, user, keyword, sub.map { $0 * 0.5 }].compactMap { $0 }
-        guard let best = candidates.max() else { return nil }
-        let frec = frecency(for: item)
-        let normFrec = frec / (frec + 5)                 // 0..1
+        guard let best = candidates.max() else {
+            // Nothing you typed appears in this row at ALL — and yet you have
+            // repeatedly answered this exact query with it. That is the only
+            // way "mail" can come to mean Superhuman, so a pairing this well
+            // established brings the row in on its own, scored on what it has
+            // earned. The threshold is two confident picks (QueryMemory.
+            // rescueBoost), never one: a row conjured out of nowhere on the
+            // strength of a single accident is worse than no learning.
+            return taught >= QueryMemory.rescueBoost ? taught : nil
+        }
+        // Habit, shaped to the scale a Fuzzy score lives on — see
+        // Frecency.rankWeight for why this is a logarithm and not the
+        // saturating ratio it replaced.
+        let frec = Frecency.rankWeight(frecency(for: item))
         let boost = item.baseBoost > 0 ? 0.8 : 0
-        return best + normFrec * 1.5 + boost
+        return best + frec + boost + taught
     }
 
     func commit(_ item: PounceItem, action: String) {
@@ -648,6 +721,12 @@ final class DaemonState: ObservableObject {
             return
         }
         frecency.record(item.frecencyKey)
+        // Teach the query that led here. Recorded at the commit, against the
+        // row actually taken, which is the only moment either half is known.
+        if learnFromQueries {
+            let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !typed.isEmpty { queryMemory.record(query: typed, key: item.frecencyKey) }
+        }
         // Light the keycap this commit actually used — which is not always the
         // one you pressed: buildCommit falls back to the plain Return when the
         // row declares nothing for the modifier you held, and the bar has to

@@ -150,6 +150,25 @@ changes `ai/SKILL.md` in the same PR.
   names every row it hides. At runtime the palette also discovers user commands from
   `~/.config/pounce/commands`, `$POUNCE_COMMAND_PATH`, and Nix `extraCommandDirs`
   (later wins on filename clash, so users can shadow built-ins).
+- **Changing how the launcher ranks**: four numbers, in three files, and they are
+  calibrated against each other — move one and the others need re-deriving.
+  `Frecency.swift` holds usage as TWO decayed averages (`short`, 24h half-life —
+  what I'm doing today; `long`, 30d — who I am), each decayed **at write time**,
+  which is what stops one click un-decaying a whole history the way the old
+  single-timestamp `count` did. `shortWeight` (15) is what makes a burst able to
+  outrank a habit, and it is only meaningful against the plateaus those two
+  half-lives produce — `tests/frecency_tests.swift` pins both, so changing a
+  half-life fails there rather than silently rescaling the launcher.
+  `rankWeight` is how habit enters a TYPED query: a logarithm, because the
+  `s/(s+5)` it replaced saturated by a score of 20 and real stores span 0–350,
+  which left habit worth ~4% of the decision. `QueryMemory.swift` is the pairing
+  memory — query (and each prefix) → the row taken — and is the only thing that
+  can rank an item the fuzzy pass rejects outright (`rescueBoost`, two picks
+  minimum). `StageSlots.swift` ranks the tile strip on `long` ALONE and holds its
+  positions, because ⌘1–⌘9 fire tiles and a number that moves is worse than no
+  number. All of it is pure statics over data already in memory: the scoring pass
+  runs on every keystroke over every item, so a new signal is a dictionary lookup
+  precomputed once per query in `rankedMatches`, never a second `Fuzzy` pass.
 - **New quick-answer engine (inline calculator)**: the launcher answers
   expression-shaped queries inline — math (`2*847`), units (`72 f in c`),
   timezones (`14:00 utc in pst`) — via the engines registered in

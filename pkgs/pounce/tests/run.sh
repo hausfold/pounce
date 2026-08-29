@@ -61,7 +61,7 @@ if [ -z "$macos_min" ]; then
 fi
 /usr/bin/xcrun swiftc -o "$bin" \
   -target "${POUNCE_TARGET_ARCH:-$(uname -m)}-apple-macos$macos_min" \
-  Frecency.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
+  Frecency.swift QueryMemory.swift StageSlots.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
   Currency.swift ItemSettings.swift FunctionKeyGesture.swift FunctionKeyRemap.swift CommandRegistry.swift UpdateCheck.swift \
   Badges.swift \
   ConfigTemplate.swift ConfigWriter.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \
@@ -70,7 +70,9 @@ fi
   BugReport.swift \
   Shortcuts.swift SystemSettings.swift \
   "$scratch/version_stub.swift" \
-  tests/main.swift tests/quickanswer_tests.swift tests/itemsettings_tests.swift \
+  tests/main.swift tests/frecency_tests.swift tests/querymemory_tests.swift \
+  tests/stageslots_tests.swift \
+  tests/quickanswer_tests.swift tests/itemsettings_tests.swift \
   tests/badges_tests.swift \
   tests/functionkey_tests.swift tests/functionkeyremap_tests.swift \
   tests/commandregistry_tests.swift tests/update_tests.swift tests/symbols_tests.swift \
