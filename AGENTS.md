@@ -163,15 +163,37 @@ something comes out when something goes in.
   lives in a `# pounce: key = value` comment header (`name` / `description` / SF
   Symbol `icon`; `submenu = true` for a two-step command that re-invokes `pounce`).
   Official ones go in `pkgs/pounce-commands/commands/<id>.sh`; there is no registry
-  to edit. One key the registry ACTS on rather than passes through: `whenFile =
-  <path>` names a file that vetoes the row while its first line is `0` — the "is
-  there anything to act on" question `items`' `workspaces`/`bundleIds` cannot ask.
+  to edit. Three more keys say what the script DOES rather than how it looks —
+  `mutates`, `confirm`, `network` (`CommandRisk`, in `CommandRegistry.swift`) —
+  because a command is a file, usually someone else's, and the row in the palette
+  says only its name. They are the author's claim and pounce verifies none of
+  them; what they buy is `pounce list [--json]`, the read verb over the registry
+  (id, name, declarations, and the script's PATH, so the claim can be checked
+  against the file), and, for `confirm` alone, a sheet the palette puts in front
+  of the command before it runs it (`Confirm.swift`). `confirm` gates the
+  palette's invocation of the SCRIPT, so on a `submenu` command it asks before
+  the picker opens — rarely what you want, since the acting step is a second
+  `pounce` invocation the daemon cannot tell from any other. Two lines nothing
+  else says: `pounce run cmd:<id>` and a hotkey do NOT ask (the sheet belongs to
+  the palette, where a human is browsing rows; a key is someone who already named
+  the command), and the boolean grammar is `submenu`'s — `true` or `1` and
+  nothing else, so `confirm = yes` is silently false and `pounce list` is how you
+  see what actually parsed. One key the registry ACTS on rather than passes
+  through: `whenFile = <path>` names a file that vetoes the row while its first
+  line is `0` — the "is there anything to act on" question `items`'
+  `workspaces`/`bundleIds` cannot ask.
   A FILE and not a command, because `CommandRegistry.refresh()` runs synchronously
   on the ⌘Space keystroke; and only a literal `0` vetoes, so a missing, empty or
   unreadable file lists the row rather than hiding it forever. It lives in BOTH
   registry parsers — `CommandRegistry.swift` (what ⌘Space uses) and the bash
   `pounce-palette` (what a machine without the daemon runs) — and `pounce doctor`
-  names every row it hides. At runtime the palette also discovers user commands from
+  names every row it hides. **Every key lives in both:** the two parsers are one
+  grammar mirrored twice (three times counting haus's Nix copy, which reads its
+  own `cheat` key and ignores ours), pinned by `tests/fixtures/header-grammar.tsv`
+  — a golden REGISTRY LINE per fixture, which is why adding a key changes every
+  row of that table. A key the daemon honours and the shell launcher drops is a
+  command that behaves two ways depending on how the palette was opened, with
+  nothing to see either time. At runtime the palette also discovers user commands from
   `~/.config/pounce/commands`, `$POUNCE_COMMAND_PATH`, and Nix `extraCommandDirs`
   (later wins on filename clash, so users can shadow built-ins).
 - **Changing how the launcher ranks**: a handful of numbers, spread over five
@@ -292,6 +314,15 @@ something comes out when something goes in.
   command exists to tell apart. Exit codes are the table in `pounce --help`
   (0 ok · 1 nothing came back · 2 usage · 3 refused) — `focus` keeps its own,
   finer one, because hush scripts read it and it predates the table.
+  **A read verb that gets its answer from the DAEMON must ask what that daemon
+  can do first.** `pounce list` wants the registry ⌘Space sees, which is built
+  from the launch agent's environment and not the caller's shell — but an unknown
+  payload falls through `handleClient` to the palette path, so a verb sent to a
+  daemon too old to know it is DRAWN, as a one-row picker on the user's screen.
+  The version cannot decide it (a checkout build and the release it came from
+  share one), so `STATUS` carries a `commands: true` capability flag and
+  `ListMode` gates on it, falling back to local discovery. A new socket verb
+  wants the same handshake.
 - **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
   enable / alias / hotkey / hint / state for anything the palette can address, keyed by the item's
   **frecency key** — `cmd:<id>`, `app:<path>`, `shortcut:<uuid>`, plus `mode:<name>`

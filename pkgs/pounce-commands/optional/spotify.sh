@@ -3,6 +3,7 @@
 # pounce: description = Playback controls
 # pounce: icon = music.note
 # pounce: submenu = true
+# pounce: mutates = true
 
 # Spotify remote — drives the desktop app over AppleScript. No login, no API
 # keys; just needs Spotify.app installed.

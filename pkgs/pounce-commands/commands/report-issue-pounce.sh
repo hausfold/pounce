@@ -2,6 +2,7 @@
 # pounce: name = Report Pounce Issue
 # pounce: description = Open a pre-filled bug report on GitHub
 # pounce: icon = ladybug
+# pounce: network = true
 
 # One line, because the work is `pounce report`'s (Entry.swift, ReportMode) and
 # it belongs there: the block it prefills is pounce's own doctor report plus the

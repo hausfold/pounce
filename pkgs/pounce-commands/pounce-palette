@@ -2,9 +2,9 @@
 # pounce-palette — THE palette launcher, for every packaging of pounce.
 #
 # Scans the command dirs, reads each script's `# pounce: key = value` header to
-# build the registry (name \t description \t icon \t id \t submenu), hands the
-# merged list to `pounce --launcher` (which adds installed apps natively), and
-# execs whatever command comes back.
+# build the registry (name \t description \t icon \t id \t submenu \t mutates \t
+# confirm \t network), hands the merged list to `pounce --launcher` (which adds
+# installed apps natively), and execs whatever command comes back.
 #
 # Packagers wrap this script with environment, they don't edit it:
 #
@@ -67,7 +67,7 @@ scan "${XDG_CONFIG_HOME:-$HOME/.config}/pounce/commands"
 # when nobody is answering hides forever with nothing in any log.
 #
 # It rides in FRONT of the registry line and is stripped here, so what pounce
-# reads is the same five fields it always was. Tabs are removed from the value in
+# reads is the registry line itself and nothing else. Tabs are removed from the value in
 # awk for that reason — one in a header would otherwise shift every field.
 registry=$(
   for entry in "$MAP"/*; do
@@ -91,6 +91,14 @@ registry=$(
       /^[ \t]*#[ \t]+pounce:[ \t]*icon[ \t]*=/        && i == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*icon[ \t]*=[ \t]*/, "");        i = $0 }
       /^[ \t]*#[ \t]+pounce:[ \t]*submenu[ \t]*=/     && s == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*submenu[ \t]*=[ \t]*/, "");     s = $0 }
       /^[ \t]*#[ \t]+pounce:[ \t]*whenFile[ \t]*=/    && w == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*whenFile[ \t]*=[ \t]*/, "");    w = $0 }
+      # What the command declares it will do (CommandRisk.swift): does it change
+      # state, must the palette ask first, does it talk to the internet. Same
+      # first-wins guard and same "true"/1 grammar as `submenu` — they ride the
+      # registry line so the palette can put a confirm sheet in front of a
+      # `confirm` command on THIS path too, not only under the daemon.
+      /^[ \t]*#[ \t]+pounce:[ \t]*mutates[ \t]*=/     && m == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*mutates[ \t]*=[ \t]*/, "");     m = $0 }
+      /^[ \t]*#[ \t]+pounce:[ \t]*confirm[ \t]*=/     && c == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*confirm[ \t]*=[ \t]*/, "");     c = $0 }
+      /^[ \t]*#[ \t]+pounce:[ \t]*network[ \t]*=/     && k == "" { sub(/^[ \t]*#[ \t]+pounce:[ \t]*network[ \t]*=[ \t]*/, "");     k = $0 }
       END {
         if (n == "") n = id
         if (i == "") i = "sparkles"
@@ -99,11 +107,18 @@ registry=$(
         # `submenu = true ` a LEAF here and a submenu in the daemon (whose
         # field() ends in .trimmingCharacters) — the same command behaving
         # differently on the two paths, with nothing to see but a picker that
-        # does not open.
+        # does not open. `m`/`c`/`k` are trimmed for the same reason, and `c`
+        # is the one where the difference is a confirm sheet the user does or
+        # does not get.
         sub(/[ \t]+$/, "", w); sub(/[ \t]+$/, "", n); sub(/[ \t]+$/, "", s)
         sub(/[ \t]+$/, "", d); sub(/[ \t]+$/, "", i)
+        sub(/[ \t]+$/, "", m); sub(/[ \t]+$/, "", c); sub(/[ \t]+$/, "", k)
         gsub(/\t/, "", w); gsub(/\t/, " ", n); gsub(/\t/, " ", d); gsub(/\t/, "", i)
-        printf "%s\t%s\t%s\t%s\t%s\t%s\n", w, n, d, i, id, (s == "true" || s == "1") ? "1" : "0"
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", w, n, d, i, id, \
+          (s == "true" || s == "1") ? "1" : "0", \
+          (m == "true" || m == "1") ? "1" : "0", \
+          (c == "true" || c == "1") ? "1" : "0", \
+          (k == "true" || k == "1") ? "1" : "0"
       }
     ' "$entry")
     # An unreadable script produces nothing at all rather than a blank row.

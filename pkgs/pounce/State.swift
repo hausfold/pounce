@@ -61,6 +61,24 @@ struct Commit {
     var settingOpen: String? = nil
 }
 
+// MARK: - A command that asked to be confirmed
+
+// What the confirm sheet is about: the row the user pressed Return on, and
+// which Return it was. Held rather than run (see DaemonState.commit), so that
+// answering "no" leaves the launcher exactly as it was — the item is not
+// re-derived from the selection when the answer comes back, because the list
+// underneath is live and may have re-ranked by then.
+struct PendingConfirm {
+    let item: PounceItem
+    let action: String
+    // Set the moment the answer is yes. The sheet deliberately stays on screen
+    // for the window's fade (see DaemonState.confirmPending) and its key
+    // monitor stays with it, so without this a second Return inside that beat
+    // would commit the command AGAIN — and a confirmation that can run
+    // something twice is worse than no confirmation at all.
+    var answered = false
+}
+
 // MARK: - State
 
 enum DisplayMode { case list, clipboard, emoji, screenshots, camera, cheatsheet, fileSearch }
@@ -83,6 +101,12 @@ final class DaemonState: ObservableObject {
     @Published var fileSearching = false
     @Published var fileSearchEnabled = true   // false → mode shows a "disabled" note
     var cheatsheetPath = ""            // set with cheatsheetGroups; read-only for the view
+    // The command waiting on a yes, or nil — the whole of the confirm sheet's
+    // state (Confirm.swift draws it, ContentView routes to it). Set by commit()
+    // instead of running the command; cleared by "no", and otherwise by the
+    // next summon's reset(), so a sheet can never outlive the request that
+    // raised it (confirmPending explains why "yes" leaves it standing).
+    @Published var pendingConfirm: PendingConfirm?
     @Published var isLoading = false   // skeleton shown between a two-step command's steps
     @Published var loadingTitle = ""   // selected command's name, shown in the static header
     @Published var loadingIcon = "magnifyingglass"
@@ -273,6 +297,7 @@ final class DaemonState: ObservableObject {
         screenshotEntries = []
         cheatsheetGroups = []
         isLoading = false
+        pendingConfirm = nil
         query = ""
         answerQuery = ""
         answerItem = nil
@@ -819,7 +844,11 @@ final class DaemonState: ObservableObject {
         return (best + frec + boost + taught) * nudge
     }
 
-    func commit(_ item: PounceItem, action: String) {
+    // `confirmed` is what the sheet's Return sets — every other caller leaves it
+    // false and takes the ask. A parameter rather than a flag on the state,
+    // because the state is the QUESTION and the question outlives its answer by
+    // one fade: see confirmPending().
+    func commit(_ item: PounceItem, action: String, confirmed: Bool = false) {
         // A quick answer copies to the clipboard — no frecency (it's derived
         // from the query, its rank is fixed) and no client round-trip.
         if item.kind == .answer { commitAnswer(item); return }
@@ -833,6 +862,17 @@ final class DaemonState: ObservableObject {
             noticeVersion = nil
             noticeItem = nil
             cancel()
+            return
+        }
+        // A command whose header says `confirm` does not run on this keypress —
+        // the palette asks first (Confirm.swift). Nothing is recorded yet:
+        // frecency, the query pairing, the context and the chain are all claims
+        // about what you DID, and none of them is true until the answer comes
+        // back. Deliberately below the update-nudge branch above, so ⌘↵ can
+        // still wave that row off without being asked to confirm a run it isn't
+        // doing.
+        if !confirmed, item.kind == .command, item.risk.confirm {
+            pendingConfirm = PendingConfirm(item: item, action: action)
             return
         }
         frecency.record(item.frecencyKey)
@@ -915,6 +955,36 @@ final class DaemonState: ObservableObject {
     func stashDraft() {
         guard let key = draftKey else { return }
         Drafts.save(key: key, text: query)
+    }
+
+    // The sheet's two answers. Yes re-enters the ordinary commit path with the
+    // ask already made, so a confirmed command records its frecency, its query
+    // pairing and its chain exactly as an unconfirmed one does — the sheet
+    // changes when a command runs, never what running it means.
+    //
+    // The question is deliberately NOT cleared here. A commit lingers for a beat
+    // before the window fades (Window.handleCommit), and taking the sheet down
+    // now would put the whole launcher back — list, action bar, full height —
+    // for exactly that beat, so every confirmed command ended with the panel
+    // growing on its way out. `reset()` clears it on the next summon instead,
+    // and a two-step command's loading skeleton is drawn AHEAD of it in
+    // ContentView, so step 2 never arrives behind a stale sheet.
+    func confirmPending() {
+        guard let pending = pendingConfirm, !pending.answered else { return }
+        pendingConfirm?.answered = true
+        commit(pending.item, action: pending.action, confirmed: true)
+    }
+
+    // …and no, which returns to the list rather than dismissing the palette.
+    // Esc here means "not that one", and the row you meant instead is on the
+    // screen behind the sheet; a second Esc still closes the window, which is
+    // the same two-stage Esc the query box already has.
+    func cancelConfirm() {
+        // Not once the answer was yes: the command is already running and the
+        // window is on its way out, so an Esc landing in that beat would put
+        // the launcher back mid-fade rather than undoing anything.
+        guard let pending = pendingConfirm, !pending.answered else { return }
+        pendingConfirm = nil
     }
 
     func cancel() {

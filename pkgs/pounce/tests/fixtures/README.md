@@ -5,7 +5,13 @@ whitespace shape of the `# pounce: key = value` comment header.
 `header-grammar.tsv` is what parsing that directory must produce — one
 `CommandRegistry.Entry.registryLine` per LISTED command, in id order:
 
-    name <TAB> description <TAB> icon <TAB> id <TAB> submenu(1|0)
+    name <TAB> description <TAB> icon <TAB> id <TAB> submenu <TAB> mutates <TAB> confirm <TAB> network
+
+(every flag `1|0`). The three trailing flags are the declarations a command
+makes about itself (`CommandRisk`); they were APPENDED to the five-field line
+that predates them, which is why every row of this table gained three columns in
+one commit and why `PounceItem.parseCommand` reads each of them only if it is
+there.
 
 ## Why a table instead of assertions
 
@@ -57,6 +63,18 @@ Each is a fixture whose name says which shape it is:
   `true` and must render `0`. The awk has always been first-wins (`&& s == ""`);
   Swift's `submenu` was the one field with no such guard, so it was last-wins
   there until pounce#95. Under last-wins this fixture renders `1`.
+- **The three declarations parse, first-wins, `1` counts** — `declares` says
+  `mutates = true`, `confirm = false` then `confirm = true`, `network = 1`, and
+  must render `1 0 1`. `confirm` carries the first-wins case here rather than
+  `submenu` carrying it alone because this is the field where the two parsers
+  disagreeing is a confirmation sheet one path shows and the other doesn't.
+- **…and anything that isn't `true` or `1` is FALSE** — `declares-loose` says
+  `yes` / `TRUE` / `on` and must render `0 0 0`. A widened grammar is how the
+  three copies drift apart, so the narrow one is pinned deliberately: a header
+  that misspells its own value gets no sheet, and `pounce list` is where an
+  author sees what actually parsed. These two are the only cases haus has no
+  counterpart for — its Nix parser knows nothing of these keys, and ignoring
+  them is correct there.
 - **`whenFile` vetoes, and `~` expands the same way in both** — `listed` and
   `vetoed` name `~/state/yes` and `~/state/no`; the harnesses write those under a
   controlled `HOME`, and `vetoed` is absent from the table rather than present

@@ -3,6 +3,7 @@
 # pounce: description = Connect to a host from ~/.ssh/config
 # pounce: icon = terminal
 # pounce: submenu = true
+# pounce: network = true
 
 # Host picker over ~/.ssh/config (Include'd files too, one level deep).
 # Enter connects; ⌘↵ copies the ssh command instead.

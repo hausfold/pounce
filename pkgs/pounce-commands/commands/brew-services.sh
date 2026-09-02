@@ -3,6 +3,7 @@
 # pounce: description = Start/Stop/Restart services
 # pounce: icon = shippingbox
 # pounce: submenu = true
+# pounce: mutates = true
 
 # Brew Services Manager
 # Lists all brew services with status and allows start/stop/restart

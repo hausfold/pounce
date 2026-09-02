@@ -361,8 +361,18 @@ struct ContentView: View {
 
     var body: some View {
         Group {
+            // Ahead of every MODE, because the sheet is a question about a
+            // commit that has already been made in the user's head: whatever
+            // was on screen when they pressed Return, the answer they owe is
+            // this one. Behind `isLoading`, though, and that order is the whole
+            // of what happens after a two-step command is confirmed: the answer
+            // outlives the sheet by one fade (DaemonState.confirmPending), so
+            // the skeleton has to be able to draw over a question that has
+            // already been answered. See Confirm.swift.
             if state.isLoading {
                 SkeletonView(state: state)
+            } else if let pending = state.pendingConfirm {
+                ConfirmView(state: state, pending: pending)
             } else if state.displayMode == .clipboard {
                 ClipboardView(state: state)
             } else if state.displayMode == .emoji {

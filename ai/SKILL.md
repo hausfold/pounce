@@ -40,10 +40,7 @@ the user saying no, not a reason to retry.
 | `--chain [keys]` | this commit feeds *another* pounce step — holds the window up instead of fading |
 | `--draft <key>` | keep typed text on dismissal, filed under `<key>` |
 | `--dial <spec>` | an option the user cycles in place with ⇥ / ⇧⇥: `"model=sonnet\|opus\|haiku"`. Repeatable. **Changes the output shape** — see below |
-| `--grid` | lay the rows out as cards, two to a row — ↑↓ move by a card row, ←→ by one card (at the ends of the typed text; inside it they still move the caret). Purely a shape; output is unchanged, and `--launcher` ignores it |
-
-`--grid` suits a step offering **things** rather than names — projects, machines,
-images — each with an icon and a line of description. Groups order but draw no headers.
+| `--grid` | lay the rows out as cards, two to a row — for a step offering **things** (projects, machines, images) rather than names. ↑↓ move by a card row, ←→ by one card (at the ends of the typed text; inside it they still move the caret). Purely a shape; output is unchanged, and `--launcher` ignores it |
 
 `--dial` puts a chip in the action bar the user steps through without leaving
 the box — "which model", "public or private" — so one step carries a
@@ -52,8 +49,6 @@ side-question that doesn't deserve its own picker. Passing it grows the output b
 callers see three fields, so split accordingly, and tolerate it being absent (a
 daemon older than the flag answers in the two-field shape). Each dial re-opens
 on the value committed last time.
-
-The picker works with or without the daemon — it falls back to drawing the window.
 
 ## Other verbs
 
@@ -68,6 +63,7 @@ The picker works with or without the daemon — it falls back to drawing the win
 | open a System Settings pane, or one setting in it | `pounce run setting:com.apple.Displays-Settings.extension[?<anchor>]` |
 | transform the user's current selection | `pounce --transform 'tr "[:lower:]" "[:upper:]"'` |
 | put a file on the clipboard | `pounce --copy-file <path>` |
+| what commands can this Mac run — and what does each do to it? | `pounce list` (`--json` for records with each script's path) |
 | list / read / drop drafts | `pounce drafts <key> list \| get <n> \| rm <n> \| clear` |
 | …as data, with each draft's whole text | `pounce drafts <key> list --json` |
 | where is the config — and is it mine to edit? | `pounce config --json` |
@@ -80,16 +76,16 @@ The picker works with or without the daemon — it falls back to drawing the win
 | everything, exhaustively | `pounce --help` |
 
 `pounce config print` answers "what can I configure?" — every setting at its
-default, annotated. `--json` answers a different question: the values pounce will
-**actually use**, plus `set`, the keys the user's file really names, so "unset"
-and "set to the default" stop looking alike. Read one rather than guess key names.
+default. `--json` answers a different question: the values pounce will
+**actually use**, plus `set`, the keys the user's file really names. Read one
+rather than guess key names. `pounce settings` opens the same list as a window
+the USER clicks through; it is read-only on a haus Mac.
 
-`pounce settings` opens that same list as a window the USER clicks through, for
-when they'd rather change something themselves than have you edit the file. It
-writes one line of `config.json` per click, and is read-only on a haus Mac.
-
-`pounce drafts <key> list` prints `<index>\t<preview>\t<age>`, newest first —
-ready to turn back into picker rows; `--json` adds each draft's full text.
+`pounce list` prints `<key>\t<name>\t<declared>\t<description>\t<path>` — what a
+command's header **declares** (`mutates`, `confirm` = the palette asks first,
+`network`) plus the script itself, so a command someone else wrote can be read
+before it runs. The author's claim, not something pounce verified. And
+`pounce drafts <key> list` prints `<index>\t<preview>\t<age>`, newest first.
 
 Exit codes: **0** ok · **1** nothing came back (dismissed picker, missing draft,
 unhealthy doctor, no daemon) · **2** usage · **3** refused. `focus` has its own.
@@ -109,9 +105,9 @@ unhealthy doctor, no daemon) · **2** usage · **3** refused. `focus` has its ow
 
 - **The question is small and the user is in the terminal with you.** Just ask.
   A window that steals attention for a yes/no is worse than a line of text.
-- **You want to read the clipboard or the palette's item list.** Neither has a
-  read verb — `pounce run mode:clipboard` opens a window for the user, and that
-  is all. Say so rather than inventing one.
+- **You want to read the clipboard.** It has no read verb — `pounce run
+  mode:clipboard` opens a window for the user, and that is all. (The command
+  list you *can* read: `pounce list`.)
 - **You want to change what's in the palette.** Items, commands and the hotkey
   live in `~/.config/pounce/config.json` and
   `~/.config/pounce/commands` — edit those files, or hand the user `pounce
@@ -135,6 +131,9 @@ unhealthy doctor, no daemon) · **2** usage · **3** refused. `focus` has its ow
 - **`pounce run …` needs the daemon; the picker doesn't.** Every `mode:`,
   `cmd:`, `app:`, `shortcut:` and `setting:` row exits 1 with "daemon not running" if it
   isn't up. That is a different failure from the user dismissing something.
+- **`pounce run` never asks.** A command declaring `confirm` gets a sheet in the
+  PALETTE, in front of the human choosing it. Invoking it by key runs it — so
+  read `pounce list --json` before running a command you did not write.
 - **Never put a picker in a loop or a background script.** It takes the screen.
   One decision, then get out of the way.
 - **`--transform` acts on whatever is selected *right now*.** It copies, filters
@@ -145,6 +144,6 @@ unhealthy doctor, no daemon) · **2** usage · **3** refused. `focus` has its ow
   don't try to grant anything yourself.
 - **The daemon runs on launchd's bare `PATH`** — no Homebrew, no Nix. A command
   script that shells out to an external tool must carry its own bindir prelude.
-- **`--json` is on the read verbs, never on the picker.** `drafts`, `config`,
-  `doctor`, `focus` and `autostart` take it; a committed row stays `action⇥line`
+- **`--json` is on the read verbs, never on the picker.** `list`, `drafts`,
+  `config`, `doctor`, `focus` and `autostart` take it; a committed row stays `action⇥line`
   and always will. If you are writing a parser for anything else, stop and ask.

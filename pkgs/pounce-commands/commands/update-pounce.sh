@@ -2,6 +2,9 @@
 # pounce: name = Update Pounce
 # pounce: description = Update to the latest release
 # pounce: icon = arrow.down.circle
+# pounce: mutates = true
+# pounce: confirm = true
+# pounce: network = true
 
 # One-tap self-update for the two non-haus installs (Nix users update via
 # their flake, so this bails for them; see the guards):

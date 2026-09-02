@@ -3,6 +3,7 @@
 # pounce: description = Switch sound output & input
 # pounce: icon = hifispeaker
 # pounce: submenu = true
+# pounce: mutates = true
 
 # Audio device switcher.
 # Needs SwitchAudioSource:  brew install switchaudio-osx

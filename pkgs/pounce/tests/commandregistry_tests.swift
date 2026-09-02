@@ -106,6 +106,60 @@ func runCommandRegistryTests() -> Int {
         check(CommandRegistry.expandTilde("/tmp/~x", home: "/home/me") == "/tmp/~x",
               "a ~ anywhere else is left alone")
 
+        // ── the three declarations (CommandRisk) ─────────────────────────────
+        // The grammar itself is pinned by the golden table below, in both
+        // parsers at once. What is pinned HERE is the rest of the round trip:
+        // the flags reach the Entry, they survive the registry line, and they
+        // come back out of it as the same three booleans. That line is the only
+        // channel between the parser and the row for two of pounce's three
+        // launcher paths, so a field lost in it is a confirm sheet that never
+        // opens with nothing else to see.
+        try """
+        #!/bin/bash
+        # pounce: name = Risky
+        # pounce: description = Does something
+        # pounce: mutates = true
+        # pounce: confirm = 1
+        """.write(to: builtin.appendingPathComponent("risky.sh"),
+                  atomically: true, encoding: .utf8)
+        registry.refresh()
+        guard let risky = registry.entries.first(where: { $0.id == "risky" }) else {
+            check(false, "a command declaring mutates/confirm is registered at all")
+            return failed
+        }
+        check(risky.risk.mutates, "mutates = true is read")
+        check(risky.risk.confirm, "confirm = 1 is true, the same spelling submenu takes")
+        check(!risky.risk.network, "a key the header never names is false, not unknown")
+        check(risky.risk.declared == ["mutates", "confirm"],
+              "declared() names the true keys in header order")
+        check(registry.entries.first(where: { $0.id == "fallback" })?.risk.isEmpty == true,
+              "a command that declares nothing declares nothing")
+
+        let round = PounceItem.parseCommand(risky.registryLine)
+        check(round.risk == risky.risk,
+              "the declarations survive the registry line the launcher is handed")
+        check(round.payload == "risky" && round.title == "Risky" && !round.submenu,
+              "…and the fields that were already on that line still land where they did")
+
+        // The four-field line every pounce-palette wrote before these keys
+        // existed. It has to keep parsing, as a command that declares nothing —
+        // a `pounce` newer than the launcher script beside it is the ordinary
+        // state of a half-updated install.
+        let legacy = PounceItem.parseCommand("Old\tdesc\tstar\told\t1")
+        check(legacy.submenu && legacy.risk.isEmpty,
+              "a registry line with no flag fields is a command that declares nothing")
+
+        // `pounce list --json`, and the daemon's COMMANDS reply — one builder,
+        // so the two can never describe the same command differently.
+        let record = risky.jsonRecord
+        check(record["key"] as? String == "cmd:risky",
+              "a record is keyed the way `pounce run` and config.json's items map address it")
+        check(record["mutates"] as? Bool == true && record["confirm"] as? Bool == true
+                && record["network"] as? Bool == false,
+              "the record carries all three declarations, including the false one")
+        check(record["path"] as? String == risky.scriptPath,
+              "…and the path, because the declaration is a claim and the script is the evidence")
+
         // ── the header-grammar golden table ──────────────────────────────────
         // Three parsers read this grammar and no two are the same language (see
         // tests/fixtures/README.md); they cannot be collapsed, because haus
