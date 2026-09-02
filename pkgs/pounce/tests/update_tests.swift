@@ -64,9 +64,9 @@ func runUpdateNudgeTests() -> Int {
     kind("\(home)/.local/state/pounce/Pounce.app", .rice, "rice re-signed copy")
     kind("/Users/nib/src/pounce/Pounce.app", .unknown, "a build tree is nobody's cohort")
 
-    // The rice publishes /Applications/Pounce.app as a symlink INTO the state
+    // haus publishes /Applications/Pounce.app as a symlink INTO the state
     // dir; callers resolve before detecting (as update-pounce.sh's readlink -f
-    // does), so the resolved path must win — otherwise a rice user is told to
+    // does), so the resolved path must win — otherwise a haus user is told to
     // press Return for an install the script will refuse.
     kind("\(home)/.local/state/pounce/current/Pounce.app", .rice, "resolved rice symlink")
 
@@ -78,7 +78,7 @@ func runUpdateNudgeTests() -> Int {
         expect(!k.canSelfUpdate, "\(k) must not promise an install")
     }
     expect(InstallKind.rice.actionHint.contains("haus update"),
-           "the rice cohort is told to run haus update")
+           "the .rice cohort is told to run haus update")
 
     // Dismissal ("Skip this version", ⌘⏎) is per-version. The rule that
     // matters is that it EXPIRES: if a dismissal outlived its version, "skip"

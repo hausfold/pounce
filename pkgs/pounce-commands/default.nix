@@ -47,7 +47,7 @@ let
   # RUNTIME from, in order (later dirs shadow earlier ones by filename):
   #
   #   1. the built-in set below ($out/share/pounce/commands)
-  #   2. extraCommandDirs (Nix consumers, e.g. a rice's machine-specific set)
+  #   2. extraCommandDirs (Nix consumers, e.g. a desktop's machine-specific set)
   #   3. $POUNCE_COMMAND_PATH (colon-separated, for ad-hoc layering)
   #   4. ~/.config/pounce/commands (the user's own — highest precedence)
   #

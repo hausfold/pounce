@@ -38,7 +38,7 @@ enum SocketConfig {
 // through `pt(_:)`. `"scale"` in config.json multiplies them, so the whole window
 // — text, rows, icons, and the panels behind the palette — grows as one piece
 // rather than one hand-tuned number at a time. This is the seam the haus
-// rice's `ui.scale` reaches when a rice asks for a Mac you can read.
+// haus's `ui.scale` reaches when a desktop asks for a Mac you can read.
 //
 // Deliberately NOT a `.scaleEffect` on the hosting view: that rasterises and then
 // transforms, and soft text is the one thing a legibility setting must not ship.

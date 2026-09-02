@@ -150,7 +150,7 @@ if command -v brew >/dev/null 2>&1 && brew list --formula pounce >/dev/null 2>&1
     MODE=(brew)
 else
     # Not a brew install. A direct (drag) install is a real Pounce.app at a
-    # standard location that is NOT the Nix store or the rice's re-signed copy
+    # standard location that is NOT the Nix store or haus's re-signed copy
     # (~/.local/state/pounce) behind a symlink — those update via the flake.
     APP=""
     for cand in "/Applications/Pounce.app" "$HOME/Applications/Pounce.app"; do
@@ -163,9 +163,9 @@ else
     done
     if [ -z "$APP" ]; then
         # Keep this wording in step with InstallKind.actionHint (UpdateCheck.swift):
-        # the daemon's pinned nudge names the same command, and the rice cohort's
+        # the daemon's pinned nudge names the same command, and the `.rice` cohort's
         # is `haus update` — "bench ship / rebuild" is the workshop's own verb,
-        # not something an end user of the rice has ever run.
+        # not something an end user of haus has ever run.
         if [ -d "$HOME/.local/state/pounce" ]; then
             notify "Pounce comes from the haus desktop — run 'haus update' to pick up the new version."
         else
