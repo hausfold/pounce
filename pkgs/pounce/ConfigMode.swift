@@ -18,8 +18,11 @@ enum ConfigMode {
     static func run(op: String?, args: [String]) {
         let json = args.contains("--json")
         // `--json` is a flag, not a subcommand: `pounce config --json` asks
-        // about the path, the same as bare `pounce config`.
-        let op = (op == "--json" || op == "--force") ? nil : op
+        // about the path, the same as bare `pounce config`. Every OTHER unknown
+        // leading `--flag` still falls through to the usage error below, which
+        // is what `pounce config --force` (a `config init` flag, on the wrong
+        // verb) should get rather than a silently different answer.
+        let op = op == "--json" ? nil : op
         switch op {
         case nil, "path":
             if json {
