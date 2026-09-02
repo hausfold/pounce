@@ -166,7 +166,7 @@ struct SwitcherView: View {
                         .font(.system(size: pt(13), weight: .medium))
                         .foregroundColor(Theme.subtext)
                     Text(state.query)
-                        .font(uiFont(pt(15), weight: .regular, design: .rounded))
+                        .font(AppFont.size(pt(15), weight: .regular, design: .rounded))
                         .foregroundColor(Theme.text)
                         .lineLimit(1)
                     Spacer()
@@ -179,7 +179,7 @@ struct SwitcherView: View {
 
             if state.visible.isEmpty {
                 Text("No matching windows")
-                    .font(uiFont(pt(14), design: .rounded))
+                    .font(AppFont.size(pt(14), design: .rounded))
                     .foregroundColor(Theme.subtext0)
                     .frame(height: SwitcherLayout.rowHeight)
                     .frame(maxWidth: .infinity)
@@ -251,7 +251,7 @@ struct SwitcherGroupHeader: View {
     var body: some View {
         HStack(spacing: pt(8)) {
             Text(isPlaced ? name : "—")
-                .font(uiFont(pt(10), weight: .bold, design: .rounded))
+                .font(AppFont.size(pt(10), weight: .bold, design: .rounded))
                 .foregroundColor(tint)
                 .frame(minWidth: pt(18))
                 .padding(.horizontal, pt(6))
@@ -290,12 +290,12 @@ struct SwitcherRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(window.title)
                     .foregroundColor(Theme.text)
-                    .font(uiFont(pt(15), weight: .medium, design: .rounded))
+                    .font(AppFont.size(pt(15), weight: .medium, design: .rounded))
                     .lineLimit(1)
                 if window.title != window.appName {
                     Text(window.appName)
                         .foregroundColor(Theme.subtext0)
-                        .font(uiFont(pt(11), design: .rounded))
+                        .font(AppFont.size(pt(11), design: .rounded))
                         .lineLimit(1)
                 }
             }
@@ -312,7 +312,7 @@ struct SwitcherRow: View {
             // reach is what the badge is advertising.
             if let ws = workspace {
                 Text(ws)
-                    .font(uiFont(pt(11), weight: .semibold, design: .rounded))
+                    .font(AppFont.size(pt(11), weight: .semibold, design: .rounded))
                     .foregroundColor(Theme.blue)
                     .frame(minWidth: pt(20), minHeight: pt(20))
                     .padding(.horizontal, 2)

@@ -226,9 +226,9 @@ private struct SettingsSidebarFooter: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Pounce")
-                        .font(uiFont(12, weight: .semibold))
+                        .font(AppFont.size(12, weight: .semibold))
                     Text(version)
-                        .font(uiFont(11))
+                        .font(AppFont.size(11))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -324,7 +324,7 @@ private struct SettingsCardIntro: View {
 
     var body: some View {
         Text(text)
-            .font(uiFont(.subheadline))
+            .font(AppFont.subheadline)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -346,7 +346,7 @@ private struct ConfigRawSectionView: View {
                 Text(raw.replacingOccurrences(of: "// ", with: "")
                     .replacingOccurrences(of: "//", with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines))
-                    .font(uiFont(11, design: .monospaced))
+                    .font(AppFont.size(11, design: .monospaced))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)

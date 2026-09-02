@@ -71,6 +71,7 @@ fi
   Frecency.swift QueryMemory.swift ContextMemory.swift NextAction.swift StageSlots.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
   Currency.swift ItemSettings.swift FunctionKeyGesture.swift FunctionKeyRemap.swift CommandRegistry.swift UpdateCheck.swift \
   Badges.swift Json.swift Skill.swift \
+  FontFamily.swift \
   ConfigTemplate.swift ConfigWriter.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \
   Dials.swift \
   FullscreenGate.swift \
@@ -84,6 +85,7 @@ fi
   tests/badges_tests.swift \
   tests/functionkey_tests.swift tests/functionkeyremap_tests.swift \
   tests/commandregistry_tests.swift tests/update_tests.swift tests/symbols_tests.swift \
+  tests/fontfamily_tests.swift \
   tests/configtemplate_tests.swift tests/configwriter_tests.swift tests/drafts_tests.swift tests/autoquit_tests.swift \
   tests/appscanner_tests.swift tests/shortcuts_tests.swift \
   tests/systemsettings_tests.swift tests/bugreport_tests.swift tests/dials_tests.swift \

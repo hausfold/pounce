@@ -68,8 +68,15 @@ struct EmojiView: View {
                             // symbol drawn at the same size next to them reads
                             // as thin and unaligned, so it gets its own metrics
                             // and the theme's text color.
+                            //
+                            // `.system`, not `AppFont`: symbols.json's ⌘ ⌥ ⇧,
+                            // arrows and box drawing are characters, so a named
+                            // family would draw the ones it has and fall back
+                            // per-glyph for the rest — in a fixed-height grid
+                            // whose alignment is the whole point. This is a
+                            // picker of glyphs, not a run of prose.
                             Text(e.c)
-                                .font(uiFont(e.kind == .emoji ? 26 : 22))
+                                .font(.system(size: e.kind == .emoji ? 26 : 22))
                                 .foregroundColor(e.kind == .emoji ? .primary : Theme.text)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: EmojiLayout.cellHeight)
@@ -94,19 +101,19 @@ struct EmojiView: View {
             HStack(spacing: pt(10)) {
                 if let e = selected {
                     Text(e.c)
-                        .font(uiFont(pt(18)))
+                        .font(AppFont.size(pt(18)))
                         .foregroundColor(e.kind == .emoji ? .primary : Theme.text)
                     Text(e.name)
                         .foregroundColor(Theme.subtext)
-                        .font(uiFont(pt(12)))
+                        .font(AppFont.size(pt(12)))
                         .lineLimit(1)
                     if e.kind == .symbol {
                         Text(e.codepoints)
                             .foregroundColor(Theme.subtext0)
-                            .font(uiFont(pt(11), design: .monospaced))
+                            .font(AppFont.size(pt(11), design: .monospaced))
                     }
                 } else {
-                    Text("No match").foregroundColor(Theme.subtext0).font(uiFont(pt(12)))
+                    Text("No match").foregroundColor(Theme.subtext0).font(AppFont.size(pt(12)))
                 }
                 Spacer()
             }

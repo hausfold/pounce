@@ -291,7 +291,7 @@ struct ContentView: View {
     }
 
     var queryFont: NSFont {
-        uiNSFont(size: state.metrics.searchFontSize)
+        AppFont.nsFont(size: state.metrics.searchFontSize)
     }
 
     var queryLineHeight: CGFloat {
@@ -684,7 +684,7 @@ struct SkeletonView: View {
                     .font(.system(size: state.metrics.searchIconSize, weight: .medium))
                     .foregroundColor(Theme.subtext)
                 Text(state.loadingTitle)
-                    .font(uiFont(state.metrics.searchFontSize, weight: .regular))
+                    .font(AppFont.size(state.metrics.searchFontSize, weight: .regular))
                     .foregroundColor(Theme.subtext0)
                     .lineLimit(1)
                 Spacer()

@@ -205,7 +205,7 @@ struct StageTile: View {
             .frame(width: pt(38), height: pt(38))
 
             Text(item.title)
-                .font(uiFont(pt(13), weight: .medium, design: .rounded))
+                .font(AppFont.size(pt(13), weight: .medium, design: .rounded))
                 .foregroundColor(isSelected ? Theme.text : Theme.subtext)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -220,7 +220,7 @@ struct StageTile: View {
         .overlay(alignment: .topTrailing) {
             if index < 9 {
                 Text("\(index + 1)")
-                    .font(uiFont(pt(9), weight: .semibold, design: .rounded))
+                    .font(AppFont.size(pt(9), weight: .semibold, design: .rounded))
                     .foregroundColor(isSelected ? Theme.subtext : Theme.surface2)
                     .padding(.top, pt(5))
                     .padding(.trailing, pt(6))
@@ -343,11 +343,11 @@ struct InfoCard: View {
             .foregroundColor(Theme.subtext0)
             VStack(alignment: .leading, spacing: pt(1)) {
                 Text(label)
-                    .font(uiFont(pt(9), weight: .semibold, design: .rounded))
+                    .font(AppFont.size(pt(9), weight: .semibold, design: .rounded))
                     .kerning(0.8)
                     .foregroundColor(Theme.subtext0)
                 Text(value)
-                    .font(uiFont(pt(12), weight: .medium, design: .rounded))
+                    .font(AppFont.size(pt(12), weight: .medium, design: .rounded))
                     .foregroundColor(Theme.subtext)
                     .lineLimit(1)
                     .truncationMode(.tail)
