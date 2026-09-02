@@ -5,16 +5,14 @@ description: Drive the Mac's command palette from a script — and, most usefull
 
 # Pounce — the scriptable command palette
 
-Pounce is a native macOS command palette: a daemon plus a window the user
-summons with ⌘Space. Everything it does is reachable from the `pounce` command,
-which is what makes it useful to you.
+Pounce is a native macOS command palette: a daemon plus a window the user summons
+with ⌘Space, and everything it does is reachable from the `pounce` command.
 
 The capability worth knowing about is not "open the launcher". It is that
-**`pounce` is a picker you can put in front of a human**: pipe it lines, it
-shows a native fuzzy-searchable window, and it prints back the one they chose.
-When you need a decision and a terminal prompt is the wrong place for it — the
-user is in another app, the list is long, the options need scanning — this is
-better than asking.
+**`pounce` is a picker you can put in front of a human**: pipe it lines, it shows
+a native fuzzy-searchable window, and prints back the one they chose. Reach for
+it when a terminal prompt is the wrong place for a decision — the user is in
+another app, the list is long, the options need scanning.
 
 ## Ask the user to choose
 
@@ -47,19 +45,15 @@ the user saying no, not a reason to retry.
 `--grid` suits a step offering **things** rather than names — projects, machines,
 images — each with an icon and a line of description. Groups order but draw no headers.
 
-`--dial` puts a small chip in the action bar the user steps through without
-leaving the box — "which model", "public or private" — so one step can carry a
-side-question that doesn't deserve its own picker. When you passed it, the
-output grows **one extra middle field** with the committed values:
-`enter⇥model=opus⇥<line-or-text>`. Only `--dial` callers see three fields, so
-nothing existing breaks — but *you* must split accordingly, and tolerate the
-middle field being absent (a resident daemon older than this flag ignores it
-and answers in the two-field shape). Each dial re-opens on the value the user
-committed last time, remembered per option-set; the first option is the
-default until then.
+`--dial` puts a chip in the action bar the user steps through without leaving
+the box — "which model", "public or private" — so one step carries a
+side-question that doesn't deserve its own picker. Passing it grows the output by
+**one extra middle field**: `enter⇥model=opus⇥<line-or-text>`. Only `--dial`
+callers see three fields, so split accordingly, and tolerate it being absent (a
+daemon older than the flag answers in the two-field shape). Each dial re-opens
+on the value committed last time.
 
-The picker works whether or not the daemon is running — it falls back to
-drawing the window itself.
+The picker works with or without the daemon — it falls back to drawing the window.
 
 ## Other verbs
 
@@ -75,26 +69,30 @@ drawing the window itself.
 | transform the user's current selection | `pounce --transform 'tr "[:lower:]" "[:upper:]"'` |
 | put a file on the clipboard | `pounce --copy-file <path>` |
 | list / read / drop drafts | `pounce drafts <key> list \| get <n> \| rm <n> \| clear` |
-| where is the config? | `pounce config` |
+| …as data, with each draft's whole text | `pounce drafts <key> list --json` |
+| where is the config — and is it mine to edit? | `pounce config --json` |
 | what settings exist, with defaults? | `pounce config print` |
+| what are the settings *right now*? | `pounce config print --json` |
 | let the user change a setting themselves | `pounce settings` opens the Settings window |
-| is the hotkey actually working? | `pounce doctor` |
+| is the hotkey actually working? | `pounce doctor` (`--json` for the checks as data) |
+| teach an agent about pounce on this Mac | `pounce skill` · `pounce skill install` |
 | **doctor looks fine and it's still broken** | `pounce report --print` — the doctor report plus version, macOS and install cohort, ready to paste into an issue (drop `--print` to open the form) |
 | everything, exhaustively | `pounce --help` |
 
-`pounce config print` is the honest answer to "what can I configure?" — it
-prints every setting at its default, annotated. Read that rather than guessing
-key names. `pounce config init` writes the same thing as the user's own
-`config.json` with everything commented out.
+`pounce config print` answers "what can I configure?" — every setting at its
+default, annotated. `--json` answers a different question: the values pounce will
+**actually use**, plus `set`, the keys the user's file really names, so "unset"
+and "set to the default" stop looking alike. Read one rather than guess key names.
 
-`pounce settings` opens the same list as a window the USER clicks through —
-reach for it when they want to change something themselves rather than have you
-edit the file. It writes one line of `config.json` per click and leaves the rest
-alone, so it and a hand edit are the same door. It is read-only on a
-haus-managed Mac (see below), and says so.
+`pounce settings` opens that same list as a window the USER clicks through, for
+when they'd rather change something themselves than have you edit the file. It
+writes one line of `config.json` per click, and is read-only on a haus Mac.
 
 `pounce drafts <key> list` prints `<index>\t<preview>\t<age>`, newest first —
-ready to turn back into picker rows.
+ready to turn back into picker rows; `--json` adds each draft's full text.
+
+Exit codes: **0** ok · **1** nothing came back (dismissed picker, missing draft,
+unhealthy doctor, no daemon) · **2** usage · **3** refused. `focus` has its own.
 
 ## When to reach for this
 
@@ -111,8 +109,9 @@ ready to turn back into picker rows.
 
 - **The question is small and the user is in the terminal with you.** Just ask.
   A window that steals attention for a yes/no is worse than a line of text.
-- **You want machine-readable output.** There is no `--json` anywhere in pounce
-  yet. Read verbs print human text or TSV; parse them carefully or not at all.
+- **You want to read the clipboard or the palette's item list.** Neither has a
+  read verb — `pounce run mode:clipboard` opens a window for the user, and that
+  is all. Say so rather than inventing one.
 - **You want to change what's in the palette.** Items, commands and the hotkey
   live in `~/.config/pounce/config.json` and
   `~/.config/pounce/commands` — edit those files, or hand the user `pounce
@@ -146,5 +145,6 @@ ready to turn back into picker rows.
   don't try to grant anything yourself.
 - **The daemon runs on launchd's bare `PATH`** — no Homebrew, no Nix. A command
   script that shells out to an external tool must carry its own bindir prelude.
-- **No `--json`, anywhere.** If you find yourself writing a parser for pounce's
-  output, stop and tell the user what you'd need instead.
+- **`--json` is on the read verbs, never on the picker.** `drafts`, `config`,
+  `doctor`, `focus` and `autostart` take it; a committed row stays `action⇥line`
+  and always will. If you are writing a parser for anything else, stop and ask.

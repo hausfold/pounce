@@ -20,7 +20,10 @@ import ApplicationServices
 // checkboxes on Pounce.app covers every caller: bar pill, palette, scripts,
 // any terminal.
 //
-// Exit codes are the contract hush scripts rely on:
+// `focus` keeps its OWN exit-code table — the one hush scripts rely on — rather
+// than the 0/1/2/3 set the rest of the CLI documents in `pounce --help`. It
+// predates that table, it is finer-grained than it, and re-numbering it would
+// break the bar pill for no gain:
 //   0  done (status printed / chord pressed / already in the wanted state)
 //   1  pressed but the DB never showed the wanted state (on|off only)
 //   2  DB unreadable — no Full Disk Access here or in the daemon
@@ -50,10 +53,17 @@ enum FocusMode {
     // running, or too old to know FOCUS never happens — hush always calls
     // the same signed copy the daemon runs from), fall through to the local
     // attempt so the error message and exit code match the old behavior.
-    static func run(op: String?) -> Never {
-        let operation = op ?? ""
+    static func run(args: [String]) -> Never {
+        // --json is a flag anywhere in the invocation; the operation is the one
+        // positional. The plain shape is untouched — `focus status` still prints
+        // a bare "on"/"off", which is what haus's hush bar pill reads.
+        var rest = args
+        let json = rest.contains("--json")
+        rest.removeAll { $0 == "--json" }
+        let operation = rest.first ?? ""
         guard ["status", "toggle", "on", "off"].contains(operation) else {
-            finish(Outcome(code: 64, err: "usage: pounce focus <status|toggle|on|off>"))
+            finish(Outcome(code: 64, err: "usage: pounce focus <status|toggle|on|off> [--json]"),
+                   op: operation, json: json)
         }
         let localOK: Bool
         switch operation {
@@ -65,14 +75,40 @@ enum FocusMode {
             if reply.hasPrefix("err\t") {
                 let parts = reply.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
                 finish(Outcome(code: parts.count > 1 ? Int32(parts[1]) ?? 1 : 1,
-                               err: parts.count > 2 ? parts[2] : ""))
+                               err: parts.count > 2 ? parts[2] : ""),
+                       op: operation, json: json)
             }
-            finish(Outcome(code: 0, out: operation == "status" ? reply : ""))
+            finish(Outcome(code: 0, out: operation == "status" ? reply : ""),
+                   op: operation, json: json)
         }
-        finish(perform(operation))
+        finish(perform(operation), op: operation, json: json)
     }
 
-    static func finish(_ r: Outcome) -> Never {
+    static func finish(_ r: Outcome, op: String = "", json: Bool = false) -> Never {
+        if json {
+            // One record for all four operations, so a caller can parse the same
+            // shape whichever it ran. `on` is the state where one is known
+            // (`status`, and `on`/`off` once they have verified) and null where
+            // it isn't — a toggle reports what it did, not what resulted.
+            let state = r.out.trimmingCharacters(in: .whitespacesAndNewlines)
+            func resolved() -> Bool? {
+                if state == "on" { return true }
+                if state == "off" { return false }
+                // `on`/`off` only return 0 after verifying the DB agrees, so a
+                // clean exit from one of them IS the state.
+                if r.code == 0, op == "on" || op == "off" { return op == "on" }
+                return nil
+            }
+            let known = Json.value(resolved())
+            Json.emit([
+                "op": op,
+                "ok": r.code == 0,
+                "code": Int(r.code),
+                "on": known,
+                "error": r.err.isEmpty ? NSNull() : r.err,
+            ])
+            exit(r.code)
+        }
         if !r.out.isEmpty { print(r.out) }
         if !r.err.isEmpty { warn(r.err) }
         exit(r.code)

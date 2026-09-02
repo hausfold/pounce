@@ -38,6 +38,7 @@ brew tap hausfold/tap
 brew install pounce
 brew services start pounce       # the palette daemon
 pounce --request-accessibility   # approve the prompt, once
+pounce skill install             # teach your coding agent to drive it
 ```
 
 macOS gives ⌘Space to Spotlight; [installing](https://hausfold.co/docs/pounce/install/)
@@ -61,7 +62,8 @@ configures all of the above for you.
 
 ## in this repo
 
-- [`ai/SKILL.md`](ai/SKILL.md) — the agent surface, so *"add a command that…"* works first try
+- [`ai/SKILL.md`](ai/SKILL.md) — the agent surface, so *"ask me which one"* works first try.
+  It ships inside the binary too: `pounce skill` prints it, `pounce skill install` places it
 - [`AGENTS.md`](./AGENTS.md) — hacking on pounce: the build, the layout, the invariants
 - `pounce --help` · `pounce doctor` — the authoritative flag list, and what to run when a key does nothing
 

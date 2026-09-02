@@ -29,10 +29,43 @@ enum DoctorMode {
         let bindings: [String]
     }
 
-    /// `pounce doctor` — print the report, exit 0 when healthy.
-    static func run() -> Never {
+    /// One line of the report, kept as data rather than only as text so
+    /// `--json` doesn't have to re-derive the verdict by parsing back the ✔/⚠/✘
+    /// it just printed. The human report is rendered FROM these, so a check that
+    /// exists in one view exists in the other by construction.
+    struct Check {
+        enum Level: String { case ok, warn, bad, note }
+        let level: Level
+        let message: String
+    }
+
+    /// Everything one run of the check knows. `text` and `healthy` are what the
+    /// two older callers already used; the rest is what `--json` publishes.
+    struct Report {
+        let text: String
+        let healthy: Bool
+        let checks: [Check]
+        let problems: [String]
+        let combo: String
+        let daemon: [String: Any]
+        let hotkey: [String: Any]
+    }
+
+    /// `pounce doctor [--json]` — print the report, exit 0 when healthy.
+    static func run(args: [String] = []) -> Never {
         let report = report()
-        print(report.text)
+        if args.contains("--json") {
+            Json.emit([
+                "healthy": report.healthy,
+                "version": pounceVersion,
+                "daemon": report.daemon,
+                "hotkey": report.hotkey,
+                "checks": report.checks.map { ["level": $0.level.rawValue, "message": $0.message] },
+                "problems": report.problems,
+            ])
+        } else {
+            print(report.text)
+        }
         exit(report.healthy ? 0 : 1)
     }
 
@@ -43,7 +76,7 @@ enum DoctorMode {
     /// doctor` and paste the output; this is that, without the two steps where
     /// a report gets lost — and without the paste that arrives truncated
     /// because a terminal scrolled.
-    static func report() -> (text: String, healthy: Bool) {
+    static func report() -> Report {
         let settings = Settings.load()
         let status = queryDaemon()
         let combo = status?.hotkeyCombo
@@ -52,9 +85,12 @@ enum DoctorMode {
         var out: [String] = []
         var lines: [String] = []
         var problems: [String] = []
-        func ok(_ s: String)   { lines.append("  \u{2714} \(s)") }
-        func warn(_ s: String) { lines.append("  \u{26A0} \(s)") }
-        func bad(_ s: String)  { lines.append("  \u{2718} \(s)") }
+        var checks: [Check] = []
+        func ok(_ s: String)   { lines.append("  \u{2714} \(s)"); checks.append(.init(level: .ok, message: s)) }
+        func warn(_ s: String) { lines.append("  \u{26A0} \(s)"); checks.append(.init(level: .warn, message: s)) }
+        func bad(_ s: String)  { lines.append("  \u{2718} \(s)"); checks.append(.init(level: .bad, message: s)) }
+        /// An aside under the check above it — no glyph, no verdict of its own.
+        func note(_ s: String) { lines.append("    (\(s))"); checks.append(.init(level: .note, message: s)) }
 
         out.append("pounce doctor\n")
 
@@ -295,20 +331,41 @@ enum DoctorMode {
                             + "hotkey receives the key (e.g. `skhd --stop-service`, or delete the line).")
         }
         if binds.isEmpty, !daemons.isEmpty, hotkeyDead {
-            lines.append("    (no launcher binding found in the usual configs — check the running "
-                         + "tool's own settings for whatever is bound to \(combo))")
+            note("no launcher binding found in the usual configs — check the running "
+                 + "tool's own settings for whatever is bound to \(combo)")
         }
 
         out.append(lines.joined(separator: "\n"))
         out.append("")
 
-        if problems.isEmpty {
+        let healthy = problems.isEmpty
+        if healthy {
             out.append("\u{25B6} Healthy. \(combo) reaches pounce's fast in-process path.")
-            return (out.joined(separator: "\n"), true)
+        } else {
+            out.append("\u{25B6} Likely issue\(problems.count == 1 ? "" : "s"):")
+            for p in problems { out.append("  \u{2022} \(p)") }
         }
-        out.append("\u{25B6} Likely issue\(problems.count == 1 ? "" : "s"):")
-        for p in problems { out.append("  \u{2022} \(p)") }
-        return (out.joined(separator: "\n"), false)
+
+        // The structured half. Everything a daemon alone can answer is null when
+        // no daemon answered — an absent grant and an absent daemon are
+        // different faults, and a `false` here would merge them.
+        let daemon: [String: Any] = [
+            "running": status != nil,
+            "version": Json.value(status?.version),
+            "accessibility": Json.value(status?.accessibility),
+        ]
+        let hotkey: [String: Any] = [
+            "combo": combo,
+            "enabled": Json.value(status?.hotkeyEnabled),
+            "registered": Json.value(status?.hotkeyRegistered),
+            // The crux of the whole command: registered but never received is
+            // what an external hotkey daemon shadowing the key looks like.
+            "received": Json.value(status?.hotkeyReceived),
+            "bindings": status?.bindings ?? [],
+        ]
+        return Report(text: out.joined(separator: "\n"), healthy: healthy,
+                      checks: checks, problems: problems, combo: combo,
+                      daemon: daemon, hotkey: hotkey)
     }
 
     // MARK: Daemon query

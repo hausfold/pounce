@@ -82,8 +82,11 @@ enum Main {
       drafts <key> rm <index>   forget one
       drafts <key> clear        forget all of them
 
+      --json on any of these: `list` and `get` carry each draft's full text as
+      well as its preview, and the three write verbs answer with a receipt.
+
     diagnostics:
-      doctor                    check the hotkey path — is the daemon up, is the
+      doctor [--json]           check the hotkey path — is the daemon up, is the
                                 in-process hotkey actually firing, or is an
                                 external tool (skhd/AeroSpace/Raycast) or a macOS
                                 shortcut shadowing it
@@ -93,7 +96,7 @@ enum Main {
                                 URL to stdout and opens nothing
 
     focus (hush):
-      focus status              print on/off from the DoNotDisturb DB
+      focus status [--json]     print on/off from the DoNotDisturb DB
       focus toggle              press the DND symbolic-hotkey chord
       focus on|off              deterministic: read, press only if needed, verify
                                 the grants (Accessibility + Full Disk Access) live on
@@ -110,9 +113,15 @@ enum Main {
       settings                  open the Settings window — every setting in
                                 config.json, with the same prose `config print`
                                 writes, and a click writes one line back
-      config                    print the config path
+      config [--json]           print the config path (--json adds whether it
+                                is yours to edit or written by haus)
       config print              print an annotated config to stdout, touching
                                 nothing — pipe it, or diff it against yours
+      config print --json       a different question: the EFFECTIVE settings —
+                                every key at the value pounce will actually use
+                                — plus `set`, the keys your file names, so
+                                "unset" and "set to the default" stop looking
+                                alike
       config init               write config.json with EVERY setting at its
                                 default, documented and commented out — you
                                 learn the settings by reading your own config.
@@ -120,11 +129,26 @@ enum Main {
                                 --force replaces an existing one (otherwise it
                                 writes config.json.new beside it).
 
+    agent skill:
+      skill                     print the SKILL.md compiled into this binary —
+                                the routing document a coding agent loads to
+                                learn these verbs
+      skill install             write it where the agent clients on this Mac
+                                look (~/.claude/skills, ~/.codex/skills, …).
+                                --client claude|codex|opencode|pi   just one
+                                --dir <path>                        elsewhere
+                                --json                              a receipt
+                                Refuses rather than clobbers, and refuses
+                                outright on a haus machine, where the skills
+                                directory is a read-only Nix symlink haus
+                                already filled in.
+
     housekeeping:
       --daemon                  run the resident daemon (launchd uses this; also
                                 hosts the MRU window switcher when config.json
                                 sets windows.enabled)
-      autostart on|off|status   start the daemon at login via a self-registered
+      autostart on|off|status [--json]
+                                start the daemon at login via a self-registered
                                 login item (System Settings → Login Items).
                                 For drag-installs of Pounce.app; Homebrew users
                                 use `brew services`, the haus desktop wires
@@ -137,6 +161,16 @@ enum Main {
       --check-bluetooth         print true/false for the grant
       --version                 print the version
       -h, --help                this text
+
+    exit codes:
+      0   ok
+      1   nothing came back — a dismissed picker, a draft index that isn't
+          there, an unhealthy `doctor`, a daemon that isn't running
+      2   usage: a verb, subcommand or flag pounce doesn't have
+      3   refused: pounce won't do it HERE — a Nix-managed config.json, a
+          skills directory something else manages. Nothing to retry.
+      `focus` keeps its own finer table (see above); it predates this one and
+      haus's hush scripts read it.
 
     config: ~/.config/pounce/config.json   commands: ~/.config/pounce/commands
     docs:   https://hausfold.co/docs/pounce/config/
@@ -152,11 +186,18 @@ enum Main {
         } else if args.count >= 2 && args[1] == "doctor" {
             // Positional, like `focus`: a health check for the hotkey path that
             // never opens the palette.
-            DoctorMode.run()
+            DoctorMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "report" {
             // Positional, like `doctor` — and next to it on purpose: this is
             // what you run when doctor's answer is "that all looks fine".
             ReportMode.run(args: Array(args.dropFirst(2)))
+        } else if args.count >= 2 && args[1] == "skill" {
+            // Positional, like `doctor` and `report`. The agent-surface
+            // standard's A3 verb: print the SKILL.md compiled into this binary,
+            // or write it into the agent clients on this Mac. Never touches the
+            // daemon and never opens a window — an agent runs it on a machine it
+            // has just met.
+            SkillMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "run" {
             // Positional, like `doctor` and `focus`: run one item by its key
             // ("cmd:emoji", "mode:clipboard", "app:/Applications/Foo.app").
@@ -173,7 +214,7 @@ enum Main {
             // Positional on purpose: scripts probe `pounce --help` for
             // "focus" before calling, so an older binary never falls through
             // to ClientMode and opens the palette by accident.
-            FocusMode.run(op: args.count >= 3 ? args[2] : nil)
+            FocusMode.run(args: Array(args.dropFirst(2)))
         } else if let i = args.firstIndex(of: "--copy-file"), i + 1 < args.count {
             CopyFileMode.run(path: args[i + 1])
         } else if let i = args.firstIndex(of: "--transform"), i + 1 < args.count {
@@ -213,7 +254,7 @@ enum Main {
             // Positional like `focus`/`doctor` (see those branches for why).
             // Manages the self-registered login item — the drag-install
             // counterpart of `brew services start pounce` (LoginItem.swift).
-            Autostart.run(op: args.count >= 3 ? args[2] : nil)
+            Autostart.run(args: Array(args.dropFirst(2)))
         } else if args.contains("--daemon") {
             DaemonMode.run()
         } else if args.count == 1 && getppid() == 1 {
@@ -342,24 +383,71 @@ enum DraftsMode {
             FileHandle.standardError.write(Data("pounce drafts: \(message)\n".utf8))
             exit(2)
         }
-        guard let key = args.first, !key.isEmpty else {
-            fail("needs a key — `pounce drafts <key> save|list|get <i>|rm <i>|clear`")
+        // --json is stripped before anything positional is read, so it can be
+        // written anywhere in the invocation — `drafts k get --json 0` and
+        // `drafts k get 0 --json` are the same command. The TSV shape below is
+        // unchanged and stays the default: haus's spawn-agent.sh reads `list`
+        // field by field, and this flag is additive surface, not a migration.
+        var rest = args
+        let json = rest.contains("--json")
+        rest.removeAll { $0 == "--json" }
+
+        guard let key = rest.first, !key.isEmpty else {
+            fail("needs a key — `pounce drafts <key> save|list|get <i>|rm <i>|clear` [--json]")
         }
-        let op = args.count > 1 ? args[1] : "list"
+        let op = rest.count > 1 ? rest[1] : "list"
+        let now = Int(Date().timeIntervalSince1970)
+
+        /// One draft as a JSON record. `text` is included in `list` too: an
+        /// agent that has to run `get` once per row to read what it just listed
+        /// is paying N invocations for one answer, and the store holds twenty
+        /// entries at most.
+        func record(_ draft: Draft, index: Int) -> [String: Any] {
+            [
+                "index": index,
+                "stamp": draft.stamp,
+                "age": Drafts.ago(draft.stamp, now: now),
+                "preview": Drafts.preview(draft.text),
+                "text": draft.text,
+            ]
+        }
+
         switch op {
         case "list":
-            let now = Int(Date().timeIntervalSince1970)
-            for (i, d) in Drafts.load(key: key).enumerated() {
-                print("\(i)\t\(Drafts.preview(d.text))\t\(Drafts.ago(d.stamp, now: now))")
+            let drafts = Drafts.load(key: key)
+            if json {
+                Json.emit([
+                    "key": key,
+                    "path": Drafts.path(for: key),
+                    "count": drafts.count,
+                    "drafts": drafts.enumerated().map { record($1, index: $0) },
+                ])
+            } else {
+                for (i, d) in drafts.enumerated() {
+                    print("\(i)\t\(Drafts.preview(d.text))\t\(Drafts.ago(d.stamp, now: now))")
+                }
             }
         case "get":
-            guard args.count > 2, let i = Int(args[2]) else { fail("`get` needs an index") }
+            guard rest.count > 2, let i = Int(rest[2]) else { fail("`get` needs an index") }
             let drafts = Drafts.load(key: key)
-            guard i >= 0 && i < drafts.count else { exit(1) }
-            // No trailing newline of our own: the draft IS the output, and
-            // `$(...)` strips one anyway — printing it raw keeps a prompt that
-            // deliberately ends in a blank line from silently losing it.
-            FileHandle.standardOutput.write(Data(drafts[i].text.utf8))
+            guard i >= 0 && i < drafts.count else {
+                // A --json caller gets a parseable "no" rather than silence, and
+                // the same exit 1 either way: the record IS the answer, so it
+                // goes to stdout, not stderr.
+                if json { Json.emit(["key": key, "index": i, "found": false]) }
+                exit(1)
+            }
+            if json {
+                var out = record(drafts[i], index: i)
+                out["key"] = key
+                out["found"] = true
+                Json.emit(out)
+            } else {
+                // No trailing newline of our own: the draft IS the output, and
+                // `$(...)` strips one anyway — printing it raw keeps a prompt that
+                // deliberately ends in a blank line from silently losing it.
+                FileHandle.standardOutput.write(Data(drafts[i].text.utf8))
+            }
         case "save":
             // Text on stdin. The daemon files a draft on DISMISSAL, but a caller
             // that deliberately leaves the box (⌥↵ "show me my drafts") has
@@ -367,12 +455,37 @@ enum DraftsMode {
             // be the one thing the drafts list can't offer you back.
             let text = String(data: FileHandle.standardInput.readDataToEndOfFile(),
                               encoding: .utf8) ?? ""
-            exit(Drafts.save(key: key, text: text) ? 0 : 1)
+            let saved = Drafts.save(key: key, text: text)
+            if json {
+                // The write verb's receipt: what changed, and the index needed to
+                // address it again. `saved: false` is the documented no-op —
+                // whitespace only, or the same text already on top.
+                Json.emit([
+                    "key": key,
+                    "path": Drafts.path(for: key),
+                    "saved": saved,
+                    "index": saved ? 0 : NSNull(),
+                    "count": Drafts.load(key: key).count,
+                ])
+            }
+            exit(saved ? 0 : 1)
         case "rm":
-            guard args.count > 2, let i = Int(args[2]) else { fail("`rm` needs an index") }
-            exit(Drafts.remove(key: key, index: i) ? 0 : 1)
+            guard rest.count > 2, let i = Int(rest[2]) else { fail("`rm` needs an index") }
+            let removed = Drafts.remove(key: key, index: i)
+            if json {
+                Json.emit([
+                    "key": key,
+                    "index": i,
+                    "removed": removed,
+                    "count": Drafts.load(key: key).count,
+                ])
+            }
+            exit(removed ? 0 : 1)
         case "clear":
             Drafts.clear(key: key)
+            if json {
+                Json.emit(["key": key, "path": Drafts.path(for: key), "cleared": true, "count": 0])
+            }
         default:
             fail("unknown op \(op) — expected save, list, get, rm or clear")
         }

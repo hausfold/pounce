@@ -87,9 +87,12 @@ pkgs/pounce/            Swift sources (daemon/UI, one file per concern), Info.pl
                         Settings*.swift = the Settings window over them
                         AppIcon.iconset/ = the app-icon slots build.sh feeds to iconutil.
                         Here, not ../assets, because `src = ./.` is this dir alone
+                        Json.swift = the one writer behind every --json;
+                        Skill.swift = `pounce skill`, over the embedded ai/SKILL.md
 pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh (official plugins)
-pkgs/pounce-skill/      the agent skill as a derivation — see below
-ai/SKILL.md             its source
+pkgs/pounce-skill/      the agent skill as a derivation, for consumers — see below
+ai/SKILL.md             its source, also embedded in the binary by build.sh
+script/check-skills.sh  the skill guards, run by BOTH CI and that derivation
 ```
 
 ## The agent surface (`ai/SKILL.md`)
@@ -121,17 +124,33 @@ an extra MIDDLE field (`action\tname=value;…\traw`) — strictly opt-in per
 invocation, so a caller that never passed the flag keeps the two-field shape
 forever.
 
-The file also states plainly that pounce has **no `--json` anywhere**, so an
-agent stops rather than writes a parser against human text. That sentence comes
-out the day a read verb grows one, not before.
+**The binary carries its own copy: `pounce skill`** (`Skill.swift`), and
+`pounce skill install` writes it into every agent client on the Mac. That verb
+is the whole reason a standalone user's agent ever learns pounce exists —
+Homebrew and the DMG ship no haus to install it for them — so it is not
+optional surface. `build.sh` renders `ai/SKILL.md` into
+`Skill.generated.swift` as a raw multiline literal; Nix passes the file in as
+`POUNCE_SKILL_MD` (the repo root is outside `src = ./.`) and everyone else gets
+the relative default, so **both packagings run the identical generator**. Two
+consequences worth knowing: editing the prose now rebuilds the Swift
+derivation, and `Skill.markdown` re-adds the trailing newline Swift's multiline
+literal drops — without it the installed file would differ by one byte from the
+packaged one and every re-run would report "exists and differs".
 
-`pkgs/pounce-skill` ships it as `pkgs.pounce-skill` (`$out/pounce/SKILL.md`) —
-its own derivation, so a prose edit can't invalidate a Swift build — and fails
-if the frontmatter is missing, because a skill without it is installed, listed,
-and never loaded.
+`install` **refuses rather than clobbers**, and on a haus machine it refuses
+outright and says haus's name: those skills directories are read-only Nix
+symlinks, and an `EPERM` explains nothing.
+
+`pkgs/pounce-skill` ships the same bytes as `pkgs.pounce-skill`
+(`$out/<skill>/SKILL.md`) for a *consumer* — haus, which shouldn't have to
+compile Swift to get a paragraph. The guards both it and CI run live in
+`script/check-skills.sh`, discovered per skill rather than listed, because
+everything they catch is invisible at runtime: a skill with broken frontmatter
+installs, lists, and never loads.
 
 **Every claim in it must be runnable.** A verb, flag or exit code that changes
-changes `ai/SKILL.md` in the same PR.
+changes `ai/SKILL.md` in the same PR — and the 150-line cap is a real cap, so
+something comes out when something goes in.
 
 ## Patterns
 
@@ -250,6 +269,24 @@ changes `ai/SKILL.md` in the same PR.
   perch's, and put pounce-only shapes in the other three files. A shared package was
   weighed and rejected: those two build through Xcode, this builds through a bare
   `swiftc` in Nix.
+- **A new `--json`, or a new read verb that needs one**: every record goes
+  through `Json.swift` — sorted keys (deterministic bytes), unescaped slashes
+  (pounce answers with paths more than anything else), and a `schema` number
+  stamped in by `Json.record`. Adding a key to a record is fine; renaming or
+  removing one is a breaking change, and the number moves for that. The flag is
+  ADDITIVE, never a migration: `drafts <key> list` keeps printing TSV because
+  haus's `spawn-agent.sh` reads it field by field, and `focus status` keeps
+  printing a bare `on`/`off` for the hush bar pill. Two shapes are settled and
+  worth copying — a read verb answers with its record on **stdout** even when
+  the answer is "no" (`drafts get --json` on a missing index prints
+  `"found": false` and still exits 1, because a caller parsing stdout should not
+  have to parse stderr to learn that), and a write verb answers with a receipt
+  naming what changed. `Json.value(_:)` is how an unknown stays `null` rather
+  than vanishing: `doctor --json` with no daemon must leave `accessibility`
+  present-and-null, since "no grant" and "no daemon" are the two things that
+  command exists to tell apart. Exit codes are the table in `pounce --help`
+  (0 ok · 1 nothing came back · 2 usage · 3 refused) — `focus` keeps its own,
+  finer one, because hush scripts read it and it predates the table.
 - **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
   enable / alias / hotkey / hint / state for anything the palette can address, keyed by the item's
   **frecency key** — `cmd:<id>`, `app:<path>`, `shortcut:<uuid>`, plus `mode:<name>`

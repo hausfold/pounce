@@ -36,6 +36,18 @@ jobs:
       - name: compile + run pure-logic tests
         run: pkgs/pounce/tests/run.sh
 
+  skills:
+    name: check the agent skills
+    # Pure bash and grep — no Mac, no Nix. `nix build .#pounce-skill` runs the
+    # SAME script, but only on a runner that has Nix; the failures these guards
+    # catch (broken frontmatter, a description too short to route on, a file
+    # that has grown into a manual) are invisible at runtime, so they want the
+    # fastest job that can see them.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: script/check-skills.sh
+
   commands:
     name: shellcheck pounce-commands
     runs-on: ubuntu-latest
@@ -47,7 +59,7 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
-          shellcheck --severity=warning pkgs/pounce-commands/pounce-palette pkgs/pounce-commands/commands/*.sh pkgs/pounce-commands/optional/*.sh pkgs/pounce/ports
+          shellcheck --severity=warning pkgs/pounce-commands/pounce-palette pkgs/pounce-commands/commands/*.sh pkgs/pounce-commands/optional/*.sh pkgs/pounce/ports script/check-skills.sh
       # A rule with nothing enforcing it is a rule the thirteenth command
       # breaks silently. Every banner pounce draws goes through the `notify()`
       # helper (AGENTS.md § Notifications) so that trill can draw it and
