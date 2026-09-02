@@ -2,6 +2,7 @@
 # pounce: name = Capitalize
 # pounce: description = Uppercase the selected text
 # pounce: icon = textformat
+# pounce: mutates = true
 
 # Capitalize: replace the current selection with an ALL-UPPERCASE version.
 # Copies the selection (synthetic ⌘C), runs it through `tr`, and pastes the

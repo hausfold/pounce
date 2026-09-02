@@ -3,6 +3,7 @@
 # pounce: description = Start, stop & inspect containers
 # pounce: icon = shippingbox.fill
 # pounce: submenu = true
+# pounce: mutates = true
 
 # Container picker for the docker CLI — works with any engine that answers
 # `docker ps` (Docker Desktop, OrbStack, colima, …).

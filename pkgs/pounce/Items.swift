@@ -65,6 +65,13 @@ struct PounceItem: Identifiable {
     let baseBoost: Double     // recency boost for freshly-installed apps
     let group: String?        // optional section header; nil → flat (ungrouped) list
     let submenu: Bool         // command re-invokes pounce (two-step) → loading state
+    // What a command's header declared about itself (CommandRisk in
+    // CommandRegistry.swift). `.none` for every other kind: an app, a shortcut
+    // and a settings pane are macOS's to describe, not a script author's — and
+    // for those three the palette is not the thing that decides what runs.
+    // `confirm` is read at the commit (DaemonState.commit); the other two are
+    // read by the sheet it opens.
+    var risk: CommandRisk = .none
     // A user-assigned alias from config.json's `items` map ("emo" → Emoji
     // Picker). Distinct from `searchAlias`, which is the app's own bundle name:
     // this one is chosen by the user, so it matches at a bonus (see
@@ -108,18 +115,26 @@ struct PounceItem: Identifiable {
                           frecencyKey: title, baseBoost: 0, group: group, submenu: false)
     }
 
-    // Launcher command registry line: name \t description \t icon \t id \t submenu(1|0)
+    // Launcher command registry line (CommandRegistry.Entry.registryLine):
+    //   name \t description \t icon \t id \t submenu \t mutates \t confirm \t network
+    // Every flag is 1|0, and every one of them is read only if the line HAS it:
+    // the three declarations were appended to a four-field line that predates
+    // them, so a registry built by an older pounce-palette (or by anything else
+    // feeding `--launcher`) still parses — as a command that declares nothing,
+    // which is exactly what it is saying.
     static func parseCommand(_ line: String) -> PounceItem {
         let parts = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
         let title = parts.count > 0 ? parts[0] : line
         let subtitle = parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil
         let icon = parts.count > 2 && !parts[2].isEmpty ? parts[2] : "sparkles"
         let id = parts.count > 3 ? parts[3] : title
-        let submenu = parts.count > 4 && parts[4] == "1"
+        func flag(_ i: Int) -> Bool { parts.count > i && parts[i] == "1" }
+        let submenu = flag(4)
         return PounceItem(raw: line, title: title, searchAlias: nil, subtitle: subtitle, icon: icon,
                           actions: [ItemAction(key: "enter", label: "Run")],
                           kind: .command, payload: id,
-                          frecencyKey: "cmd:\(id)", baseBoost: 0, group: nil, submenu: submenu)
+                          frecencyKey: "cmd:\(id)", baseBoost: 0, group: nil, submenu: submenu,
+                          risk: CommandRisk(mutates: flag(5), confirm: flag(6), network: flag(7)))
     }
 
     // A quick answer (inline calculator & friends) pinned as the first row.

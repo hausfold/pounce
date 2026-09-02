@@ -3,6 +3,7 @@
 # pounce: description = Keep the Mac awake
 # pounce: icon = cup.and.saucer
 # pounce: submenu = true
+# pounce: mutates = true
 
 # Keep-awake toggle on top of the system `caffeinate` (no extra installs):
 # -d keeps the display on, -i blocks idle sleep. Picking "Let the Mac Sleep"

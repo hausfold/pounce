@@ -3,6 +3,7 @@
 # pounce: description = Ask Perplexity in the browser
 # pounce: icon = sparkles
 # pounce: submenu = true
+# pounce: network = true
 
 # Type a question, get a fresh Perplexity thread in your browser. No API key, no
 # app, no CLI — the whole plugin is a URL: perplexity.ai/search?q=… is the same

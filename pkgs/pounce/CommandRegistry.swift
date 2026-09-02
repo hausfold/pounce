@@ -18,6 +18,48 @@ import Foundation
 // The daemon reads these from its OWN environment, so the launch agent that
 // starts the daemon must export the same values the pounce-palette wrapper does
 // (see haus/modules/pounce). Missing dirs are simply skipped.
+// MARK: - What a command declares about itself
+
+// Three booleans a command's own `# pounce:` header can carry — `mutates`,
+// `confirm`, `network` — so the palette can say what a script does BEFORE it
+// runs one. A command is a file, usually someone else's; the row you see says
+// only its name, and until now the only way to learn what it did was to read it
+// or to run it.
+//
+// It is a DECLARATION, not a sandbox: nothing here stops a command doing
+// anything, exactly as nothing checks that `icon` suits it. That bargain is
+// worth making because an author who declares nothing and an author who lies
+// are different things — the first is the norm and reads as "unknown", the
+// second is a claim you can hold them to.
+//
+//   mutates   changes something outside pounce that outlives the palette
+//   confirm   the palette asks before running it — the one key with teeth
+//   network   it talks to the internet
+//
+// `confirm` gates the palette's invocation of the SCRIPT, which for a `submenu`
+// command means asking before its picker opens. That is rarely what a two-step
+// command wants (its first step only draws a list); the step that acts is a
+// second `pounce` invocation the daemon cannot tell apart from any other, so a
+// submenu that wants a confirmation asks for one itself.
+struct CommandRisk: Equatable {
+    var mutates = false
+    var confirm = false
+    var network = false
+
+    static let none = CommandRisk()
+    var isEmpty: Bool { self == .none }
+
+    /// The keys that are true, in the order the header documents them — the
+    /// declaration column of `pounce list`, and what the confirm sheet reads.
+    var declared: [String] {
+        var out: [String] = []
+        if mutates { out.append("mutates") }
+        if confirm { out.append("confirm") }
+        if network { out.append("network") }
+        return out
+    }
+}
+
 final class CommandRegistry {
     struct Entry {
         let id: String
@@ -25,10 +67,21 @@ final class CommandRegistry {
         let description: String
         let icon: String
         let submenu: Bool
+        // What the header says this command will do. It rides the registry LINE
+        // rather than being looked up at commit time because the launcher is
+        // presented by three paths (the in-process hotkey, the socket client,
+        // the no-daemon fallback) and only the first of them can see THIS
+        // object — the other two are handed the lines by pounce-palette's awk.
+        let risk: CommandRisk
         let scriptPath: String
 
         // The tab-separated line the launcher parses (PounceItem.parseCommand):
-        //   name \t description \t icon \t id \t submenu(1|0)
+        //   name \t description \t icon \t id \t submenu \t mutates \t confirm \t network
+        // (every flag 1|0). Appended to, never reordered: the five leading
+        // fields are what the shell launcher has always emitted, and
+        // parseCommand reads each of the trailing flags only if it is there —
+        // so a registry line from an older pounce-palette still parses, as a
+        // command that declares nothing.
         var registryLine: String {
             // Tabs stripped, because this line IS the field separator: one in a
             // header value shifts every field after it, and PounceItem
@@ -38,8 +91,30 @@ final class CommandRegistry {
             func flat(_ s: String, _ replacement: String) -> String {
                 s.replacingOccurrences(of: "\t", with: replacement)
             }
+            func flag(_ b: Bool) -> String { b ? "1" : "0" }
             return "\(flat(name, " "))\t\(flat(description, " "))\t\(flat(icon, ""))"
-                + "\t\(id)\t\(submenu ? "1" : "0")"
+                + "\t\(id)\t\(flag(submenu))"
+                + "\t\(flag(risk.mutates))\t\(flag(risk.confirm))\t\(flag(risk.network))"
+        }
+
+        /// One command as a JSON record — what `pounce list --json` prints and
+        /// what the daemon's COMMANDS reply carries, so the two can never
+        /// describe the same command differently. `path` is here because the
+        /// declarations are a claim and the script is the evidence: a reader who
+        /// wants to know what a command really does needs somewhere to look.
+        var jsonRecord: [String: Any] {
+            [
+                "key": "cmd:\(id)",
+                "id": id,
+                "name": name,
+                "description": description,
+                "icon": icon,
+                "submenu": submenu,
+                "mutates": risk.mutates,
+                "confirm": risk.confirm,
+                "network": risk.network,
+                "path": scriptPath,
+            ]
         }
     }
 
@@ -49,6 +124,9 @@ final class CommandRegistry {
         var icon = ""
         var submenu: Bool? = nil
         var whenFile = ""
+        var mutates: Bool? = nil
+        var confirm: Bool? = nil
+        var network: Bool? = nil
     }
 
     private let env: [String: String]
@@ -121,6 +199,9 @@ final class CommandRegistry {
                 description: header.description,
                 icon: header.icon.isEmpty ? "sparkles" : header.icon,
                 submenu: header.submenu ?? false,
+                risk: CommandRisk(mutates: header.mutates ?? false,
+                                  confirm: header.confirm ?? false,
+                                  network: header.network ?? false),
                 scriptPath: path))
         }
 
@@ -222,18 +303,40 @@ final class CommandRegistry {
             if let v = field(value, "name"), header.name.isEmpty { header.name = v }
             else if let v = field(value, "description"), header.description.isEmpty { header.description = v }
             else if let v = field(value, "icon"), header.icon.isEmpty { header.icon = v }
-            // `submenu == nil`, matching the `isEmpty` guards on its four
+            // `submenu == nil`, matching the `isEmpty` guards on its string
             // siblings and the awk's `&& s == ""`: FIRST wins. Without the
             // guard a repeated key was last-wins here and first-wins there, so
             // two `submenu` lines gave the daemon a submenu and the launcher a
             // leaf — the trailing-space bug's shape, one field over.
             else if let v = field(value, "submenu"), header.submenu == nil {
-                header.submenu = (v == "true" || v == "1")
+                header.submenu = Self.isTrue(v)
             }
             else if let v = field(value, "whenFile"), header.whenFile.isEmpty { header.whenFile = v }
+            // The three declarations (CommandRisk). Same `== nil` first-wins
+            // guard and the same "true"/"1" grammar as `submenu`, for the
+            // reason written above it: a repeated key that is first-wins in the
+            // awk and last-wins here is one command behaving two ways, and
+            // `confirm` is the field where that difference is a sheet the user
+            // does or doesn't get.
+            else if let v = field(value, "mutates"), header.mutates == nil {
+                header.mutates = Self.isTrue(v)
+            }
+            else if let v = field(value, "confirm"), header.confirm == nil {
+                header.confirm = Self.isTrue(v)
+            }
+            else if let v = field(value, "network"), header.network == nil {
+                header.network = Self.isTrue(v)
+            }
         }
         return header
     }
+
+    // The boolean grammar of the header, in one place: `true` or `1`, and
+    // nothing else. Anything else — `yes`, `TRUE`, a typo — is false, which is
+    // deliberate for `confirm`: a header that misspells its own value must not
+    // read as "asked for a confirmation" on one path and "didn't" on the other,
+    // and awk's test is this exact pair.
+    static func isTrue(_ value: String) -> Bool { value == "true" || value == "1" }
 
     // A comment line opening `#` + whitespace + `tag`, returning what follows it.
     // Tolerant of indentation and of extra space after the `#`, to match the awk

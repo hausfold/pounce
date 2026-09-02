@@ -3,6 +3,7 @@
 # pounce: description = Force quit a running app
 # pounce: icon = xmark.octagon
 # pounce: submenu = true
+# pounce: mutates = true
 
 # Force Quit: list running processes grouped into foreground apps and background
 # agents/daemons, then kill -9 the selected one. Scoped to System Events'

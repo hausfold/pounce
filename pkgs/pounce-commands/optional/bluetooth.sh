@@ -3,6 +3,7 @@
 # pounce: description = Connect & disconnect devices
 # pounce: icon = wave.3.right
 # pounce: submenu = true
+# pounce: mutates = true
 
 # Bluetooth device picker (AirPods, keyboards, controllers, …).
 # Needs blueutil:  brew install blueutil

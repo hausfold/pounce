@@ -3,6 +3,7 @@
 # pounce: description = Kill Listening Ports
 # pounce: icon = network
 # pounce: submenu = true
+# pounce: mutates = true
 
 # Draws through trill when this Mac has it, macOS's own banner when it doesn't.
 # The bundle is resolved at call time rather than through a `trill` on PATH,

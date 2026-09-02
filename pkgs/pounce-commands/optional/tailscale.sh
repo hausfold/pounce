@@ -3,6 +3,8 @@
 # pounce: description = Peers, IPs & connect toggle
 # pounce: icon = network.badge.shield.half.filled
 # pounce: submenu = true
+# pounce: mutates = true
+# pounce: network = true
 
 # Tailscale panel: connect/disconnect, copy your tailnet IP, and copy any
 # peer's IP straight from the palette.

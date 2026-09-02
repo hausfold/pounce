@@ -3,6 +3,7 @@
 # pounce: description = Your PRs, issues & repos
 # pounce: icon = arrow.triangle.branch
 # pounce: submenu = true
+# pounce: network = true
 
 # GitHub jump menu — pick a category, then fuzzy-pick the PR/issue/repo and it
 # opens in the browser.

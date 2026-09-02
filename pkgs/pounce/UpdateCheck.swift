@@ -181,6 +181,13 @@ final class UpdateNudge {
             description: installKind.actionHint,
             icon: entry.icon,
             submenu: entry.submenu,
+            // Carried through unchanged: the nudge renames a row, it does not
+            // become a different command — and update-pounce is one of the
+            // commands that declares all three (it downloads, it replaces your
+            // install, it asks first), so dropping them here would be the
+            // pinned row quietly skipping the sheet the same script gets
+            // everywhere else.
+            risk: entry.risk,
             scriptPath: entry.scriptPath)
     }
 

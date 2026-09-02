@@ -71,6 +71,23 @@ enum Main {
                                   mode:launcher       the palette itself
                                   mode:settings       pounce's own settings
 
+    what it can run:
+      list [--json]             every command script installed on this Mac: its
+                                item key, its name, what its header DECLARES it
+                                will do (mutates / confirm / network) and the
+                                file it runs — so a command can be read before
+                                it is run. TSV, one row per command:
+                                "<key>\\t<name>\\t<declared>\\t<description>\\t<path>"
+                                (`declared` is "-" when a command says nothing).
+                                Asked of the running daemon, whose command dirs
+                                are the ones ⌘Space actually sees; without one
+                                it discovers them from THIS shell's environment
+                                instead, and --json says which happened.
+                                Installed, not "on screen": a row a `whenFile`
+                                vetoes is left out (`pounce doctor` names
+                                those), and one `config.json`'s `items` map
+                                hides is still listed here.
+
     drafts (what --draft kept):
       drafts <key> save         file stdin as a draft under <key> — for a step
                                 that LEAVES the box deliberately (⌥↵ "show my
@@ -208,6 +225,11 @@ enum Main {
             // an external binder — AeroSpace binding modes, skhd, a Shortcut —
             // so a two-step there can drive pounce without pounce owning a key.
             RunMode.run(target: args.count >= 3 ? args[2] : nil)
+        } else if args.count >= 2 && args[1] == "list" {
+            // Positional, like `doctor` and `run` — and next to `run` on
+            // purpose: this is the verb that tells you what `run` can be given,
+            // and what each of those will do to the machine.
+            ListMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "drafts" {
             // Positional, like `focus`/`doctor`/`config`. Pure file I/O — never
             // opens a window and never touches the daemon, so a command script
@@ -367,6 +389,113 @@ enum RunMode {
             exit(1)
         }
         exit(0)
+    }
+}
+
+// `pounce list [--json]`: the commands this Mac can run, and what each one says
+// it will do.
+//
+// The read verb the palette never had — ai/SKILL.md used to have to tell an
+// agent outright that the item list could not be read. It exists for the
+// declarations (CommandRisk): a command is a file someone else wrote, and the
+// row in the palette says only its name, so "what does this thing do" had no
+// answer short of finding the script. Every record carries `path` for exactly
+// that reason — the declarations are the author's claim, and the file is the
+// evidence.
+//
+// Commands only, deliberately. Apps, shortcuts and System Settings rows are
+// macOS's to describe and are already listed by the tools that own them; the
+// `commands` key is a key rather than a bare array so those could join it later
+// without changing what a caller already parses.
+enum ListMode {
+    static func run(args: [String]) -> Never {
+        var rest = args
+        let json = rest.contains("--json")
+        rest.removeAll { $0 == "--json" }
+        // See DoctorMode.run: an unrecognised flag is a usage error, never a
+        // silently-ignored one. A caller that typo'd --json must not be handed
+        // TSV and told it worked.
+        if let stray = rest.first {
+            FileHandle.standardError.write(Data(
+                "pounce list: unknown argument '\(stray)' — list takes --json and nothing else\n".utf8))
+            exit(2)
+        }
+
+        // The daemon's answer is the authoritative one: its command dirs come
+        // from the launch agent's environment (POUNCE_BUILTIN_DIR,
+        // POUNCE_EXTRA_COMMAND_DIRS), which the shell running this command has
+        // no reason to have. Falling back to local discovery still answers on a
+        // Mac with no daemon — where it is also exactly right, since that is
+        // the environment `pounce-palette` would run under.
+        var source = "daemon"
+        var rows = daemonCommands()
+        if rows == nil {
+            source = "local"
+            let registry = CommandRegistry()
+            registry.refresh()
+            rows = registry.entries.map(\.jsonRecord)
+        }
+        let commands = rows ?? []
+
+        if json {
+            // The record IS the answer, so it goes to stdout even when the
+            // answer is "nothing" — the same shape `drafts get --json` settled
+            // on. `source` because "no commands" and "no daemon, and this shell
+            // cannot see them" are different problems with the same empty list.
+            Json.emit(["source": source, "count": commands.count, "commands": commands])
+        } else {
+            for row in commands {
+                func flag(_ key: String) -> Bool { row[key] as? Bool == true }
+                // Through CommandRisk rather than a second literal list, so the
+                // column can never name the keys in a different order than the
+                // sheet and the parser do.
+                let declared = CommandRisk(mutates: flag("mutates"),
+                                           confirm: flag("confirm"),
+                                           network: flag("network")).declared
+                // Tabs out of the values, because THIS line is tab-separated
+                // — the same reason CommandRegistry.Entry.registryLine strips
+                // them. A header value may hold one (`field()` only trims the
+                // ends), and one tab in a name shifts every column after it for
+                // the one verb whose whole job is to be parsed.
+                func text(_ key: String) -> String {
+                    (row[key] as? String ?? "").replacingOccurrences(of: "\t", with: " ")
+                }
+                print([text("key"), text("name"),
+                       declared.isEmpty ? "-" : declared.joined(separator: ","),
+                       text("description"), text("path")].joined(separator: "\t"))
+            }
+        }
+        // Exit 1 for an empty list, per the table in --help: nothing came back.
+        // A Mac with a daemon and no commands at all is a broken install, not a
+        // successful query.
+        exit(commands.isEmpty ? 1 : 0)
+    }
+
+    // The daemon's registry over the socket (COMMANDS verb), or nil when no
+    // daemon is listening — the same "fall back or say so" contract every other
+    // Daemon.request caller has.
+    //
+    // Two round trips, on purpose. A daemon that predates this verb would treat
+    // "COMMANDS" as picker input and DRAW it, so the first trip asks STATUS
+    // (which every daemon has ever answered) whether this one knows the verb at
+    // all. Both are unix-socket hops on the same machine; a read verb that can
+    // flash a window on a half-updated install is not worth saving one.
+    private static func daemonCommands() -> [[String: Any]]? {
+        // The same escape hatch ClientMode honours, for the same reason: a build
+        // under test must be able to answer for ITSELF. Without this, `pounce
+        // list` from a fresh checkout answers out of the installed daemon and a
+        // changed record shape is feel-tested against the old binary with
+        // nothing to see. It then reports `source: "local"`, which is true.
+        if ProcessInfo.processInfo.environment["POUNCE_NO_DAEMON"] == "1" { return nil }
+        guard let status = Daemon.request("STATUS\n"),
+              let caps = try? JSONSerialization.jsonObject(with: Data(status.utf8)) as? [String: Any],
+              caps["commands"] as? Bool == true
+        else { return nil }
+        guard let reply = Daemon.request("COMMANDS\n"),
+              let obj = try? JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: Any],
+              let list = obj["commands"] as? [[String: Any]]
+        else { return nil }
+        return list
     }
 }
 
@@ -1357,8 +1486,40 @@ enum DaemonMode {
                 "hotkeyRegistered": DaemonMode.hotkeyRegistered,
                 "hotkeyReceived": DaemonMode.hotkeyReceived,
                 "bindings": DaemonMode.bindingReport,
+                // What else this daemon answers, for a CLIENT from a different
+                // build. An unknown payload falls through to the palette path
+                // at the bottom of this function, so a `pounce list` that sent
+                // "COMMANDS" to a daemon too old to know it would put a
+                // one-row picker ON THE USER'S SCREEN — the loudest possible
+                // failure for a read verb. The version can't decide it (a
+                // checkout build and the release it came from share one), so
+                // the daemon says so itself and a client that sees nothing here
+                // discovers commands locally instead.
+                "commands": true,
             ]
             let json = (try? JSONSerialization.data(withJSONObject: status)) ?? Data("{}".utf8)
+            var reply = json; reply.append(0x0A)
+            reply.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, reply.count) }
+            close(clientFD)
+            return
+        }
+
+        // `pounce list` asks for the daemon's command registry, because the
+        // registry that matters is the one ⌘Space builds — and it is discovered
+        // from the DAEMON's environment (POUNCE_BUILTIN_DIR /
+        // POUNCE_EXTRA_COMMAND_DIRS, exported by whatever launch agent started
+        // it), which the shell running `pounce list` has no reason to carry.
+        //
+        // A FRESH registry, not the live one the launcher holds: what the
+        // client is asking for is this process's environment, not its cache,
+        // and building one here is a directory listing and a few stats on a
+        // local object — no hop to the main thread, and so no way to wedge
+        // behind whatever the palette is doing with its own.
+        if payload.hasPrefix("COMMANDS") {
+            let registry = CommandRegistry()
+            registry.refresh()
+            let body: [String: Any] = ["commands": registry.entries.map(\.jsonRecord)]
+            let json = (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)
             var reply = json; reply.append(0x0A)
             reply.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, reply.count) }
             close(clientFD)
