@@ -90,8 +90,12 @@ enum ConfigMode {
             guard !section.fields.isEmpty else { continue }
             // ConfigSpec already rendered each value as a JSON literal for the
             // template; parse it back rather than re-deriving the type here.
-            let values = Dictionary(uniqueKeysWithValues:
-                section.fields.map { ($0.name, Json.parse($0.json)) })
+            // `reduce`, not `Dictionary(uniqueKeysWithValues:)`: that traps on a
+            // duplicate key, and a read verb that crashes rather than answers is
+            // a worse way to learn that two ConfigSpec fields share a name.
+            let values = section.fields.reduce(into: [String: Any]()) { out, field in
+                out[field.name] = Json.parse(field.json)
+            }
             if let name = section.name {
                 effective[name] = values
             } else {
@@ -134,6 +138,14 @@ enum ConfigMode {
     /// write — is walked rather than reported as absent. A path here that has no
     /// counterpart under `settings` is a key pounce does not know, which is worth
     /// seeing rather than hiding.
+    ///
+    /// The walk stops AT an `items` entry rather than inside it. Item keys are
+    /// `app:/Applications/Safari.app` and friends — full of dots and slashes —
+    /// so `items.app:/Applications/Safari.app.alias` is a string nothing can
+    /// split back apart. `items.<key>` is unambiguous instead (everything after
+    /// the first dot is one key, verbatim) and loses nothing: an item's fields
+    /// have no defaults to be confused with, so `settings.items.<key>` already
+    /// shows exactly which of them the user wrote.
     private static func setKeys() -> [String] {
         guard let data = try? Data(contentsOf: Settings.configPath),
               let obj = try? JSONSerialization.jsonObject(with: data, options: [.json5Allowed])
@@ -143,7 +155,7 @@ enum ConfigMode {
         func walk(_ object: [String: Any], prefix: String) {
             for (key, value) in object {
                 let path = prefix.isEmpty ? key : prefix + "." + key
-                if let nested = value as? [String: Any], !nested.isEmpty {
+                if let nested = value as? [String: Any], !nested.isEmpty, prefix != "items" {
                     walk(nested, prefix: path)
                 } else {
                     out.append(path)

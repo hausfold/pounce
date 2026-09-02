@@ -138,10 +138,12 @@ enum Main {
                                 --client claude|codex|opencode|pi   just one
                                 --dir <path>                        elsewhere
                                 --json                              a receipt
-                                Refuses rather than clobbers, and refuses
-                                outright on a haus machine, where the skills
-                                directory is a read-only Nix symlink haus
-                                already filled in.
+                                Refuses rather than clobbers, and skips any
+                                destination haus already filled in — those are
+                                read-only Nix symlinks, and an EPERM explains
+                                nothing. Exits 3 if nothing took it; `pounce
+                                skill` prints it if you'd rather place it
+                                yourself.
 
     housekeeping:
       --daemon                  run the resident daemon (launchd uses this; also
@@ -165,7 +167,8 @@ enum Main {
     exit codes:
       0   ok
       1   nothing came back — a dismissed picker, a draft index that isn't
-          there, an unhealthy `doctor`, a daemon that isn't running
+          there, an item key `run` can't resolve, an unhealthy `doctor`, a
+          daemon that isn't running
       2   usage: a verb, subcommand or flag pounce doesn't have
       3   refused: pounce won't do it HERE — a Nix-managed config.json, a
           skills directory something else manages. Nothing to retry.
@@ -295,7 +298,9 @@ enum ReportMode {
         // later because you can't know who found it.
         for flag in args where flag != "--print" {
             FileHandle.standardError.write(Data("pounce: report takes no \(flag)\n".utf8))
-            exit(1)
+            // A flag pounce doesn't have is a usage error, not "nothing came
+            // back" — see the exit-code table in `--help`.
+            exit(2)
         }
 
         let doctor = DoctorMode.report()
@@ -391,6 +396,12 @@ enum DraftsMode {
         var rest = args
         let json = rest.contains("--json")
         rest.removeAll { $0 == "--json" }
+        // See DoctorMode.run: an unrecognised flag is a usage error. Without
+        // this, `drafts k list --jsonx` prints TSV and exits 0, which is a
+        // parser being handed human text and told it succeeded.
+        for arg in rest where arg.hasPrefix("--") {
+            fail("unknown flag '\(arg)' — drafts takes --json and nothing else")
+        }
 
         guard let key = rest.first, !key.isEmpty else {
             fail("needs a key — `pounce drafts <key> save|list|get <i>|rm <i>|clear` [--json]")
@@ -440,6 +451,7 @@ enum DraftsMode {
             if json {
                 var out = record(drafts[i], index: i)
                 out["key"] = key
+                out["path"] = Drafts.path(for: key)
                 out["found"] = true
                 Json.emit(out)
             } else {
@@ -1559,7 +1571,11 @@ enum ClientMode {
                     FileHandle.standardError.write(Data(
                         "pounce: unknown option \(flag) (see `pounce --help`)\n".utf8))
                 }
-                exit(64)
+                // 2, the documented usage code — this used to be sysexits' 64,
+                // which nothing documented and which contradicted the table in
+                // `--help` the moment that table existed. `focus` keeps 64 for
+                // its own usage errors because haus's hush scripts read it.
+                exit(2)
             default: break
             }
         }

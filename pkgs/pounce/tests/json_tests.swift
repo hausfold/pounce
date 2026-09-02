@@ -38,11 +38,13 @@ func runJsonTests() -> Int {
     // Every record carries a schema, and callers don't have to remember to add it.
     check(Json.text(Json.record([:])).contains("\"schema\""),
           "every record carries a schema number")
-    // …but a record that sets one keeps it: `record` fills a gap, it does not
-    // overwrite a call site that knows better.
+    // …and a call site cannot fake a different one. The schema describes what
+    // THIS binary emits, so a stray "schema" in a payload is overwritten rather
+    // than honoured — a record claiming a version its own writer doesn't
+    // implement is worse than no version at all.
     let stamped = Json.record(["schema": 7])
     check((stamped["schema"] as? Int) == 1,
-          "the writer stamps the binary's own schema — a call site cannot fake a different one")
+          "the writer stamps the binary's own schema over whatever the payload said")
 
     // Optionals become null rather than a missing key, so a record's SHAPE does
     // not change with its contents. `doctor --json` depends on this: an absent

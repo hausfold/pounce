@@ -175,6 +175,13 @@ enum Autostart {
         var rest = args
         let json = rest.contains("--json")
         rest.removeAll { $0 == "--json" }
+        // See DoctorMode.run: a flag we don't know must be a usage error, not a
+        // silent fall-through to the human answer.
+        for arg in rest where arg.hasPrefix("-") {
+            FileHandle.standardError.write(Data(
+                "pounce autostart: unknown flag '\(arg)' — autostart takes --json and nothing else\n".utf8))
+            exit(2)
+        }
         let op = rest.first
 
         // `enabled` is the machine-readable half and `status` the sentence: the

@@ -60,6 +60,13 @@ enum FocusMode {
         var rest = args
         let json = rest.contains("--json")
         rest.removeAll { $0 == "--json" }
+        // A flag we don't know is a usage error (64 here, this verb's own code),
+        // never a silent fall-through to the bare on/off — an agent that typed
+        // `--jsonx` would otherwise feed "off" to a JSON parser at exit 0.
+        for arg in rest where arg.hasPrefix("-") {
+            finish(Outcome(code: 64, err: "unknown flag '\(arg)' — focus takes --json and nothing else"),
+                   op: rest.first ?? "", json: false)
+        }
         let operation = rest.first ?? ""
         guard ["status", "toggle", "on", "off"].contains(operation) else {
             finish(Outcome(code: 64, err: "usage: pounce focus <status|toggle|on|off> [--json]"),

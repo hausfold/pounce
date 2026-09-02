@@ -64,7 +64,12 @@ enum Skill {
 
     /// What `install` did, or refused to do, at one destination.
     enum Decision: String {
-        /// Written: nothing was there, or a stale copy we own was replaced.
+        /// Written, and only ever into empty space. There is deliberately no
+        /// "replace the copy we wrote last time": nothing marks a file as ours,
+        /// so the only way to tell a stale install from a deliberate edit would
+        /// be to guess. The cost is that a user who installed by hand and then
+        /// upgrades pounce is told the file differs, every time, until they
+        /// delete it — which is what the `.differs` sentence tells them to do.
         case wrote
         /// Already byte-identical. Not an error, and not a write.
         case current
@@ -195,6 +200,10 @@ enum SkillMode {
         var results: [[String: Any]] = []
         var decisions: [Skill.Decision] = []
         var lines: [String] = []
+        // A write we believed we owned and could not do is NOT a refusal, and
+        // the two want different exit codes: a refusal has nothing to retry, a
+        // failure has a path to fix.
+        var failures = 0
 
         for target in targets {
             let folder = target.dir + "/" + Skill.name
@@ -203,10 +212,17 @@ enum SkillMode {
             // host may link the file: either one means this path is not ours.
             let link = (try? fm.destinationOfSymbolicLink(atPath: folder))
                 ?? (try? fm.destinationOfSymbolicLink(atPath: dest))
-            let existing = try? String(contentsOfFile: dest, encoding: .utf8)
-            let decision = Skill.decide(exists: existing != nil,
+            // `exists` comes from the filesystem, never from whether we could
+            // READ the file: `String(contentsOfFile:encoding:.utf8)` returns nil
+            // for a file that is valid but not UTF-8, and treating that as
+            // "nothing there" would overwrite a hand-edited skill saved in
+            // another encoding — the one outcome this whole verb refuses.
+            // Compared as Data for the same reason.
+            let exists = fm.fileExists(atPath: dest)
+            let identical = fm.contents(atPath: dest) == Data(Skill.markdown.utf8)
+            let decision = Skill.decide(exists: exists,
                                         isSymlink: link != nil,
-                                        identical: existing == Skill.markdown)
+                                        identical: identical)
 
             if decision == .wrote {
                 do {
@@ -216,6 +232,7 @@ enum SkillMode {
                     // A write we believed we owned and still could not do. Not a
                     // refusal — say what the system said.
                     let message = "could not write \(dest): \(error.localizedDescription)"
+                    failures += 1
                     if json {
                         results.append(["client": target.client, "path": dest,
                                         "decision": "failed", "message": message])
@@ -259,8 +276,10 @@ enum SkillMode {
                       + "`pounce skill` prints it if you want to place it yourself.")
             }
         }
-        // 3 is "refused": pounce declined, rather than tried and failed. An
-        // agent's recovery differs — there is nothing to retry.
-        exit(ok ? 0 : 3)
+        // 3 is "refused": pounce declined, and there is nothing to retry. A
+        // write that was attempted and failed is 1 instead — same "it didn't
+        // land", completely different next move.
+        if ok { exit(0) }
+        exit(failures > 0 ? 1 : 3)
     }
 }

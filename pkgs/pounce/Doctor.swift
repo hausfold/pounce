@@ -53,6 +53,14 @@ enum DoctorMode {
 
     /// `pounce doctor [--json]` — print the report, exit 0 when healthy.
     static func run(args: [String] = []) -> Never {
+        // A mistyped `--jsonx` must not fall through to the human report at
+        // exit 0: that feeds prose to a parser and calls it success, which is
+        // the exact failure `--json` exists to remove.
+        for arg in args where arg != "--json" {
+            FileHandle.standardError.write(Data(
+                "pounce doctor: unknown flag '\(arg)' — doctor takes --json and nothing else\n".utf8))
+            exit(2)
+        }
         let report = report()
         if args.contains("--json") {
             Json.emit([

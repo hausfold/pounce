@@ -137,9 +137,14 @@ derivation, and `Skill.markdown` re-adds the trailing newline Swift's multiline
 literal drops — without it the installed file would differ by one byte from the
 packaged one and every re-run would report "exists and differs".
 
-`install` **refuses rather than clobbers**, and on a haus machine it refuses
-outright and says haus's name: those skills directories are read-only Nix
-symlinks, and an `EPERM` explains nothing.
+`install` **refuses rather than clobbers**, per destination, and names haus when
+the destination is a Nix symlink — an `EPERM` explains nothing. Note it is
+per-destination and not "haus machines are skipped": haus installs into the
+clients its `ai.clients` names, so a haus Mac with a client haus doesn't manage
+(today, `~/.codex/skills`) gets a real file written there, correctly. It also
+never replaces a file it did not create — nothing marks a copy as ours, so a
+stale install and a deliberate edit are indistinguishable, and `.differs` tells
+the user to delete it rather than guessing on their behalf.
 
 `pkgs/pounce-skill` ships the same bytes as `pkgs.pounce-skill`
 (`$out/<skill>/SKILL.md`) for a *consumer* — haus, which shouldn't have to

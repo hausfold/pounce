@@ -38,10 +38,11 @@ brew tap hausfold/tap
 brew install pounce
 brew services start pounce       # the palette daemon
 pounce --request-accessibility   # approve the prompt, once
-pounce skill install             # teach your coding agent to drive it
 ```
 
-macOS gives ⌘Space to Spotlight; [installing](https://hausfold.co/docs/pounce/install/)
+Then `pounce skill install` — one command, and the coding agent on this Mac
+knows how to drive the palette. macOS gives ⌘Space to Spotlight;
+[installing](https://hausfold.co/docs/pounce/install/)
 is where you take it back. MIT, no telemetry, no cloud, no login. macOS 14
 Sonoma or later, Apple Silicon.
 
