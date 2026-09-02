@@ -8,12 +8,12 @@ import ServiceManagement
 // running, ⌘Space works, and it comes back at every login — no Homebrew, no
 // terminal, no Nix.
 //
-// Boundary note (see AGENTS.md): the launch agent for the RICE lives in
+// Boundary note (see AGENTS.md): the launch agent for haus lives in
 // hausfold/modules/pounce, and Homebrew's in the formula's service block —
 // those are packager concerns and stay out of this repo. What lives HERE is the
 // app registering ITSELF via SMAppService, the same in-process exception the
 // global hotkey already has: a capability only the app can provide, needed
-// exactly when there is no packager. The rice and brew never hit this path —
+// exactly when there is no packager. haus and brew never hit this path —
 // they exec the binary with --daemon, which skips AppLaunchMode entirely.
 //
 // The agent is the plist build.sh bakes into

@@ -697,7 +697,7 @@ enum DaemonMode {
             exit(0)
         }
 
-        // Homebrew and the rice run the executable inside Pounce.app directly
+        // Homebrew and haus run the executable inside Pounce.app directly
         // rather than opening the bundle through Launch Services. Register it
         // explicitly so Background Items can resolve the launch-agent
         // AssociatedBundleIdentifiers entry to "Pounce" instead of falling back

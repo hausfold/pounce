@@ -137,7 +137,7 @@ final class CommandRegistry {
     private func searchDirs() -> [String] {
         var dirs: [String] = []
         // The built-in set. A packager's launch agent is expected to export
-        // POUNCE_BUILTIN_DIR (the Nix rice does); when it doesn't — notably the
+        // POUNCE_BUILTIN_DIR (haus does); when it doesn't — notably the
         // Homebrew launchd service, which only sets LANG — fall back to the same
         // default pounce-palette uses (<prefix>/share/pounce/commands, derived
         // from the executable). Without this the in-process launcher finds zero

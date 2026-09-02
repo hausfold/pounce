@@ -13,7 +13,7 @@ import SwiftUI
 // ⌘Tab is not a symbolic hotkey macOS lets you rebind — the Dock owns it. The
 // only way in is a session CGEventTap that swallows the keyDown before the Dock
 // sees it, and keyboard taps are gated behind the Accessibility grant (the same
-// one the rice's stable-signing dance preserves across rebuilds). No grant → no
+// one haus's stable-signing dance preserves across rebuilds). No grant → no
 // tap → stock ⌘Tab keeps working; the daemon just logs and moves on.
 //
 // The tap callback runs on the main run loop and must return fast — macOS

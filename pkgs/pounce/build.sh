@@ -158,8 +158,8 @@ cp Pounce.app/Contents/Library/LaunchAgents/com.hausfold.pounce.daemon.plist \
 # leaves the palette listing apps and NOTHING else. Apps still scan (AppScanner
 # needs no environment), so the failure reads as a broken app rather than a
 # missing install step. This copy is the last-resort fallback only: a packager
-# that places the commands itself still wins, because POUNCE_BUILTIN_DIR (the Nix
-# rice) and the keg's share dir (Homebrew) are both checked first.
+# that places the commands itself still wins, because POUNCE_BUILTIN_DIR (haus's
+# Nix build) and the keg's share dir (Homebrew) are both checked first.
 #
 # Optional on purpose: the Nix derivation sets `src = ./.` (pkgs/pounce alone),
 # so ../pounce-commands is outside its sandbox. Nothing is lost there — that path

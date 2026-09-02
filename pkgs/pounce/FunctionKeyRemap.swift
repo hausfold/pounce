@@ -153,7 +153,7 @@ enum FunctionKeyRemap {
     }
 
     // Give Fn back. Re-reads the live list rather than replaying a snapshot taken
-    // at startup: anything added while the daemon ran (a rice rebuild reapplying
+    // at startup: anything added while the daemon ran (a haus rebuild reapplying
     // its own UserKeyMapping, someone plugging in Karabiner) has to survive us
     // leaving, and a stale snapshot would delete exactly those.
     static func restore() {

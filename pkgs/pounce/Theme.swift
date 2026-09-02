@@ -44,7 +44,7 @@ struct Palette {
     }
 
     // A user file SHADOWS a built-in of the same name: `~/.config/pounce/themes/
-    // nebelung-latte.json` (what the rice installs) wins over the compiled-in
+    // nebelung-latte.json` (what haus installs) wins over the compiled-in
     // one, so a nebelung update reaches a not-yet-rebuilt pounce. Built-ins are
     // the floor, not the ceiling.
     static func named(_ name: String) -> Palette {

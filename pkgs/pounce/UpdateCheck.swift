@@ -28,7 +28,7 @@ import FoundationNetworking
 //             not be forgotten, rare enough not to be a nag.
 //
 // It never applies anything by itself. Auto-updating is wrong for two of the
-// three cohorts below — a Nix/rice install lives in an immutable store and
+// three cohorts below — a Nix or haus install lives in an immutable store and
 // would be reverted by the next rebuild, and a brew install expects brew to
 // own versions — so the keystroke stays the user's.
 //
@@ -57,7 +57,7 @@ enum InstallKind {
     var canSelfUpdate: Bool { self == .homebrew || self == .direct }
 
     // The subtitle under the pinned row: what to DO, in this install's own
-    // vocabulary. "bench ship / rebuild" is developer-speak — a rice user's
+    // vocabulary. "bench ship / rebuild" is developer-speak — a haus user's
     // command is `haus update` (docs: reference/haus.md).
     var actionHint: String {
         switch self {
@@ -80,7 +80,7 @@ enum InstallKind {
     }
 
     // Pure so the suite can exercise every cohort without a bundle. Symlinks
-    // are resolved first, exactly as the script's `readlink -f` does: the rice
+    // are resolved first, exactly as the script's `readlink -f` does: haus
     // publishes /Applications/Pounce.app as a symlink into its re-signed copy,
     // so the unresolved path would read as a plain drag-install.
     static func detect(bundlePath: String, home: String) -> InstallKind {
@@ -235,7 +235,7 @@ final class UpdateNudge {
         // must not resurrect a nudge the user already waved off.
         dismissedVersion = previous?.dismissed
         guard Self.isNewer(latest, than: pounceVersion) else {
-            // Up to date (or ahead — a rice user can run a build newer than the
+            // Up to date (or ahead — a haus user can run a build newer than the
             // last tagged release). Clear any stale nudge and remember the
             // answer so the next hour is a no-op.
             availableVersion = nil
