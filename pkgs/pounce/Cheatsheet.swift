@@ -134,13 +134,13 @@ struct CheatsheetView: View {
                     )
                 } else {
                     Text(state.placeholderText)
-                        .font(.system(size: pt(20), weight: .semibold))
+                        .font(AppFont.size(pt(20), weight: .semibold))
                         .foregroundColor(Theme.text)
                     if pages.count > 1 {
                         HStack(spacing: pt(4)) {
                             ForEach(pages, id: \.self) { p in
                                 Text(p)
-                                    .font(.system(size: pt(12), weight: .semibold))
+                                    .font(AppFont.size(pt(12), weight: .semibold))
                                     .foregroundColor(p == activePage ? Theme.base : Theme.subtext)
                                     .padding(.horizontal, pt(10))
                                     .padding(.vertical, pt(4))
@@ -154,7 +154,7 @@ struct CheatsheetView: View {
                 }
                 Spacer()
                 Text(hintText)
-                    .font(.system(size: pt(13), weight: .medium))
+                    .font(AppFont.size(pt(13), weight: .medium))
                     .foregroundColor(Theme.subtext0)
                     .padding(.horizontal, pt(10))
                     .padding(.vertical, pt(4))
@@ -243,10 +243,10 @@ struct CheatsheetView: View {
                 .font(.system(size: pt(32), weight: .regular))
                 .foregroundColor(Theme.subtext0)
             Text("No cheatsheet at \((state.cheatsheetPath as NSString).abbreviatingWithTildeInPath)")
-                .font(.system(size: pt(14), weight: .medium))
+                .font(AppFont.size(pt(14), weight: .medium))
                 .foregroundColor(Theme.subtext)
             Text("Expected a JSON array of { title, items: [{ key, action }] } groups.")
-                .font(.system(size: pt(12)))
+                .font(AppFont.size(pt(12)))
                 .foregroundColor(Theme.subtext0)
         }
         .frame(maxWidth: .infinity)
@@ -259,7 +259,7 @@ struct CheatsheetView: View {
                 .font(.system(size: pt(32), weight: .regular))
                 .foregroundColor(Theme.subtext0)
             Text("No shortcuts match \u{201C}\(query)\u{201D}")
-                .font(.system(size: pt(14), weight: .medium))
+                .font(AppFont.size(pt(14), weight: .medium))
                 .foregroundColor(Theme.subtext)
         }
         .frame(maxWidth: .infinity)
@@ -273,14 +273,14 @@ struct GroupCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: pt(12)) {
             Text(group.title)
-                .font(.system(size: pt(14), weight: .bold))
+                .font(AppFont.size(pt(14), weight: .bold))
                 .foregroundColor(Theme.mauve)
                 .padding(.bottom, pt(4))
 
             ForEach(group.items) { item in
                 HStack(alignment: .top, spacing: pt(12)) {
                     Text(item.key)
-                        .font(.system(size: pt(14), weight: .semibold, design: .monospaced))
+                        .font(AppFont.size(pt(14), weight: .semibold, design: .monospaced))
                         .foregroundColor(Theme.text)
                         .padding(.horizontal, pt(8))
                         .padding(.vertical, pt(4))
@@ -292,7 +292,7 @@ struct GroupCard: View {
                         )
 
                     Text(item.action)
-                        .font(.system(size: pt(15), weight: .medium))
+                        .font(AppFont.size(pt(15), weight: .medium))
                         .foregroundColor(Theme.text)
                         .padding(.top, pt(3))
 

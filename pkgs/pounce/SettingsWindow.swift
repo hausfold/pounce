@@ -61,6 +61,13 @@ final class PounceSettingsWindowController: NSObject, NSWindowDelegate {
         // Whatever the file says NOW. The window may have been open, closed and
         // hand-edited in between.
         store.refresh()
+        // And whatever the file says about the FAMILY this window is drawn in.
+        // The launcher applies settings per summon; this window is the one
+        // surface that can be opened without one — `pounce settings` with no
+        // daemon running goes straight here — and it is also the one place a
+        // Settings global has to be right before the first frame rather than on
+        // the next open.
+        Settings.load().apply()
 
         let window = self.window ?? build()
         if previousPolicy == nil {

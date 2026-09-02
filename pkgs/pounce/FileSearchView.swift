@@ -118,11 +118,11 @@ struct FileSearchView: View {
     func centeredNote(_ title: String, _ subtitle: String?) -> some View {
         VStack(spacing: pt(6)) {
             Text(title)
-                .font(.system(size: pt(15), weight: .medium, design: .rounded))
+                .font(AppFont.size(pt(15), weight: .medium, design: .rounded))
                 .foregroundColor(Theme.subtext)
             if let subtitle {
                 Text(subtitle)
-                    .font(.system(size: pt(12), design: .rounded))
+                    .font(AppFont.size(pt(12), design: .rounded))
                     .foregroundColor(Theme.subtext0)
                     .lineLimit(1)
             }

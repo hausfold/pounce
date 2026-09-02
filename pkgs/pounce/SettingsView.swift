@@ -167,6 +167,7 @@ struct PounceSettingsView: View {
             minHeight: 420, maxHeight: .infinity
         )
         .navigationTitle(Self.windowTitle)
+        .pounceType()
     }
 
     /// `List` selects by element ID, and a pane's ID is its raw value — so the
@@ -225,9 +226,9 @@ private struct SettingsSidebarFooter: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Pounce")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(AppFont.size(12, weight: .semibold))
                     Text(version)
-                        .font(.system(size: 11))
+                        .font(AppFont.size(11))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -323,7 +324,7 @@ private struct SettingsCardIntro: View {
 
     var body: some View {
         Text(text)
-            .font(.subheadline)
+            .font(AppFont.subheadline)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -345,7 +346,7 @@ private struct ConfigRawSectionView: View {
                 Text(raw.replacingOccurrences(of: "// ", with: "")
                     .replacingOccurrences(of: "//", with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(AppFont.size(11, design: .monospaced))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)

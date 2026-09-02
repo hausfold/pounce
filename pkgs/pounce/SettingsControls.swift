@@ -162,7 +162,7 @@ private struct UnitLabel: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
-            .font(.subheadline)
+            .font(AppFont.subheadline)
             .foregroundStyle(.secondary)
     }
 }
@@ -219,7 +219,7 @@ struct ConfigListRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(field.label)
                     Text(field.doc)
-                        .font(.subheadline)
+                        .font(AppFont.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -268,21 +268,21 @@ struct ConfigFileOnlyRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(field.label)
                     Text(field.doc)
-                        .font(.subheadline)
+                        .font(AppFont.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12)
                 Text(count == 0 ? "None" : "\(count)")
-                    .font(.subheadline)
+                    .font(AppFont.subheadline)
                     .foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 7) {
                 Text(lead)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline)
                     .foregroundStyle(.secondary)
                 Text(example)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(AppFont.size(11, design: .monospaced))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(8)
@@ -323,7 +323,7 @@ struct ModifierPicker: View {
                     commit(Self.order.filter { next.contains($0) })
                 } label: {
                     Text(Self.glyphs[name] ?? name)
-                        .font(.system(size: 13))
+                        .font(AppFont.size(13))
                         .frame(width: 26, height: 22)
                         .background(
                             on ? Color.accentColor : Color.primary.opacity(0.07),
@@ -393,7 +393,7 @@ struct CommittingLineEditor: View {
                 .focused($focused)
             if text.isEmpty {
                 Text(placeholder)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(AppFont.size(12, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 12)
@@ -425,7 +425,7 @@ struct CommittingSlider: View {
             }
             .frame(width: 150)
             Text(String(format: "%.2f×", live))
-                .font(.system(size: 12, design: .monospaced))
+                .font(AppFont.size(12, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(width: 46, alignment: .trailing)
         }

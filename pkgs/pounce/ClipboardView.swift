@@ -115,11 +115,11 @@ struct ClipRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.kind == .image ? "Image — \(entry.preview)" : entry.preview)
                     .foregroundColor(Theme.text)
-                    .font(.system(size: pt(13), weight: .medium))
+                    .font(AppFont.size(pt(13), weight: .medium))
                     .lineLimit(1)
                 Text([entry.appName, relativeTime(entry.ts)].compactMap { $0 }.joined(separator: " · "))
                     .foregroundColor(Theme.subtext0)
-                    .font(.system(size: pt(11)))
+                    .font(AppFont.size(pt(11)))
                     .lineLimit(1)
             }
             Spacer(minLength: pt(4))
@@ -152,7 +152,7 @@ struct ClipPreview: View {
                 } else {
                     ScrollView {
                         Text(ClipboardStore.shared.previewText(for: entry))
-                            .font(.system(size: pt(13), design: .monospaced))
+                            .font(AppFont.size(pt(13), design: .monospaced))
                             .foregroundColor(Theme.text)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,14 +167,14 @@ struct ClipPreview: View {
                     Spacer()
                     Text(relativeTime(entry.ts)).foregroundColor(Theme.subtext0)
                 }
-                .font(.system(size: pt(11)))
+                .font(AppFont.size(pt(11)))
                 .padding(.horizontal, pt(16))
                 .frame(height: pt(32))
             }
         } else {
             Text("No clipboard history yet")
                 .foregroundColor(Theme.subtext0)
-                .font(.system(size: pt(13)))
+                .font(AppFont.size(pt(13)))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

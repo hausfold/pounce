@@ -10,7 +10,7 @@ struct GroupHeaderRow: View {
 
     var body: some View {
         Text(title.uppercased())
-            .font(.system(size: pt(11), weight: .semibold, design: .rounded))
+            .font(AppFont.size(pt(11), weight: .semibold, design: .rounded))
             .foregroundColor(Theme.subtext0)
             .kerning(0.6)
             .padding(.horizontal, pt(22))
@@ -140,7 +140,7 @@ struct GridCard: View {
                 VStack(alignment: .leading, spacing: pt(3)) {
                     Text(item.title)
                         .foregroundColor(Theme.text)
-                        .font(.system(size: pt(15), weight: .medium, design: .rounded))
+                        .font(AppFont.size(pt(15), weight: .medium, design: .rounded))
                         .lineLimit(1)
                     if let subtitle = item.subtitle {
                         // Two lines, unlike a list row's one: a card is half the
@@ -148,7 +148,7 @@ struct GridCard: View {
                         // a card at all.
                         Text(subtitle)
                             .foregroundColor(Theme.subtext0)
-                            .font(.system(size: pt(12), design: .rounded))
+                            .font(AppFont.size(pt(12), design: .rounded))
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                     }
@@ -223,18 +223,18 @@ struct ItemRow: View {
 
             Text(item.title)
                 .foregroundColor(Theme.text)
-                .font(.system(size: pt(16), weight: .medium, design: .rounded))
+                .font(AppFont.size(pt(16), weight: .medium, design: .rounded))
                 .lineLimit(1)
 
             Spacer(minLength: pt(8))
 
             if let badge {
                 Text(badge)
-                    .font(.system(size: pt(12), weight: .semibold, design: .rounded))
+                    .font(AppFont.size(pt(12), weight: .semibold, design: .rounded))
                     .foregroundColor(badgeLit ? Theme.mauve : Theme.subtext0)
             } else if let hint {
                 Text(hint)
-                    .font(.system(size: pt(12), weight: .medium, design: .rounded))
+                    .font(AppFont.size(pt(12), weight: .medium, design: .rounded))
                     .foregroundColor(Theme.subtext)
                     .padding(.horizontal, pt(7))
                     .padding(.vertical, pt(3))
@@ -245,7 +245,7 @@ struct ItemRow: View {
             } else if let subtitle = item.subtitle {
                 Text(subtitle)
                     .foregroundColor(Theme.subtext0)
-                    .font(.system(size: pt(13), design: .rounded))
+                    .font(AppFont.size(pt(13), design: .rounded))
                     .lineLimit(1)
             }
         }
@@ -301,13 +301,13 @@ struct AnswerRow: View {
             VStack(alignment: .leading, spacing: pt(3)) {
                 Text(item.title)
                     .foregroundColor(Theme.text)
-                    .font(.system(size: pt(25), weight: .semibold, design: .rounded))
+                    .font(AppFont.size(pt(25), weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.45)   // long results shrink, never clip
                 if let subtitle = item.subtitle {
                     Text(subtitle)
                         .foregroundColor(Theme.subtext0)
-                        .font(.system(size: pt(12), design: .rounded))
+                        .font(AppFont.size(pt(12), design: .rounded))
                         .lineLimit(1)
                 }
             }
@@ -388,7 +388,7 @@ struct ActionBar: View {
                 }
                 HStack(spacing: pt(7)) {
                     Text(action.label)
-                        .font(.system(size: pt(12), weight: .medium, design: .rounded))
+                        .font(AppFont.size(pt(12), weight: .medium, design: .rounded))
                         .foregroundColor(Theme.subtext)
                     KeyCap(action.displayKey, isPressed: firedAction == action.key)
                 }
@@ -409,11 +409,11 @@ struct DialChip: View {
     var body: some View {
         HStack(spacing: pt(6)) {
             Text(dial.name.uppercased())
-                .font(.system(size: pt(10), weight: .semibold, design: .rounded))
+                .font(AppFont.size(pt(10), weight: .semibold, design: .rounded))
                 .kerning(0.5)
                 .foregroundColor(Theme.subtext0)
             Text(dial.value)
-                .font(.system(size: pt(12), weight: .semibold, design: .rounded))
+                .font(AppFont.size(pt(12), weight: .semibold, design: .rounded))
                 .foregroundColor(isActive ? Theme.mauve : Theme.text)
                 .id(dial.value)   // new identity per value → the roll transition below
                 .transition(.asymmetric(insertion: .push(from: .bottom),
@@ -454,7 +454,7 @@ struct KeyCap: View {
 
     var body: some View {
         Text(symbol)
-            .font(.system(size: pt(12), weight: .medium, design: .rounded))
+            .font(AppFont.size(pt(12), weight: .medium, design: .rounded))
             .foregroundColor(lit ? Theme.mauve : Theme.subtext)
             .frame(minWidth: pt(22), minHeight: pt(22))
             .padding(.horizontal, pt(4))
@@ -560,7 +560,7 @@ struct CustomTextField: NSViewRepresentable {
         tf.calculatedHeight = calculatedHeight
         tf.onSubmit = onSubmit
         tf.delegate = context.coordinator
-        tf.font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
+        tf.font = AppFont.nsFont(size: fontSize)
         tf.textColor = NSColor(Theme.text)
         tf.backgroundColor = .clear
         tf.focusRingType = .none
@@ -609,9 +609,11 @@ struct CustomTextField: NSViewRepresentable {
         }
         if tf.stringValue != text { tf.stringValue = text }
         tf.placeholderString = placeholder
-        if tf.font?.pointSize != fontSize {
-            tf.font = NSFont.systemFont(ofSize: fontSize, weight: .regular)
-        }
+        // Compared as a whole font, not just its size: the family can move
+        // under a running daemon (a config edit is re-read per open), and a
+        // point-size check alone would leave this field in the old face.
+        let wantedFont = AppFont.nsFont(size: fontSize)
+        if tf.font != wantedFont { tf.font = wantedFont }
         if wraps {
             if let pw = preferredWidth, pw > 0 {
                 tf.preferredMaxLayoutWidth = pw
