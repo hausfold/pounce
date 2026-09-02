@@ -27,11 +27,18 @@ fi
 scratch="$(mktemp -d)"
 bin="$scratch/pounce-tests"
 
-# UpdateCheck.swift reads the build-stamped pounceVersion global, but
-# Version.generated.swift only exists after a build.sh run (and is gitignored) —
-# stub it. The suite never relies on the stub's value: isNewer takes the
-# running version as a parameter.
-echo 'let pounceVersion = "dev"' > "$scratch/version_stub.swift"
+# UpdateCheck.swift reads the build-stamped pounceVersion global, and Skill.swift
+# the embedded pounceSkillMarkdown, but Version.generated.swift and
+# Skill.generated.swift only exist after a build.sh run (both gitignored) — stub
+# them. The suite never relies on the version stub's value: isNewer takes the
+# running version as a parameter. The skill stub deliberately has NO trailing
+# newline, because that is the shape the real generator produces — Swift's
+# multiline literal excludes the newline before its closing delimiter — and
+# putting it back is precisely what skill_tests.swift pins.
+cat > "$scratch/generated_stubs.swift" <<'STUB'
+let pounceVersion = "dev"
+let pounceSkillMarkdown = "---\nname: pounce\ndescription: a stub\n---\n\n# Pounce"
+STUB
 # The sources under test are Foundation-only by design (no AppKit/SwiftUI) —
 # for the quick-answer engines that's the QuickAnswer.swift contract — which is
 # what keeps this a plain swiftc compile. Compiling them with the test files as
@@ -63,13 +70,13 @@ fi
   -target "${POUNCE_TARGET_ARCH:-$(uname -m)}-apple-macos$macos_min" \
   Frecency.swift QueryMemory.swift ContextMemory.swift NextAction.swift StageSlots.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
   Currency.swift ItemSettings.swift FunctionKeyGesture.swift FunctionKeyRemap.swift CommandRegistry.swift UpdateCheck.swift \
-  Badges.swift \
+  Badges.swift Json.swift Skill.swift \
   ConfigTemplate.swift ConfigWriter.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \
   Dials.swift \
   FullscreenGate.swift \
   BugReport.swift \
   Shortcuts.swift SystemSettings.swift \
-  "$scratch/version_stub.swift" \
+  "$scratch/generated_stubs.swift" \
   tests/main.swift tests/frecency_tests.swift tests/querymemory_tests.swift \
   tests/contextmemory_tests.swift tests/nextaction_tests.swift \
   tests/stageslots_tests.swift \
@@ -80,5 +87,6 @@ fi
   tests/configtemplate_tests.swift tests/configwriter_tests.swift tests/drafts_tests.swift tests/autoquit_tests.swift \
   tests/appscanner_tests.swift tests/shortcuts_tests.swift \
   tests/systemsettings_tests.swift tests/bugreport_tests.swift tests/dials_tests.swift \
-  tests/fullscreengate_tests.swift
+  tests/fullscreengate_tests.swift \
+  tests/skill_tests.swift tests/json_tests.swift
 "$bin"

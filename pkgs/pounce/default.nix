@@ -70,8 +70,18 @@ stdenvNoCC.mkDerivation {
     # and would quietly stamp a triple disagreeing with what nix believes it
     # built. The macOS floor itself stays in build.sh — it is a property of the
     # sources, shared with every other packaging.
+    #
+    # POUNCE_SKILL_MD is the agent skill build.sh embeds in the binary
+    # (`pounce skill`). It is committed at the REPO root, which `src = ./.`
+    # (pkgs/pounce alone) does not reach — the same boundary that keeps
+    # ../assets and ../pounce-commands out — so it arrives as its own store
+    # path. Every packager runs the identical generator; only how the file is
+    # found differs. Note the consequence: editing ai/SKILL.md now rebuilds this
+    # derivation, which is the price of the binary being able to answer for
+    # itself on a Mac with no checkout.
     POUNCE_VERSION="$version" \
       POUNCE_TARGET_ARCH="${stdenvNoCC.hostPlatform.darwinArch}" \
+      POUNCE_SKILL_MD="${../../ai/SKILL.md}" \
       bash ./build.sh
   '';
 

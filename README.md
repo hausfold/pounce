@@ -40,7 +40,9 @@ brew services start pounce       # the palette daemon
 pounce --request-accessibility   # approve the prompt, once
 ```
 
-macOS gives ⌘Space to Spotlight; [installing](https://hausfold.co/docs/pounce/install/)
+Then `pounce skill install` — one command, and the coding agent on this Mac
+knows how to drive the palette. macOS gives ⌘Space to Spotlight;
+[installing](https://hausfold.co/docs/pounce/install/)
 is where you take it back. MIT, no telemetry, no cloud, no login. macOS 14
 Sonoma or later, Apple Silicon.
 
@@ -61,7 +63,8 @@ configures all of the above for you.
 
 ## in this repo
 
-- [`ai/SKILL.md`](ai/SKILL.md) — the agent surface, so *"add a command that…"* works first try
+- [`ai/SKILL.md`](ai/SKILL.md) — the agent surface, so *"ask me which one"* works first try.
+  It ships inside the binary too: `pounce skill` prints it, `pounce skill install` places it
 - [`AGENTS.md`](./AGENTS.md) — hacking on pounce: the build, the layout, the invariants
 - `pounce --help` · `pounce doctor` — the authoritative flag list, and what to run when a key does nothing
 

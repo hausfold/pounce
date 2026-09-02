@@ -171,29 +171,60 @@ enum Autostart {
     // `pounce autostart on|off|status` — positional like `focus` and `doctor`,
     // so an older binary that predates the verb never mistakes it for a picker
     // invocation (scripts probe `pounce --help` before calling).
-    static func run(op: String?) {
+    static func run(args: [String]) {
+        var rest = args
+        let json = rest.contains("--json")
+        rest.removeAll { $0 == "--json" }
+        // See DoctorMode.run: a flag we don't know must be a usage error, not a
+        // silent fall-through to the human answer.
+        for arg in rest where arg.hasPrefix("-") {
+            FileHandle.standardError.write(Data(
+                "pounce autostart: unknown flag '\(arg)' — autostart takes --json and nothing else\n".utf8))
+            exit(2)
+        }
+        let op = rest.first
+
+        // `enabled` is the machine-readable half and `status` the sentence: the
+        // two disagree exactly in the state worth scripting around —
+        // .requiresApproval is not on, and reads as a long instruction rather
+        // than a word a caller can branch on.
+        func report(_ extra: [String: Any] = [:]) {
+            guard json else { return }
+            var record: [String: Any] = ["enabled": isEnabled(), "status": statusDescription()]
+            record.merge(extra) { _, new in new }
+            Json.emit(record)
+        }
+
         switch op {
         case "on":
             do {
                 try register()
-                print("autostart: \(statusDescription())")
+                if json { report(["op": "on", "ok": true]) }
+                else { print("autostart: \(statusDescription())") }
             } catch {
-                print("autostart: registration failed — \(error.localizedDescription)")
-                print("           if macOS is asking for approval: System Settings → General → Login Items")
+                if json {
+                    report(["op": "on", "ok": false, "error": error.localizedDescription])
+                } else {
+                    print("autostart: registration failed — \(error.localizedDescription)")
+                    print("           if macOS is asking for approval: System Settings → General → Login Items")
+                }
                 exit(1)
             }
         case "off":
             do {
                 try unregister()
-                print("autostart: off")
+                if json { report(["op": "off", "ok": true]) }
+                else { print("autostart: off") }
             } catch {
-                print("autostart: unregister failed — \(error.localizedDescription)")
+                if json { report(["op": "off", "ok": false, "error": error.localizedDescription]) }
+                else { print("autostart: unregister failed — \(error.localizedDescription)") }
                 exit(1)
             }
         case "status":
-            print("autostart: \(statusDescription())")
+            if json { report(["op": "status", "ok": true]) }
+            else { print("autostart: \(statusDescription())") }
         default:
-            print("usage: pounce autostart on|off|status")
+            FileHandle.standardError.write(Data("usage: pounce autostart on|off|status [--json]\n".utf8))
             exit(2)
         }
     }

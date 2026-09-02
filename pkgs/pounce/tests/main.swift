@@ -42,6 +42,8 @@ failures += runShortcutsTests()
 failures += runSystemSettingsTests()
 failures += runDialsTests()
 failures += runFullscreenGateTests()
+failures += runSkillTests()
+failures += runJsonTests()
 
 if failures == 0 {
     exit(0)

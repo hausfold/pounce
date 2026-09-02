@@ -4,6 +4,9 @@
 //   pounce config init       write it, with every setting at its default,
 //                            documented and commented out
 //   pounce config init --force   replace an existing one
+//   pounce config --json     the path, and whether it is yours to edit
+//   pounce config print --json   the EFFECTIVE settings — what pounce will use,
+//                            plus the keys the file actually names
 //
 // Pounce is installable on its own (Homebrew, a drag-install), and standalone is
 // the case this is FOR: inside the haus desktop the settings are written from
@@ -13,18 +16,39 @@ import Foundation
 
 enum ConfigMode {
     static func run(op: String?, args: [String]) {
+        let json = args.contains("--json")
+        // `--json` is a flag, not a subcommand: `pounce config --json` asks
+        // about the path, the same as bare `pounce config`. Every OTHER unknown
+        // leading `--flag` still falls through to the usage error below, which
+        // is what `pounce config --force` (a `config init` flag, on the wrong
+        // verb) should get rather than a silently different answer.
+        let op = op == "--json" ? nil : op
         switch op {
         case nil, "path":
-            print(Settings.configPath.path)
+            if json {
+                Json.emit(location(Settings.configPath))
+            } else {
+                print(Settings.configPath.path)
+            }
         case "init":
             initialize(force: args.contains("--force"))
         case "print":
-            // The same text `init` writes, to stdout, touching nothing. It's how
-            // you diff the template against a config you've already edited
-            // (`pounce config print | diff - ~/.config/pounce/config.json`), and
-            // the only way to see it at all on a Nix-managed machine, where
-            // `init` correctly refuses.
-            print(rendered(), terminator: "")
+            if json {
+                // A different question from the annotated template, deliberately:
+                // that file documents the DEFAULTS, this prints what pounce will
+                // actually use — post-clamp, with the user's file folded in — plus
+                // `set`, the keys their config.json actually names. The family
+                // standard (A5) asks exactly that, so an agent can tell "unset"
+                // from "set to the default" instead of guessing from a value.
+                printEffective()
+            } else {
+                // The same text `init` writes, to stdout, touching nothing. It's how
+                // you diff the template against a config you've already edited
+                // (`pounce config print | diff - ~/.config/pounce/config.json`), and
+                // the only way to see it at all on a Nix-managed machine, where
+                // `init` correctly refuses.
+                print(rendered(), terminator: "")
+            }
         default:
             FileHandle.standardError.write(Data("""
             pounce config: unknown subcommand '\(op ?? "")'.
@@ -33,9 +57,113 @@ enum ConfigMode {
               pounce config print    print an annotated config to stdout
               pounce config init     write it to the config path (--force replaces)
 
+            Add --json to `config` or `config print` for a machine-readable answer.
+
             """.utf8))
             exit(2)
         }
+    }
+
+    // MARK: - `--json`
+
+    /// Where the config is, and who owns it. Small enough to be part of every
+    /// other record too — an agent's first question about a settings file is
+    /// almost always "may I edit this one?", and on a haus machine the answer is
+    /// no. `managed` is the one key that answers it.
+    private static func location(_ path: URL) -> [String: Any] {
+        [
+            "path": path.path,
+            "exists": FileManager.default.fileExists(atPath: path.path),
+            "managed": isNixManaged(path) ? "nix" : "user",
+        ]
+    }
+
+    /// The EFFECTIVE settings — every key at the value pounce will use, read back
+    /// off a live `Settings.load()` through the same `ConfigSpec` table that
+    /// renders the annotated template and draws the Settings window. Reusing that
+    /// table rather than walking `Settings` again is what stops a fourth
+    /// rendering of the same data drifting from the other three.
+    private static func printEffective() {
+        let settings = Settings.load()
+        var effective: [String: Any] = [:]
+        for section in ConfigSpec.sections(defaults: settings) {
+            guard !section.fields.isEmpty else { continue }
+            // ConfigSpec already rendered each value as a JSON literal for the
+            // template; parse it back rather than re-deriving the type here.
+            // `reduce`, not `Dictionary(uniqueKeysWithValues:)`: that traps on a
+            // duplicate key, and a read verb that crashes rather than answers is
+            // a worse way to learn that two ConfigSpec fields share a name.
+            let values = section.fields.reduce(into: [String: Any]()) { out, field in
+                out[field.name] = Json.parse(field.json)
+            }
+            if let name = section.name {
+                effective[name] = values
+            } else {
+                // Two sections sit at the top level (the appearance keys and
+                // "fnKey"); they merge into one object, as they do in the file.
+                effective.merge(values) { _, new in new }
+            }
+        }
+        // `items` is the one section with no fixed key list, so ConfigSpec has no
+        // fields to render for it and the loop above skips it. Left out, the
+        // "effective config" would silently omit every per-item override the user
+        // wrote — the half of the file most likely to be why a row behaves oddly.
+        effective["items"] = settings.items.entries
+            .sorted { $0.key < $1.key }
+            .reduce(into: [String: Any]()) { out, entry in
+                var item: [String: Any] = ["enabled": entry.value.enabled]
+                item["alias"] = Json.value(entry.value.alias)
+                item["hotkey"] = Json.value(entry.value.hotkey?.display)
+                item["hint"] = Json.value(entry.value.hint)
+                item["state"] = Json.value(entry.value.state)
+                item["workspaces"] = entry.value.workspaces
+                item["bundleIds"] = entry.value.bundleIds
+                out[entry.key] = item
+            }
+
+        var record = location(Settings.configPath)
+        record["version"] = pounceVersion
+        record["settings"] = effective
+        record["set"] = setKeys()
+        Json.emit(record)
+    }
+
+    /// The dotted paths the user's config.json actually names, sorted. This is
+    /// the whole point of `--json` over the template: a value that equals the
+    /// default reads identically whether it was written down or never touched,
+    /// and only the file itself can tell them apart.
+    ///
+    /// Read through the SAME `.json5Allowed` parser `Settings.load()` uses, so a
+    /// config with comments in it — the file `config init` invites people to
+    /// write — is walked rather than reported as absent. A path here that has no
+    /// counterpart under `settings` is a key pounce does not know, which is worth
+    /// seeing rather than hiding.
+    ///
+    /// The walk stops AT an `items` entry rather than inside it. Item keys are
+    /// `app:/Applications/Safari.app` and friends — full of dots and slashes —
+    /// so `items.app:/Applications/Safari.app.alias` is a string nothing can
+    /// split back apart. `items.<key>` is unambiguous instead (everything after
+    /// the first dot is one key, verbatim) and loses nothing: an item's fields
+    /// have no defaults to be confused with, so `settings.items.<key>` already
+    /// shows exactly which of them the user wrote.
+    private static func setKeys() -> [String] {
+        guard let data = try? Data(contentsOf: Settings.configPath),
+              let obj = try? JSONSerialization.jsonObject(with: data, options: [.json5Allowed])
+                as? [String: Any]
+        else { return [] }
+        var out: [String] = []
+        func walk(_ object: [String: Any], prefix: String) {
+            for (key, value) in object {
+                let path = prefix.isEmpty ? key : prefix + "." + key
+                if let nested = value as? [String: Any], !nested.isEmpty, prefix != "items" {
+                    walk(nested, prefix: path)
+                } else {
+                    out.append(path)
+                }
+            }
+        }
+        walk(obj, prefix: "")
+        return out.sorted()
     }
 
     private static func rendered() -> String {
@@ -76,7 +204,10 @@ enum ConfigMode {
             See https://hausfold.co/docs/pounce/config/
 
             """.utf8))
-            exit(1)
+            // 3, not 1: pounce declined rather than tried and failed, and an
+            // agent's recovery differs — there is nothing here to retry. See the
+            // exit-code table in `pounce --help`.
+            exit(3)
         }
 
         let text = rendered()
