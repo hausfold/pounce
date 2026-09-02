@@ -87,6 +87,11 @@ enum ConfigSpec {
                         json: json(s.scale),
                         control: .slider(0.8...2.0, step: 0.05), symbol: "textformat.size"),
                     ConfigField(
+                        name: "fontFamily",
+                        doc: "The font family every string in the UI is set in — the launcher, its rows, and the emoji / clipboard / screenshot panels. Unset (null) means macOS's own. A family NAME, as Font Book spells it; pounce installs nothing, so a family this Mac doesn't have quietly falls back to the system font. Keycaps and code previews stay monospaced whatever you put here.",
+                        json: json(s.fontFamily as Any),
+                        control: .text(placeholder: "follows macOS", nullable: true), symbol: "textformat"),
+                    ConfigField(
                         name: "theme",
                         doc: "Colour palette: a built-in name, or a ~/.config/pounce/themes/<name>.json. Unset (null) means the nebelung / nebelung-latte pair, so pounce follows macOS light and dark by itself. Setting this PINS one palette for both appearances.",
                         json: json(s.theme as Any),

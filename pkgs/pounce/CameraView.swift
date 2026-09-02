@@ -69,11 +69,11 @@ struct CameraView: View {
                 .font(.system(size: pt(28), weight: .medium))
                 .foregroundColor(Theme.subtext0)
             Text(title)
-                .font(.system(size: pt(15), weight: .medium, design: .rounded))
+                .font(uiFont(pt(15), weight: .medium, design: .rounded))
                 .foregroundColor(Theme.subtext)
             if let detail = detail {
                 Text(detail)
-                    .font(.system(size: pt(12)))
+                    .font(uiFont(pt(12)))
                     .foregroundColor(Theme.subtext0)
             }
         }
@@ -89,7 +89,7 @@ struct CameraView: View {
                         .font(.system(size: pt(12), weight: .medium))
                         .foregroundColor(Theme.subtext0)
                     Text(name)
-                        .font(.system(size: pt(12), weight: .medium, design: .rounded))
+                        .font(uiFont(pt(12), weight: .medium, design: .rounded))
                         .foregroundColor(Theme.subtext0)
                         .lineLimit(1)
                 }
@@ -117,7 +117,7 @@ struct CameraView: View {
     func barAction(label: String, key: String, action: @escaping () -> Void) -> some View {
         HStack(spacing: pt(7)) {
             Text(label)
-                .font(.system(size: pt(12), weight: .medium, design: .rounded))
+                .font(uiFont(pt(12), weight: .medium, design: .rounded))
                 .foregroundColor(Theme.subtext)
             KeyCap(key)
         }
@@ -204,7 +204,7 @@ struct CameraPickerPanel: View {
                         .font(.system(size: pt(12), weight: .medium))
                         .foregroundColor(i == selectedIndex ? Theme.mauve : Theme.subtext)
                     Text(device.name)
-                        .font(.system(size: pt(13), weight: .medium, design: .rounded))
+                        .font(uiFont(pt(13), weight: .medium, design: .rounded))
                         .foregroundColor(Theme.text)
                         .lineLimit(1)
                     Spacer(minLength: pt(12))

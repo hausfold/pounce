@@ -69,7 +69,7 @@ struct EmojiView: View {
                             // as thin and unaligned, so it gets its own metrics
                             // and the theme's text color.
                             Text(e.c)
-                                .font(.system(size: e.kind == .emoji ? 26 : 22))
+                                .font(uiFont(e.kind == .emoji ? 26 : 22))
                                 .foregroundColor(e.kind == .emoji ? .primary : Theme.text)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: EmojiLayout.cellHeight)
@@ -94,19 +94,19 @@ struct EmojiView: View {
             HStack(spacing: pt(10)) {
                 if let e = selected {
                     Text(e.c)
-                        .font(.system(size: pt(18)))
+                        .font(uiFont(pt(18)))
                         .foregroundColor(e.kind == .emoji ? .primary : Theme.text)
                     Text(e.name)
                         .foregroundColor(Theme.subtext)
-                        .font(.system(size: pt(12)))
+                        .font(uiFont(pt(12)))
                         .lineLimit(1)
                     if e.kind == .symbol {
                         Text(e.codepoints)
                             .foregroundColor(Theme.subtext0)
-                            .font(.system(size: pt(11), design: .monospaced))
+                            .font(uiFont(pt(11), design: .monospaced))
                     }
                 } else {
-                    Text("No match").foregroundColor(Theme.subtext0).font(.system(size: pt(12)))
+                    Text("No match").foregroundColor(Theme.subtext0).font(uiFont(pt(12)))
                 }
                 Spacer()
             }

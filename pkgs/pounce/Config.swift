@@ -63,6 +63,132 @@ enum UIScale {
 // fix for Tahoe's stale `fittingSize`, depends on those two matching.
 func pt(_ base: CGFloat) -> CGFloat { (base * UIScale.factor).rounded() }
 
+// MARK: Proportional family
+
+// The family pounce sets its text in. `"fontFamily"` in config.json names it;
+// nil — the default — is SwiftUI's own `.system(…)`, which is what pounce drew
+// before this key existed. This is the seam `haus.fonts.sans.name` reaches, the
+// typographic half of what `scale` does for size.
+//
+// A global installed from `Settings.apply`, for the reason `UIScale.factor` is
+// one: both are read inside leaf views (rows, keycaps, the emoji grid) that have
+// no business taking a parameter they would only pass along, and installing them
+// on the same path is what stops them disagreeing.
+enum UIFontFamily {
+    static var name: String?
+
+    // Absent, blank, and the names macOS's own UI family answers to all mean
+    // "the system font". That last case is the one that matters: a desktop
+    // generating this file writes the family it was told to use, and the usual
+    // default IS macOS's own — `Font.custom(".AppleSystemUIFont", …)` works, and
+    // freezes the weight and optical size SwiftUI picks per size, so "I left it
+    // at the default" would render subtly unlike leaving the key out.
+    static func resolve(_ configured: String?) -> String? {
+        guard let trimmed = configured?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty,
+              !systemNames.contains(trimmed.lowercased())
+        else { return nil }
+        return trimmed
+    }
+
+    static let systemNames: Set<String> = [
+        ".applesystemuifont", "applesystemuifont", ".sf ns",
+        "system", "system font", "-apple-system",
+    ]
+}
+
+// Every proportional string in pounce is drawn through here rather than through
+// `.system(…)` directly, so one line in config.json moves the whole UI onto
+// another face. With no family named it returns exactly the `Font` the call site
+// used to write — including the nil weight, which is not the same `Font` as
+// `.regular`.
+//
+// TWO DESIGNS, TWO ANSWERS, and the difference is the point:
+//
+//   .rounded      a *variant of the system face*. Name another family and there
+//                 is no rounded cut of it to honour, so the family wins. A
+//                 launcher whose rows stayed in SF Rounded while everything else
+//                 moved would be a legibility setting that skipped the text you
+//                 actually read.
+//   .monospaced   a different JOB, not a flavour of the same one — a keycap, a
+//                 hex string, a clipboard entry's code. It passes straight
+//                 through whatever family is named, because a column that shifts
+//                 is harder to read, not easier.
+//
+// A symbol is not text either: `Image(systemName:)` is sized with `.system(size:)`
+// all over these views and stays that way, because an SF Symbol handed a text
+// face is scaled by that face's metrics instead of Apple's.
+//
+// A family this Mac doesn't have falls back to the system face silently, which is
+// what CoreText does with a name it can't resolve; pounce installs no fonts.
+func uiFont(_ size: CGFloat, weight: Font.Weight? = nil, design: Font.Design? = nil) -> Font {
+    guard design != .monospaced, let family = UIFontFamily.name else {
+        return .system(size: size, weight: weight, design: design)
+    }
+    let sized = Font.custom(family, fixedSize: size)
+    return weight.map(sized.weight) ?? sized
+}
+
+// The same, for the handful of places that name a semantic style instead of a
+// size — the Settings window's prose. macOS's own point size for the style is
+// used rather than a table written down here, and `relativeTo:` keeps a custom
+// face scaling the way `.system(_:)` does.
+func uiFont(_ style: Font.TextStyle) -> Font {
+    guard let family = UIFontFamily.name else { return .system(style) }
+    let size = NSFont.preferredFont(forTextStyle: appKitTextStyle(style)).pointSize
+    // Every family ships a regular; only `.headline` is anything else in the
+    // system face, and a custom face has to be asked for it.
+    return .custom(family, size: size, relativeTo: style)
+        .weight(style == .headline ? .semibold : .regular)
+}
+
+// SwiftUI and AppKit spell the same eleven styles differently and offer no bridge.
+func appKitTextStyle(_ style: Font.TextStyle) -> NSFont.TextStyle {
+    switch style {
+    case .largeTitle: return .largeTitle
+    case .title: return .title1
+    case .title2: return .title2
+    case .title3: return .title3
+    case .headline: return .headline
+    case .subheadline: return .subheadline
+    case .callout: return .callout
+    case .footnote: return .footnote
+    case .caption: return .caption1
+    case .caption2: return .caption2
+    default: return .body
+    }
+}
+
+extension View {
+    // Set the family as the default for everything underneath — a `Toggle`'s
+    // title, a `Picker` row, a sidebar label: text nobody gave an explicit font
+    // to, which is unreachable any other way.
+    //
+    // Used by the Settings window and nothing else, deliberately. Every string
+    // the LAUNCHER draws names its own size through `uiFont` — that is what
+    // `scale` needs to work at all — so an environment default there would buy
+    // one label and cost the hand-tuned control sizing an explicit `\.font`
+    // overrides. A no-op while no family is named, because
+    // `EnvironmentValues.font` is optional and pushing `.body` into it would
+    // flatten those defaults for a window nobody asked to restyle. With one
+    // named, that flattening is the deal rather than an oversight.
+    func pounceType() -> some View {
+        environment(\.font, UIFontFamily.name == nil ? nil : uiFont(.body))
+    }
+}
+
+// The AppKit half. The query field is an `NSTextField`, and it holds the largest
+// text in the launcher — the thing you are actually looking at while you type —
+// so a family that reached every row and not that one would look like a bug.
+func uiNSFont(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+    guard let family = UIFontFamily.name else { return .systemFont(ofSize: size, weight: weight) }
+    let descriptor = NSFontDescriptor(fontAttributes: [
+        .family: family,
+        .traits: [NSFontDescriptor.TraitKey.weight: weight.rawValue],
+    ])
+    return NSFont(descriptor: descriptor, size: size) ?? .systemFont(ofSize: size, weight: weight)
+}
+
 // Hold a window width inside the screen. Scale and display mode COMPOUND — a
 // large-print Mac turns both up (`haus.ui.scale` and
 // `haus.displays.*.uiScale = "larger-text"`), and 820pt at 1.4× is wider than
@@ -489,6 +615,11 @@ struct Settings {
     // thing is drawn, panels included. They compose: a compact launcher at 1.4 is
     // still the compact layout, just legible from further away.
     var scale: CGFloat = 1
+    // The proportional family every string in the UI is set in (see `uiFont`).
+    // nil — the default — is macOS's own, which is what pounce drew before this
+    // key existed. A family *name*, not a file: pounce installs nothing, and a
+    // name this Mac can't resolve falls back to the system face silently.
+    var fontFamily: String?
     var clipboard = ClipboardSettings()
     var appLauncher = AppLauncherSettings()
     var stage = StageSettings()
@@ -554,6 +685,7 @@ struct Settings {
     func apply() {
         Theme.current = palette
         UIScale.factor = scale
+        UIFontFamily.name = UIFontFamily.resolve(fontFamily)
     }
 
     // Resolved per open (like the rest of Settings), so toggling macOS
@@ -608,6 +740,7 @@ struct Settings {
         if let sc = obj["scale"] as? Double {
             s.scale = min(max(CGFloat(sc), UIScale.range.lowerBound), UIScale.range.upperBound)
         }
+        if let f = obj["fontFamily"] as? String { s.fontFamily = f }
         if let t = obj["theme"] as? String { s.theme = t }
         if let t = obj["themeLight"] as? String { s.themeLight = t }
         if let t = obj["themeDark"] as? String { s.themeDark = t }

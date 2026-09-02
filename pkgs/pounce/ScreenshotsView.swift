@@ -42,7 +42,7 @@ struct ScreenshotsView: View {
             if filtered.isEmpty {
                 Text("No screenshots found")
                     .foregroundColor(Theme.subtext0)
-                    .font(.system(size: pt(13)))
+                    .font(uiFont(pt(13)))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
@@ -97,11 +97,11 @@ struct ScreenshotRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name)
                     .foregroundColor(Theme.text)
-                    .font(.system(size: pt(13), weight: .medium))
+                    .font(uiFont(pt(13), weight: .medium))
                     .lineLimit(1).truncationMode(.middle)
                 Text(relativeTime(entry.ts))
                     .foregroundColor(Theme.subtext0)
-                    .font(.system(size: pt(11)))
+                    .font(uiFont(pt(11)))
                     .lineLimit(1)
             }
             Spacer(minLength: pt(4))
@@ -132,6 +132,9 @@ struct ScreenshotPreview: View {
                             .padding(pt(16))
                     } else {
                         Text("Can't preview \(entry.name)")
+                            // Named rather than left to the environment: the
+                            // launcher sets no default font (see `pounceType`).
+                            .font(uiFont(.body))
                             .foregroundColor(Theme.subtext0)
                             .padding(pt(16))
                     }
@@ -142,14 +145,14 @@ struct ScreenshotPreview: View {
                     Spacer()
                     Text(relativeTime(entry.ts)).foregroundColor(Theme.subtext0)
                 }
-                .font(.system(size: pt(11)))
+                .font(uiFont(pt(11)))
                 .padding(.horizontal, pt(16))
                 .frame(height: pt(32))
             }
         } else {
             Text("No screenshots yet")
                 .foregroundColor(Theme.subtext0)
-                .font(.system(size: pt(13)))
+                .font(uiFont(pt(13)))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

@@ -93,7 +93,7 @@ struct PageSwitcherView: View {
         VStack(spacing: 0) {
             if state.groups.isEmpty {
                 Text("No pages")
-                    .font(.system(size: pt(14), design: .rounded))
+                    .font(uiFont(pt(14), design: .rounded))
                     .foregroundColor(Theme.subtext0)
                     .frame(height: PageSwitcherLayout.headerHeight)
                     .frame(maxWidth: .infinity)
@@ -151,7 +151,7 @@ struct PageGroupCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: pt(8)) {
                 Text(group.name)
-                    .font(.system(size: pt(11), weight: .bold, design: .rounded))
+                    .font(uiFont(pt(11), weight: .bold, design: .rounded))
                     .foregroundColor(isSelected ? Theme.mauve : Theme.blue)
                     .padding(.horizontal, pt(7))
                     .padding(.vertical, pt(2))
@@ -166,7 +166,7 @@ struct PageGroupCard: View {
                 }
                 if !group.windows.isEmpty {
                     Text(group.windows.count == 1 ? "1 window" : "\(group.windows.count) windows")
-                        .font(.system(size: pt(10), design: .rounded))
+                        .font(uiFont(pt(10), design: .rounded))
                         .foregroundColor(Theme.subtext0)
                 }
                 Rectangle()
@@ -178,7 +178,7 @@ struct PageGroupCard: View {
 
             if group.windows.isEmpty {
                 Text("windows not listed yet")
-                    .font(.system(size: pt(11), design: .rounded))
+                    .font(uiFont(pt(11), design: .rounded))
                     .foregroundColor(Theme.subtext0)
                     .padding(.leading, PageSwitcherLayout.textInset)
                     .frame(height: PageSwitcherLayout.windowRowHeight, alignment: .leading)
@@ -190,7 +190,7 @@ struct PageGroupCard: View {
                 // more windows than the card draws.
                 if overflow > 0 && i == shown - 1 {
                     Text("+\(overflow + 1) more")
-                        .font(.system(size: pt(11), design: .rounded))
+                        .font(uiFont(pt(11), design: .rounded))
                         .foregroundColor(Theme.subtext0)
                         .padding(.leading, PageSwitcherLayout.textInset)
                         .frame(height: PageSwitcherLayout.windowRowHeight,
@@ -234,13 +234,13 @@ struct PageWindowRow: View {
             .frame(width: pt(16), height: pt(16))
 
             Text(window.title)
-                .font(.system(size: pt(12), design: .rounded))
+                .font(uiFont(pt(12), design: .rounded))
                 .foregroundColor(Theme.text)
                 .lineLimit(1)
 
             if window.title != window.appName {
                 Text(window.appName)
-                    .font(.system(size: pt(11), design: .rounded))
+                    .font(uiFont(pt(11), design: .rounded))
                     .foregroundColor(Theme.subtext0)
                     .lineLimit(1)
             }
