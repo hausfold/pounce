@@ -187,6 +187,19 @@ final class PounceUI {
 
     private var lingerItem: DispatchWorkItem?
     private var spinnerItem: DispatchWorkItem?
+    // A fade that has already STARTED is the one teardown cancelLinger cannot
+    // take back: its work item has fired, and NSAnimationContext runs the
+    // completion handler whatever happens next. A next step's present() landing
+    // inside those 120 ms therefore had its brand-new window ordered out by the
+    // PREVIOUS step's completion handler — and because that orderOut is the only
+    // silent hide in the whole daemon (every other one logs a "dismiss via"),
+    // the failure had no window, no error and no trace: the client stayed
+    // blocked until the NEXT request released it with an empty answer. That is
+    // exactly what "pick the repo and the prompt box doesn't come up, do it
+    // again and it does" was. So stamp each fade, and let present() disown one
+    // mid-flight AND stop the animation driving it.
+    private var fadeToken = 0
+    private var fading = false
     private var resizePending = false   // coalesces a keystroke's onResize burst into one deferred refit
     var resultSink: ((String) -> Void)?
 
@@ -300,21 +313,38 @@ final class PounceUI {
 
     func present() {
         cancelLinger()
+        let interrupted = abortFade()
         state.isLoading = false   // new content replaces any in-flight spinner
         let fresh = !window.isVisible
+        // DIAGNOSTIC (two-step present race). This and `faded out` below are
+        // what make a window that vanished with no dismissal legible at all:
+        // that line is the daemon's ONE silent hide, and `interruptedFade=true`
+        // here is this fix catching one. NOT on the launcher, which logs its
+        // own timing line and is the ~12 ms warm path the in-process hotkey
+        // exists for — a step arriving over the socket has already paid a
+        // process spawn, so one NSLog is free there and nowhere else.
+        if !state.isLauncher {
+            NSLog("pounce DIAG: step present fresh=\(fresh) interruptedFade=\(interrupted) appActive=\(NSApp.isActive)")
+        }
         // The palette is re-read per open; the window isn't rebuilt. Re-point
         // the chrome at whatever `Theme.current` just became.
         if let blur = window.contentView as? NSVisualEffectView { PounceUI.applyChrome(blur) }
 
-        if fresh {
-            // Record who had focus before we steal it, so an auto-paste commit can
-            // hand focus back and ⌘V into the right app. Skip our own process so a
-            // stale activation can't capture pounce itself.
+        // Record who had focus before we steal it, so an auto-paste commit can
+        // hand focus back and ⌘V into the right app. Skip our own process so a
+        // stale activation can't capture pounce itself. Keyed on "we have nobody"
+        // rather than on `fresh`: a `.linger` commit hands focus back and nils
+        // this, so a step presenting into that still-visible window would
+        // otherwise have nowhere to paste — while a chained step, which never
+        // let go, keeps the app it captured on the way in.
+        if capturedApp == nil {
             let front = NSWorkspace.shared.frontmostApplication
             if front?.processIdentifier != NSRunningApplication.current.processIdentifier {
                 capturedApp = front
             }
+        }
 
+        if fresh {
             // First appear: size + position instantly (nothing to animate from).
             // Force layout first so fittingSize reflects the content the caller
             // JUST reset/loaded, not whatever taller view (e.g. clipboard
@@ -365,7 +395,14 @@ final class PounceUI {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.resizeToFit()
-            if fresh { self.window.alphaValue = 1 }
+            // Unconditional, not `if fresh`. A fresh open needs it because the
+            // window was held dark until it was positioned — but a present that
+            // INTERRUPTED a fade is by construction non-fresh (the fade never
+            // ordered the window out), and if that interrupt failed to take,
+            // this is the only line left that can put the alpha back. Costs a
+            // redundant assignment on the swap path; the alternative costs a
+            // window that is ordered in, laid out, key and invisible.
+            self.window.alphaValue = 1
         }
     }
 
@@ -517,6 +554,7 @@ final class PounceUI {
 
     func hideNow() {
         cancelLinger()
+        _ = abortFade()
         window.orderOut(nil)
     }
 
@@ -578,13 +616,57 @@ final class PounceUI {
     }
 
     private func fadeOut() {
+        fadeToken &+= 1
+        let token = fadeToken
+        fading = true
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.12
             window.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            self?.window.orderOut(nil)
-            self?.window.alphaValue = 1
-            self?.capturedApp = nil
+            // A fade present() has since disowned owns nothing: the window it was
+            // told to put away is showing the NEXT step's content.
+            guard let self = self, self.fadeToken == token else { return }
+            self.fading = false
+            NSLog("pounce DIAG: faded out")
+            self.window.orderOut(nil)
+            self.window.alphaValue = 1
+            self.capturedApp = nil
         })
+    }
+
+    // Stop a fade mid-flight and disown its completion handler; answers whether
+    // there was one, for the diagnostic.
+    //
+    // Three ways of saying "alpha is 1", because each covers a hole the others
+    // leave and the failure they guard against is the very bug this fixes — a
+    // window ordered in, laid out, key and fully TRANSPARENT, which reads from
+    // the outside exactly like the vanished one. A plain `window.alphaValue = 1`
+    // is not enough on its own: NSWindow's animator drives that property on its
+    // own timer and takes it straight back down on the next tick. Whether a
+    // ZERO-DURATION animator call actually stops an in-flight window animation
+    // is undocumented (duration 0 is also the one value AppKit may short-circuit
+    // to a direct set — i.e. possibly the path that doesn't take), so it is not
+    // trusted alone either. The deferred re-assert is what closes it: by then
+    // the interrupted fade's own 0.12 s has elapsed, so whatever the first two
+    // did, this one sticks — unless a NEW fade has legitimately begun since,
+    // which the token and `fading` both rule out.
+    @discardableResult
+    private func abortFade() -> Bool {
+        guard fading else { return false }
+        fading = false
+        fadeToken &+= 1
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0
+            window.animator().alphaValue = 1
+        }
+        window.alphaValue = 1
+        let token = fadeToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self = self, self.fadeToken == token, !self.fading,
+                  self.window.isVisible, self.window.alphaValue < 1 else { return }
+            NSLog("pounce DIAG: re-asserted alpha after an interrupted fade")
+            self.window.alphaValue = 1
+        }
+        return true
     }
 }
