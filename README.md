@@ -68,4 +68,16 @@ configures all of the above for you.
 - [`AGENTS.md`](./AGENTS.md) — hacking on pounce: the build, the layout, the invariants
 - `pounce --help` · `pounce doctor` — the authoritative flag list, and what to run when a key does nothing
 
+## thanks
+
+Nobody here yet. Everyone who tried pounce early and said what was wrong goes in this
+list: a name, a handle, a link, or nothing at all if you'd rather stay off it. Your
+call.
+
+[Open an issue](https://github.com/hausfold/pounce/issues) or mail
+julien@hausfold.co. There's no telemetry in pounce, so that's the only way we ever
+find out.
+
+<!-- add contributors below, one line each -->
+
 <p align="center"><a href="https://hausfold.co">⌂ hausfold</a></p>
