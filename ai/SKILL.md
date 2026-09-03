@@ -37,7 +37,8 @@ the user saying no, not a reason to retry.
 | `-i <sf-symbol>` | the icon beside it — a **real** SF Symbol name; an unknown one silently draws nothing |
 | `--query <text>` | open with the box pre-filled, caret at the end |
 | `--actions <spec>` | label the action bar — **only when there are no rows**: `"Spawn\|cmd:Screenshot\|opt:Drafts"` |
-| `--chain [keys]` | this commit feeds *another* pounce step — holds the window up instead of fading |
+| `--chain [keys]` | a TYPED-TEXT commit feeds *another* pounce step — holds the window up instead of fading |
+| `--chain-rows [keys]` | the same for a picked **row**. Two flags because one step often wants opposite answers for ↵ |
 | `--draft <key>` | keep typed text on dismissal, filed under `<key>` |
 | `--dial <spec>` | an option the user cycles in place with ⇥ / ⇧⇥: `"model=sonnet\|opus\|haiku"`. Repeatable. **Changes the output shape** — see below |
 | `--grid` | lay the rows out as cards, two to a row — for a step offering **things** (projects, machines, images) rather than names. ↑↓ move by a card row, ←→ by one card (at the ends of the typed text; inside it they still move the caret). Purely a shape; output is unchanged, and `--launcher` ignores it |

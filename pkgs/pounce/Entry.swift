@@ -20,11 +20,17 @@ enum Main {
         so one step can offer several verbs. Shift+Return inserts a newline;
         Esc clears the box before a second Esc dismisses it.
 
-        --chain [keys]   these commits feed another pounce step — hold the
-                         window up with the loading skeleton instead of fading
-                         out. Comma-separated (default "enter"); name only the
-                         actions whose follow-up is another palette, so one
-                         that needs the screen (⌘↵ → screencapture) still fades.
+        --chain [keys]   these TYPED-TEXT commits feed another pounce step —
+                         hold the window up with the loading skeleton instead
+                         of fading out. Comma-separated (default "enter"); name
+                         only the actions whose follow-up is another palette,
+                         so one that needs the screen (⌘↵ → screencapture)
+                         still fades.
+        --chain-rows [keys]
+                         the same, for a picked ROW. Separate from --chain
+                         because one step often wants opposite answers for the
+                         same key — ↵ on a search box that re-opens the picker
+                         chains, ↵ on a row that opens a window does not.
         --actions <spec> label the action bar for a step with no rows:
                          "Spawn|shift:New line|cmd:Screenshot|opt:Drafts"
         --draft <key>    keep the typed text on Esc / click-away, filed under
@@ -664,6 +670,7 @@ struct Invocation {
     // out and re-opening. Only free-text commits are affected: picking a row
     // still lingers, because a row's follow-up may be a terminal action.
     var chainActions: Set<String> = []
+    var chainRowActions: Set<String> = []
     // Action-bar labels for a step that shows no rows ("Spawn|opt:Drafts").
     var actionSpec: String?
     // Where to file the typed text if this step is dismissed rather than
@@ -1617,6 +1624,9 @@ enum DaemonMode {
             // daemon older than the flag simply never sees it and draws the
             // list — the step still works, it just isn't a grid.
             if p.count > 11 && p[11] == "1" { inv.grid = true }
+            if p.count > 12 && !p[12].isEmpty {
+                inv.chainRowActions = Set(p[12].split(separator: ",").map(String.init))
+            }
             itemLines = Array(lines.dropFirst())
         }
 
@@ -1656,6 +1666,7 @@ enum DaemonMode {
                 state.load(lines: itemLines, placeholder: inv.placeholder, icon: inv.icon,
                            launcher: inv.launcher, maxEmpty: inv.maxEmpty,
                            chainActions: inv.chainActions,
+                           chainRowActions: inv.chainRowActions,
                            freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
                            draftKey: inv.draftKey, seedQuery: inv.query ?? "",
                            dials: inv.dialSpec.map(Dial.parse) ?? [],
@@ -1702,6 +1713,14 @@ enum ClientMode {
             case "--grid":              inv.grid = true
             case "--draft":             if !args.isEmpty { inv.draftKey = args.removeFirst() }
             case "--query":             if !args.isEmpty { inv.query = args.removeFirst() }
+            case "--chain-rows":
+                // Same optional-list grammar as --chain below, and the same
+                // don't-swallow-a-following-flag guard.
+                if let next = args.first, !next.hasPrefix("-") {
+                    inv.chainRowActions = Set(args.removeFirst().split(separator: ",").map(String.init))
+                } else {
+                    inv.chainRowActions = ["enter"]
+                }
             case "--chain":
                 // The action list is optional and bare `--chain` still means
                 // "chain the plain Return", which is what every existing caller
@@ -1800,7 +1819,11 @@ enum ClientMode {
         let dialSpec = (inv.dialSpec ?? "")
             .replacingOccurrences(of: "\t", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
-        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\t\(Drafts.encode(inv.query ?? ""))\t\(dialSpec)\t\(inv.grid ? "1" : "")\n"
+        // Field 13 (--chain-rows). Appended like every field before it, so a
+        // daemon older than the flag never sees it and a row pick lingers as it
+        // always did — the step still works, it just isn't held.
+        let chainRows = inv.chainRowActions.sorted().joined(separator: ",")
+        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\t\(chain)\t\(inv.actionSpec ?? "")\t\(inv.draftKey ?? "")\t\(Drafts.encode(inv.query ?? ""))\t\(dialSpec)\t\(inv.grid ? "1" : "")\t\(chainRows)\n"
         for line in stdinLines { payload += line + "\n" }
 
         if let data = payload.data(using: .utf8) {
@@ -1841,6 +1864,7 @@ enum ClientMode {
             state.load(lines: lines, placeholder: inv.placeholder, icon: inv.icon,
                        launcher: inv.launcher, maxEmpty: inv.maxEmpty,
                        chainActions: inv.chainActions,
+                       chainRowActions: inv.chainRowActions,
                        freeTextActions: inv.actionSpec.map(ItemAction.parseSpec) ?? [],
                        draftKey: inv.draftKey, seedQuery: inv.query ?? "",
                        dials: inv.dialSpec.map(Dial.parse) ?? [],

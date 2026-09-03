@@ -148,8 +148,20 @@ final class DaemonState: ObservableObject {
     // because one step can chain on one modifier and not another: ⌥↵ "show my
     // drafts" is a second picker and should hold the window, while ⌘↵ "let me
     // drag out a screenshot" needs the palette off the screen first. Empty →
-    // nothing chains. Row picks are unaffected (see buildCommit).
+    // nothing chains. FREE TEXT only — `--chain-rows` below is the row half, and
+    // they are two sets rather than one because a single step routinely wants
+    // opposite answers for the same key: haus's Lanes picker chains ↵ on typed
+    // text (a transcript search, which re-opens this picker) and must NOT chain
+    // ↵ on a row (which opens a lane window and presents nothing after it).
     var chainActions: Set<String> = []
+    // --chain-rows: the same question asked of a picked ROW, and the reason a
+    // PICKER step can hold the window at all. Without it `buildCommit`'s
+    // `.plain` case lingered whatever the caller said, so the next step's
+    // present() had to race the linger's fade-out — see Window.swift's fade
+    // token for what that cost. Keyed by action like `chainActions`; a row that
+    // declares nothing for the modifier you held falls back to "enter", so a
+    // step whose rows carry no action spec needs only "enter" here.
+    var chainRowActions: Set<String> = []
     // --actions: the label spec for a free-text step's action bar. That bar is
     // otherwise drawn only for a selected ROW, which leaves a step that asks for
     // typed text with nowhere to say what ⌘↵ / ⌥↵ / ⇧↵ do.
@@ -284,6 +296,7 @@ final class DaemonState: ObservableObject {
         badges = [:]
         settingsMaxPerPane = Int.max
         chainActions = []
+        chainRowActions = []
         freeTextActions = []
         draftKey = nil
         dials = []
@@ -506,7 +519,8 @@ final class DaemonState: ObservableObject {
     }
 
     func load(lines: [String], placeholder: String?, icon: String?, launcher: Bool, maxEmpty: Int?,
-              chainActions: Set<String> = [], freeTextActions: [ItemAction] = [],
+              chainActions: Set<String> = [], chainRowActions: Set<String> = [],
+              freeTextActions: [ItemAction] = [],
               draftKey: String? = nil, seedQuery: String = "", dials: [Dial] = [],
               grid: Bool = false) {
         globalIcon = icon
@@ -517,6 +531,7 @@ final class DaemonState: ObservableObject {
         // is therefore the flag being ignored, not an error.
         self.grid = grid && !launcher
         self.chainActions = chainActions
+        self.chainRowActions = chainRowActions
         self.freeTextActions = freeTextActions
         self.draftKey = draftKey
         // Each dial opens on the value it committed last time (see DialMemory).
@@ -901,6 +916,13 @@ final class DaemonState: ObservableObject {
             loadingTitle = item.title
             loadingIcon = item.icon ?? "magnifyingglass"
         }
+        // A chained ROW seeds the loading header from THIS step's own prompt,
+        // because a row has no title of its own to carry forward — the same
+        // seeding commitText does, for the same reason.
+        if item.kind == .plain, chainRowActions.contains(firedAction ?? "") {
+            loadingTitle = placeholderText
+            loadingIcon = globalIcon ?? "magnifyingglass"
+        }
         onCommit?(buildCommit(item, action: action))
     }
 
@@ -1060,7 +1082,13 @@ final class DaemonState: ObservableObject {
             // Same opt-in middle field as commitText: a --dial caller reads its
             // dials back whether the user picked a row or typed free text.
             let body = takeDialField().map { "\($0)\t\(item.raw)" } ?? item.raw
-            return Commit(clientString: "\(a)\t\(body)", disposition: .linger, appLaunch: nil)
+            // --chain-rows, NOT --chain: a picker's rows and its typed text are
+            // two different questions (see chainRowActions). Chained, the window
+            // holds its loading skeleton for the step that follows instead of
+            // lingering out into a fade that step's present() has to race.
+            return Commit(clientString: "\(a)\t\(body)",
+                          disposition: chainRowActions.contains(a) ? .loading : .linger,
+                          appLaunch: nil)
         case .answer:
             // Unreachable — commit() routes .answer to commitAnswer first.
             return Commit(clientString: item.payload, disposition: .hideNow, appLaunch: nil)
