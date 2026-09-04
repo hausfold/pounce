@@ -197,12 +197,18 @@ jobs:
   # nix/release.nix. Rewrite the pin on main so a downstream `bench ship` can
   # ripple the new release into haus's lock. The version/sha lines are CI-owned;
   # humans never bump them (AGENTS.md's routing table).
+  # Concurrency keeps two near-simultaneous tags from interleaving: the
+  # in-progress pin push is cancelled and the newest tag re-runs, so the pin
+  # always ends up pointing at the newest release.
   bump-pin:
     name: bump nix/release.nix
     needs: release
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: bump-pin
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -225,6 +231,12 @@ jobs:
           git config user.name "haus-release[bot]"
           git config user.email "haus-release@users.noreply.github.com"
           git commit -am "pounce ${VER} (nix release pin)"
+          # The release job ran ~10-20 min; anything that landed on main in the
+          # meantime would reject the push from the checkout snapshot, and the
+          # release would ship with a stale pin. Rebase the pin commit onto
+          # fresh main first — a rebase conflict here means a human hand-edited
+          # the CI-owned lines, and failing loudly is the right answer.
+          git pull --rebase origin main
           git push
 
   bump-tap:
