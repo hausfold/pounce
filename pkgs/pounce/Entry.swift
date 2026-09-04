@@ -202,6 +202,11 @@ enum Main {
     docs:   https://hausfold.co/docs/pounce/config/
     """
 
+    // Every verb below is POSITIONAL (`pounce doctor`, not `--doctor`), and that
+    // is a contract rather than a taste: a script probes `pounce --help` for a
+    // verb's name before calling it, because an older binary that has never
+    // heard of one falls straight through to ClientMode and opens the palette
+    // instead of failing.
     static func main() {
         let args = CommandLine.arguments
         if args.contains("--help") || args.contains("-h") {
@@ -210,41 +215,35 @@ enum Main {
             // pounceVersion comes from Version.generated.swift (see build.sh).
             print("pounce \(pounceVersion)")
         } else if args.count >= 2 && args[1] == "doctor" {
-            // Positional, like `focus`: a health check for the hotkey path that
-            // never opens the palette.
+            // A health check for the hotkey path that never opens the palette.
             DoctorMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "report" {
-            // Positional, like `doctor` — and next to it on purpose: this is
-            // what you run when doctor's answer is "that all looks fine".
+            // Next to `doctor` on purpose: this is what you run when doctor's
+            // answer is "that all looks fine".
             ReportMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "skill" {
-            // Positional, like `doctor` and `report`. The agent-surface
-            // standard's A3 verb: print the SKILL.md compiled into this binary,
-            // or write it into the agent clients on this Mac. Never touches the
-            // daemon and never opens a window — an agent runs it on a machine it
-            // has just met.
+            // The agent-surface standard's A3 verb: print the SKILL.md compiled
+            // into this binary, or write it into the agent clients on this Mac.
+            // Never touches the daemon and never opens a window — an agent runs
+            // it on a machine it has just met.
             SkillMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "run" {
-            // Positional, like `doctor` and `focus`: run one item by its key
-            // ("cmd:emoji", "mode:clipboard", "app:/Applications/Foo.app").
-            // The escape hatch for anyone whose keystrokes are already owned by
-            // an external binder — AeroSpace binding modes, skhd, a Shortcut —
-            // so a two-step there can drive pounce without pounce owning a key.
+            // Run one item by its key ("cmd:emoji", "mode:clipboard",
+            // "app:/Applications/Foo.app"). The escape hatch for anyone whose
+            // keystrokes are already owned by an external binder — AeroSpace
+            // binding modes, skhd, a Shortcut — so a two-step there can drive
+            // pounce without pounce owning a key.
             RunMode.run(target: args.count >= 3 ? args[2] : nil)
         } else if args.count >= 2 && args[1] == "list" {
-            // Positional, like `doctor` and `run` — and next to `run` on
-            // purpose: this is the verb that tells you what `run` can be given,
-            // and what each of those will do to the machine.
+            // Next to `run` on purpose: this is the verb that tells you what
+            // `run` can be given, and what each of those will do to the machine.
             ListMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "drafts" {
-            // Positional, like `focus`/`doctor`/`config`. Pure file I/O — never
-            // opens a window and never touches the daemon, so a command script
-            // can list/prune drafts without a palette flashing up.
+            // Pure file I/O — never opens a window and never touches the
+            // daemon, so a command script can list/prune drafts without a
+            // palette flashing up.
             DraftsMode.run(args: Array(args.dropFirst(2)))
         } else if args.count >= 2 && args[1] == "focus" {
-            // Positional on purpose: scripts probe `pounce --help` for
-            // "focus" before calling, so an older binary never falls through
-            // to ClientMode and opens the palette by accident.
             FocusMode.run(args: Array(args.dropFirst(2)))
         } else if let i = args.firstIndex(of: "--copy-file"), i + 1 < args.count {
             CopyFileMode.run(path: args[i + 1])
@@ -269,20 +268,17 @@ enum Main {
             // BluetoothGrant.swift for why blueutil can't do this itself).
             BluetoothGrant.request()
         } else if args.count >= 2 && args[1] == "settings" {
-            // Positional like `config`/`focus`/`doctor` (see those branches for
-            // why). Opens the Settings window — in the DAEMON when one is
-            // running, so the window belongs to the process that outlives this
-            // one, and in this process when it isn't.
+            // Opens the Settings window — in the DAEMON when one is running, so
+            // the window belongs to the process that outlives this one, and in
+            // this process when it isn't.
             SettingsMode.run()
         } else if args.count >= 2 && args[1] == "config" {
-            // Positional like `focus`/`doctor` (see those branches for why).
             // `pounce config init` writes an annotated config.json: every
             // setting at its default, documented, and commented out.
             ConfigMode.run(op: args.count >= 3 ? args[2] : nil, args: args)
         } else if args.contains("--migrate-autostart") {
             Autostart.migrateLegacyRegistration()
         } else if args.count >= 2 && args[1] == "autostart" {
-            // Positional like `focus`/`doctor` (see those branches for why).
             // Manages the self-registered login item — the drag-install
             // counterpart of `brew services start pounce` (LoginItem.swift).
             Autostart.run(args: Array(args.dropFirst(2)))

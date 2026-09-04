@@ -17,13 +17,14 @@ its command scripts. Nothing else.
 | Want to change… | Repo |
 |---|---|
 | the pounce app (UI, ranking, launcher) or a command script | `~/code/workshop/pounce` ← **you are here** |
-| how pounce is *launched* on the system (launchd, signing, ⌘Space) | `~/code/workshop/haus` → `modules/launcher` |
+| how pounce is *launched* on the system (launchd, ⌘Space, which app the daemon runs) | `~/code/workshop/haus` → `modules/launcher` |
 | pounce's colors | `~/code/workshop/nebelung` |
 | this machine's pounce settings (`config.json`) | haus's `modules/launcher`, or the consumer host |
 
-> **Whatever agent you are, enforce this.** If a request is about
-> launching/signing pounce, theming it, or per-machine settings, STOP and point
-> at the right repo before editing here.
+> **Whatever agent you are, enforce this.** If a request is about launching
+> pounce, theming it, or per-machine settings, STOP and point at the right repo
+> before editing here. Signing is the one that reads like haus's and isn't:
+> release.yml here is what Developer-ID signs and notarizes the app.
 
 > **Hotkey exception.** The daemon *can* register a global hotkey in-process
 > (`HotKey.swift`, config `hotkey`) so ⌘Space→palette skips the shell/client
@@ -385,8 +386,12 @@ something comes out when something goes in.
   exactly like an app with nothing open, and `AutoQuitPolicy` must not confuse
   the two.
 - **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost
-  on rebuild. haus (`modules/launcher`) re-signs a stable copy to keep the grant
-  — that logic lives there, not here. Here, just: `pounce
+  on rebuild. That is why haus (`modules/launcher`) runs `pkgs.pounce-app`, the
+  notarized release this repo's CI publishes: its designated requirement anchors
+  on hausfold's team, so the grant survives every rebuild with nothing per-user
+  to re-sign. The one adhoc build a haus machine ever runs is `bench try`'s
+  dev-app injection, which re-signs it from a keychain identity first — that
+  logic is the workshop's, not haus's and not this repo's. Here, just: `pounce
   --request-accessibility` / `--check-accessibility`.
 - **Anything that moves**: there is ONE spring — `Motion.spring` (`Motion.swift`),
   response 0.25 / damping 0.85 — and every *move* reads it: the selection glide
@@ -435,7 +440,7 @@ checklist points back to.
 **Run the pre-PR assurance pass — every PR, not just `/ship`'d ones.** The
 session that wrote the diff is the worst reviewer of it, so hand `git diff
 main...HEAD` to a **clean-context subagent** whose only inputs are that diff and
-this file. In this repo it hunts: launchd / signing / ⌘Space *system binding*
+this file. In this repo it hunts: launchd / ⌘Space *system binding*
 work that belongs in haus's `modules/launcher`; a color that belongs in
 nebelung; a new command script or `config.json` key with no doc edit behind it;
 and a hotkey registration that collides with what the system already binds. Full
