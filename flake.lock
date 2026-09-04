@@ -68,10 +68,23 @@
         "type": "github"
       }
     },
+    "prebuilt": {
+      "flake": false,
+      "locked": {
+        "path": "./nix/dev-app",
+        "type": "path"
+      },
+      "original": {
+        "path": "./nix/dev-app",
+        "type": "path"
+      },
+      "parent": []
+    },
     "root": {
       "inputs": {
         "nebelung": "nebelung",
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": "nixpkgs_2",
+        "prebuilt": "prebuilt"
       }
     }
   },

@@ -11,10 +11,26 @@
     # packages are never realised — so this stays a pure eval.
     nebelung.url = "github:hausfold/nebelung";
     nebelung.inputs.nixpkgs.follows = "nixpkgs";
+
+    # Injection point for feel-testing a pounce SOURCE branch through `bench try`.
+    # bench builds the app from the branch in your login session (re-signed with
+    # a stable identity) and overrides this input to that built .app dir; the
+    # pounce-app package then wraps your branch's app instead of the release.
+    # Default: the empty ./nix/dev-app placeholder → the package fetches the
+    # CI-built notarized release as normal. `flake = false`: it's a plain dir.
+    prebuilt = {
+      url = "path:./nix/dev-app";
+      flake = false;
+    };
   };
 
   outputs =
-    { self, nixpkgs, nebelung }:
+    {
+      self,
+      nixpkgs,
+      nebelung,
+      prebuilt,
+    }:
     let
       systems = [
         "aarch64-darwin"
@@ -22,6 +38,9 @@
       ];
       forAll = nixpkgs.lib.genAttrs systems;
       pkgsFor = system: import nixpkgs { inherit system; overlays = [ self.overlays.default ]; };
+
+      # The CI-owned release pin (version + sha256 of the notarized tarball).
+      release = import ./nix/release.nix;
     in
     {
       # Consume pounce from anywhere: `overlays.default` puts `pounce` and
@@ -31,6 +50,17 @@
           nebelungPalette = nebelung.palette;
           nebelungLattePalette = nebelung.palettes.nebelung-latte;
         };
+        # The app haus's launcher room installs: the CI-built, Developer-ID-signed
+        # + notarized Pounce.app from the release tarball (pinned by nix/release.nix),
+        # NOT a from-source build — an ad-hoc store build would lose the macOS
+        # Accessibility grant on every rebuild, which is the whole point of this
+        # package. `pounce` above stays the from-source dev package. See
+        # nix/app-prebuilt.nix.
+        pounce-app = final.callPackage ./nix/app-prebuilt.nix {
+          inherit (release) version sha256;
+          prebuilt = prebuilt.outPath;
+        };
+
         pounce-commands = final.callPackage ./pkgs/pounce-commands { };
 
         # The agent skill (ai/SKILL.md), so a consumer can install it without
@@ -49,6 +79,7 @@
         {
           default = pkgs.pounce;
           pounce = pkgs.pounce;
+          pounce-app = pkgs.pounce-app;
           pounce-commands = pkgs.pounce-commands;
           pounce-skill = pkgs.pounce-skill;
         }

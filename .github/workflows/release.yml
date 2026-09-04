@@ -193,6 +193,40 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+  # pounce's flake wraps this release tarball, pinned by version + sha256 in
+  # nix/release.nix. Rewrite the pin on main so a downstream `bench ship` can
+  # ripple the new release into haus's lock. The version/sha lines are CI-owned;
+  # humans never bump them (AGENTS.md's routing table).
+  bump-pin:
+    name: bump nix/release.nix
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Point nix/release.nix at the new release
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          VER="${TAG#v}"
+          curl -fsSL --retry 5 --retry-delay 5 -o /tmp/pounce.tar.gz \
+            "https://github.com/hausfold/pounce/releases/download/$TAG/pounce-$TAG-macos.tar.gz"
+          SHA="$(sha256sum /tmp/pounce.tar.gz | cut -d' ' -f1)"
+          sed -i -E \
+            -e "s#^  version = \".*\";#  version = \"$VER\";#" \
+            -e "s#^  sha256 = \".*\";#  sha256 = \"$SHA\";#" \
+            nix/release.nix
+          if git diff --quiet; then
+            echo "nix/release.nix already current"
+            exit 0
+          fi
+          git config user.name "haus-release[bot]"
+          git config user.email "haus-release@users.noreply.github.com"
+          git commit -am "pounce ${VER} (nix release pin)"
+          git push
+
   bump-tap:
     name: bump hausfold/homebrew-tap
     needs: release

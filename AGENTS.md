@@ -79,6 +79,17 @@ To test inside a full machine without pushing: `bench try` from the workshop
 pinned GitHub rev — after pushing here, ripple with `bench ship` (or `nix flake
 update haus` in the consumer — whatever that flake names the input).
 
+**What haus installs is the CI-built release, not this build.** haus's launcher
+room installs `pkgs.pounce-app` (`nix/app-prebuilt.nix`): the Developer-ID
+signed + notarized Pounce.app from the release tarball, pinned by version +
+sha256 in `nix/release.nix`. That pin is CI-owned — release.yml rewrites it on
+main after every tag (haus-release[bot]); never hand-bump it, and a source
+tweak here reaches haus machines only after the next release ripples. `pounce`
+above stays the from-source dev package (`nix build`, tests, CI). Feel-testing
+a source branch on a haus machine is still `bench try`: bench builds this
+package, re-signs the app with your codesigning identity, and injects it via
+the `prebuilt` input so the release pin is ignored for that one build.
+
 ## Layout
 
 ```
