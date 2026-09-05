@@ -168,10 +168,10 @@ enum Main {
                                 destination haus already filled in — a
                                 read-only Nix symlink — is the end state
                                 holding: named, exit 0, not an EPERM. --dir
-                                with --client, or either with no value, is
-                                refused before anything is written. `pounce
-                                skill` prints it if you'd rather place it
-                                yourself.
+                                with --client, or either with no value, is a
+                                usage error (2) before anything is written.
+                                `pounce skill` prints it if you'd rather place
+                                it yourself.
 
     housekeeping:
       --daemon                  run the resident daemon (launchd uses this; also

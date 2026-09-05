@@ -139,9 +139,9 @@ enum Skill {
     /// Where `install` was asked to write, or why it was refused. Pure, so the
     /// three refusals can be pinned without a home directory: a flag with
     /// nothing after it; an empty value, which is an unset shell variable and
-    /// not a request (`--dir ""` used to resolve to `/pounce/SKILL.md`); and
-    /// `--dir` with `--client`, two answers to "where" that this used to rank
-    /// silently in `--dir`'s favour.
+    /// not a request (let through, `--dir ""` resolves to `/pounce/SKILL.md`);
+    /// and `--dir` with `--client`, two answers to "where" that must not be
+    /// ranked silently in `--dir`'s favour.
     enum Request: Equatable {
         case at(dir: String?, client: String?)
         case refused(String)
