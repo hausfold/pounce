@@ -50,14 +50,55 @@ func runSkillTests() -> Int {
     check(Skill.decide(exists: false, isSymlink: true, identical: false) == .managed,
           "a dangling symlink is still not ours to replace")
 
-    // ── what the exit code turns on ─────────────────────────────────────────
+    // ── what the receipt's `installed` means ────────────────────────────────
     check(Skill.installed([.wrote]), "a write is a success")
     check(Skill.installed([.current]), "already-installed is a success — there is nothing to retry")
     check(Skill.installed([.managed, .wrote]), "one destination taking it is enough")
-    check(!Skill.installed([.managed, .managed]),
-          "every destination managed by something else is a refusal, not a success")
+    check(Skill.installed([.managed, .managed]),
+          "every destination managed by something else is the end state holding — the skill IS at those paths")
     check(!Skill.installed([.differs]), "a refusal to clobber is a refusal")
     check(!Skill.installed([]), "no destination at all is not an install")
+
+    // ── what the exit code turns on ─────────────────────────────────────────
+    // A3 of the family standard: a file left alone because it differs is the
+    // request only partly honoured, and exits pounce's own refused code; a
+    // symlink is the end state holding and never reaches the exit code.
+    check(Skill.exitCode([.wrote], failures: 0) == 0, "a write exits 0")
+    check(Skill.exitCode([.current, .current], failures: 0) == 0, "installing twice exits 0")
+    check(Skill.exitCode([.managed, .managed], failures: 0) == 0,
+          "only symlinks is exit 0 — a 3 here has every agent on a haus machine retry with force")
+    check(Skill.exitCode([.wrote, .differs], failures: 0) == 3,
+          "one destination that differs is the request only partly honoured: 3, refused")
+    check(Skill.exitCode([.differs], failures: 0) == 3, "a refusal to clobber is 3")
+    check(Skill.exitCode([.wrote], failures: 1) == 1,
+          "a write pounce attempted and could not do is 1, not 3 — it has a path to fix")
+    check(Skill.exitCode([.differs], failures: 1) == 1,
+          "and a failure outranks a refusal, because it is the one with a next move")
+
+    // ── the install request ─────────────────────────────────────────────────
+    // The three refusals A3 names, pinned as a pure parse so they never need a
+    // home directory to prove.
+    check(Skill.parseInstall([]) == .at(dir: nil, client: nil), "no flags is discovery")
+    check(Skill.parseInstall(["--dir", "/x"]) == .at(dir: "/x", client: nil), "--dir is verbatim")
+    check(Skill.parseInstall(["--client", "codex"]) == .at(dir: nil, client: "codex"), "--client is one name")
+    check(Skill.parseInstall(["--dir", ""]) == .refused("--dir needs a path"),
+          "an empty --dir is an unset shell variable, not a path")
+    check(Skill.parseInstall(["--dir"]) == .refused("--dir needs a path"),
+          "a --dir with nothing after it says so")
+    func refusal(_ args: [String]) -> String? {
+        if case let .refused(message) = Skill.parseInstall(args) { return message }
+        return nil
+    }
+    check(refusal(["--client", ""])?.hasPrefix("--client needs one of") == true,
+          "an empty --client is refused, and names the clients")
+    check(refusal(["--client"])?.hasPrefix("--client needs one of") == true,
+          "a --client with nothing after it says so")
+    check(refusal(["--dir", "/x", "--client", "claude"])?.contains("both name a destination") == true,
+          "--dir and --client together are two answers to where — refused, not ranked")
+    check(refusal(["--client", "claude", "--dir", "/x"])?.contains("both name a destination") == true,
+          "in either order")
+    check(refusal(["--into", "/x"])?.contains("unknown flag '--into'") == true,
+          "an unknown flag is named")
 
     // ── the haus sentence ───────────────────────────────────────────────────
     // The whole point of naming haus here is that an EPERM explains nothing.

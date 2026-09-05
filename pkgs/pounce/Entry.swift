@@ -161,10 +161,15 @@ enum Main {
                                 --client claude|codex|opencode|pi   just one
                                 --dir <path>                        elsewhere
                                 --json                              a receipt
-                                Refuses rather than clobbers, and skips any
-                                destination haus already filled in — those are
-                                read-only Nix symlinks, and an EPERM explains
-                                nothing. Exits 3 if nothing took it; `pounce
+                                Refuses rather than clobbers: a file that is
+                                there and differs is left alone and the run
+                                exits 3, so a caller learns it was only partly
+                                honoured (1 if a write it attempted failed). A
+                                destination haus already filled in — a
+                                read-only Nix symlink — is the end state
+                                holding: named, exit 0, not an EPERM. --dir
+                                with --client, or either with no value, is
+                                refused before anything is written. `pounce
                                 skill` prints it if you'd rather place it
                                 yourself.
 

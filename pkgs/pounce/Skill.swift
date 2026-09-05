@@ -112,11 +112,67 @@ enum Skill {
         }
     }
 
-    /// Did any destination end up holding this skill? The exit code turns on
-    /// this and nothing else: "every candidate is managed by haus" is a refusal,
-    /// not a success, even though nothing went wrong.
+    /// Did any destination end up holding this skill — by pounce's hand, or by
+    /// whatever manages a symlink there? The `--json` receipt's `installed`. A
+    /// symlink counts: on a haus machine it is `haus.ai.skill`'s own install,
+    /// and the skill IS at that path.
     static func installed(_ decisions: [Decision]) -> Bool {
-        decisions.contains { $0 == .wrote || $0 == .current }
+        decisions.contains { $0 != .differs }
+    }
+
+    /// What the exit code turns on, and nothing else. A destination that
+    /// exists and differs is the caller's request not honoured: 3, "refused",
+    /// with nothing to retry. A write pounce attempted and could not do is 1
+    /// instead — same "it didn't land", a completely different next move, and
+    /// it wins because it is the one with a path to fix. A symlink is neither:
+    /// it is the end state holding, and a non-zero there would have every
+    /// agent on a haus machine report a broken command and retry with force
+    /// against a store path. (A3 in the workshop's agent-surface standard.)
+    static func exitCode(_ decisions: [Decision], failures: Int) -> Int32 {
+        if failures > 0 { return 1 }
+        if decisions.contains(.differs) { return 3 }
+        return 0
+    }
+
+    // MARK: The install request
+
+    /// Where `install` was asked to write, or why it was refused. Pure, so the
+    /// three refusals can be pinned without a home directory: a flag with
+    /// nothing after it; an empty value, which is an unset shell variable and
+    /// not a request (`--dir ""` used to resolve to `/pounce/SKILL.md`); and
+    /// `--dir` with `--client`, two answers to "where" that this used to rank
+    /// silently in `--dir`'s favour.
+    enum Request: Equatable {
+        case at(dir: String?, client: String?)
+        case refused(String)
+    }
+
+    static func parseInstall(_ args: [String]) -> Request {
+        var dir: String?
+        var client: String?
+        var i = 0
+        while i < args.count {
+            switch args[i] {
+            case "--dir":
+                guard i + 1 < args.count, !args[i + 1].isEmpty else {
+                    return .refused("--dir needs a path")
+                }
+                dir = args[i + 1]
+                i += 2
+            case "--client":
+                guard i + 1 < args.count, !args[i + 1].isEmpty else {
+                    return .refused("--client needs one of \(clients.joined(separator: ", "))")
+                }
+                client = args[i + 1]
+                i += 2
+            default:
+                return .refused("unknown flag '\(args[i])' — install takes --client, --dir and --json")
+            }
+        }
+        if dir != nil, client != nil {
+            return .refused("--dir and --client both name a destination — pass one")
+        }
+        return .at(dir: dir, client: client)
     }
 }
 
@@ -153,25 +209,13 @@ enum SkillMode {
     }
 
     private static func install(args: [String], json: Bool) -> Never {
-        var dir: String?
-        var client: String?
-        var i = 0
-        while i < args.count {
-            switch args[i] {
-            case "--dir":
-                guard i + 1 < args.count else { fail("--dir needs a path") }
-                dir = args[i + 1]
-                i += 2
-            case "--client":
-                guard i + 1 < args.count else {
-                    fail("--client needs one of \(Skill.clients.joined(separator: ", "))")
-                }
-                client = args[i + 1]
-                i += 2
-            default:
-                fail("unknown flag '\(args[i])' — install takes --client, --dir and --json")
-            }
+        let request: (dir: String?, client: String?)
+        switch Skill.parseInstall(args) {
+        case let .at(dir, client): request = (dir, client)
+        case let .refused(message): fail(message)
         }
+        let dir = request.dir
+        let client = request.client
 
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser.path
@@ -195,6 +239,12 @@ enum SkillMode {
                 let parent = (d as NSString).deletingLastPathComponent
                 if fm.fileExists(atPath: parent) { targets.append((client: c, dir: d)) }
             }
+        }
+        // A usage error naming the flag that would have answered, not a
+        // refusal: nothing was declined, there was nowhere to write.
+        if targets.isEmpty {
+            fail("no agent client found on this Mac — name one with "
+                 + "`--client \(Skill.clients.joined(separator: "|"))`, or a directory with `--dir <path>`")
         }
 
         var results: [[String: Any]] = []
@@ -254,32 +304,25 @@ enum SkillMode {
             ])
         }
 
-        let ok = Skill.installed(decisions)
         if json {
             Json.emit([
                 "name": Skill.name,
-                "installed": ok,
+                "installed": Skill.installed(decisions),
                 "targets": results,
             ])
         } else {
-            if targets.isEmpty {
-                FileHandle.standardError.write(Data("""
-                pounce skill: no agent client found on this Mac. Name one with \
-                `--client \(Skill.clients.joined(separator: "|"))`, or a directory with `--dir <path>`.
-
-                """.utf8))
-            }
             for line in lines { print(line) }
-            if !ok && !targets.isEmpty {
+            // The whole run was somebody else's install holding. Say that in a
+            // sentence rather than leaving a list of "skipped" to read as a
+            // failure: nothing was asked for that does not already exist.
+            let touched = decisions.contains { $0 == .wrote || $0 == .current }
+            if !touched, failures == 0, !decisions.isEmpty, !decisions.contains(.differs) {
                 print("")
-                print("Nothing installed — every place it would go is already spoken for. "
-                      + "`pounce skill` prints it if you want to place it yourself.")
+                print("Nothing to install: every destination is already a symlink something else manages "
+                      + "(on a haus machine, haus.ai.skill). `pounce skill install --dir <path>` places a "
+                      + "copy somewhere nothing else manages.")
             }
         }
-        // 3 is "refused": pounce declined, and there is nothing to retry. A
-        // write that was attempted and failed is 1 instead — same "it didn't
-        // land", completely different next move.
-        if ok { exit(0) }
-        exit(failures > 0 ? 1 : 3)
+        exit(Skill.exitCode(decisions, failures: failures))
     }
 }
