@@ -58,8 +58,9 @@ freeing ⌘Space from Spotlight),
 [every flag](https://hausfold.co/docs/pounce/cli/).
 
 Inside a haus machine it's [the Launcher
-room](https://hausfold.co/docs/haus/rooms/launcher/), which installs, signs and
-configures all of the above for you.
+room](https://hausfold.co/docs/haus/rooms/launcher/), which installs and
+configures all of the above for you, running the same notarized release
+Homebrew hands you.
 
 ## in this repo
 
