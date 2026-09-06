@@ -27,5 +27,7 @@
     <string>Pounce shows a live camera preview for the camera peek command.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Pounce lists and connects Bluetooth devices for the bluetooth command.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Pounce's Lock Screen and Force Quit commands drive System Events; a command you write yourself may drive another app the same way.</string>
 </dict>
 </plist>

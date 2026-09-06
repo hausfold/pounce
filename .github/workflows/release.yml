@@ -92,7 +92,8 @@ jobs:
         run: |
           IDENTITY="$(security find-identity -v -p codesigning "$SIGN_KEYCHAIN" \
             | awk -F'"' '/Developer ID Application/{print $2; exit}')"
-          # Camera peek needs the hardened-runtime camera exception (Pounce.entitlements).
+          # Camera peek and the System Events commands (Lock Screen, Force Quit) need
+          # their hardened-runtime exceptions (Pounce.entitlements).
           codesign --force --options runtime --timestamp \
             --entitlements pkgs/pounce/Pounce.entitlements \
             --sign "$IDENTITY" \

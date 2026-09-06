@@ -8,5 +8,16 @@
 	     it is gated by TCC via NSBluetoothAlwaysUsageDescription in Info.plist. -->
 	<key>com.apple.security.device.camera</key>
 	<true/>
+	<!-- Two default commands send Apple events to System Events — lock.sh
+	     (the ⌃⌘Q keystroke) and force-quit.sh (the process roster) — and every
+	     command script is a child of the app, so macOS books an event it sends
+	     to another process
+	     against Pounce. Without this exception the hardened runtime refuses
+	     SILENTLY: no prompt, no error, tccd logs "requires entitlement
+	     com.apple.security.automation.apple-events but it is missing", and
+	     both commands quietly do nothing. The prompt's wording is
+	     NSAppleEventsUsageDescription in Info.plist. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>

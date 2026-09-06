@@ -393,6 +393,19 @@ something comes out when something goes in.
   dev-app injection, which re-signs it from a keychain identity first — that
   logic is the workshop's, not haus's and not this repo's. Here, just: `pounce
   --request-accessibility` / `--check-accessibility`.
+- **Automation (TCC)**: every command script is a child of the app, so an
+  Apple event it sends is booked against Pounce, and the hardened runtime
+  refuses it with no prompt and no error unless `Pounce.entitlements` carries
+  `com.apple.security.automation.apple-events`. `lock.sh` and `force-quit.sh`
+  are the two default commands that need it (both talk to System Events), and
+  so does any user command with a `tell application` in it. A plain `osascript`
+  with no `tell` — the `display notification` fallbacks, `display dialog` — is
+  not an event to another process and never needed it. The prompt macOS shows
+  on the first send reads `NSAppleEventsUsageDescription` from `Info.plist`;
+  keep that sentence naming the commands, because it is the only explanation
+  the user gets. There is no `--check-automation`, on purpose: the family's
+  deck takes an Automation grant on the user's word rather than drawing a tick,
+  so pounce offers no tick either.
 - **Anything that moves**: there is ONE spring — `Motion.spring` (`Motion.swift`),
   response 0.25 / damping 0.85 — and every *move* reads it: the selection glide
   between rows (`SelectionGlide`, one highlight body tied across rows by
