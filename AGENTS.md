@@ -1,514 +1,290 @@
 # AGENTS.md
 
-**Pounce** — a native, scriptable command palette for macOS. A small Swift daemon
-(`pkgs/pounce`, Swift sources split one-file-per-concern) plus a shell-scripted command library
-(`pkgs/pounce-commands`). Part of the [hausfold](https://github.com/hausfold) family.
-
-**This file is the one set of instructions, for every agent** — Claude Code,
-Codex, OpenCode, Cursor, Copilot alike, directly or through a one-line pointer.
-Per-client wiring lives in that client's own file; the content stays here or in
-[`.agents/`](./.agents/README.md).
+**Pounce** — a native, scriptable command palette for macOS: a Swift daemon
+(`pkgs/pounce`, one file per concern) plus a shell command library
+(`pkgs/pounce-commands`), in the [hausfold](https://github.com/hausfold) family.
+One instruction file for every client; per-client wiring is
+[`.agents/README.md`](./.agents/README.md).
 
 ## Am I in the right repo? (routing)
 
-**This repo (`~/code/workshop/pounce`) owns THE PALETTE APP** — the Swift binary and
-its command scripts. Nothing else.
+No `haus.*` option is defined here.
 
 | Want to change… | Repo |
 |---|---|
-| the pounce app (UI, ranking, launcher) or a command script | `~/code/workshop/pounce` ← **you are here** |
-| how pounce is *launched* on the system (launchd, ⌘Space, which app the daemon runs) | `~/code/workshop/haus` → `modules/launcher` |
+| the app (UI, ranking, launcher), a command script, signing and notarizing (`release.yml`) | `~/code/workshop/pounce` ← **you are here** |
+| the bug-report door: `pounce report [--print]` (`ReportMode` in `Entry.swift`, `BugReport.swift`), the palette row `report-issue-pounce.sh`, the Settings window's app menu | here; the form's `DIAG_HINT` in the workshop's `script/issue-templates.sh` names all three, and nothing checks they agree |
+| how pounce is *launched*: launchd, the launch agent, its exported `POUNCE_*` command dirs, who owns ⌘Space | `~/code/workshop/haus` → `modules/launcher` |
 | pounce's colors | `~/code/workshop/nebelung` |
-| this machine's pounce settings (`config.json`) | haus's `modules/launcher`, or the consumer host |
+| this machine's `config.json` | haus's `modules/launcher`, or the consumer host |
+| the Homebrew formula | `homebrew-tap`, CI-owned |
 
-> **Whatever agent you are, enforce this.** If a request is about launching
-> pounce, theming it, or per-machine settings, STOP and point at the right repo
-> before editing here. Signing is the one that reads like haus's and isn't:
-> release.yml here is what Developer-ID signs and notarizes the app.
+**If a request is about launching pounce, theming it, or per-machine
+settings, stop and point at the right repo before editing here.** The one
+exception to the launcher row is the in-process global hotkey (`HotKey.swift`,
+config `hotkey`), here because it is latency-critical.
 
-> **Hotkey exception.** The daemon *can* register a global hotkey in-process
-> (`HotKey.swift`, config `hotkey`) so ⌘Space→palette skips the shell/client
-> spawn — that latency-critical capability lives here. But the *system binding*
-> (the launch agent, its exported `POUNCE_*` command dirs, whether ⌘Space is
-> left to the daemon vs. an external binder) is a haus concern.
-
-## Build
+## Build, test, release
 
 ```bash
-nix build            # -> ./result/Applications/Pounce.app + ./result/bin/pounce
+nix build                  # -> ./result/Applications/Pounce.app + ./result/bin/pounce
+pkgs/pounce/tests/run.sh   # pure-logic tests, pounce-palette parse, header grammar
+script/check-skills.sh     # skill guards; CI and pkgs/pounce-skill both run it
 ```
 
-The build shells out to `/usr/bin/xcrun swiftc` (system Swift — avoids compiling the
-whole toolchain), so it needs **Xcode Command Line Tools 16 or newer** and the macOS
-build sandbox relaxed (Determinate's default). Not a pure build; that's deliberate.
-CI builds it on a `macos-15` runner on every push.
+CI (`build.yml`, `macos-15`) runs those, `shellcheck --severity=warning` over
+the command scripts, and fails on any bare `display notification`.
 
-**Two different macOS versions are in play; don't conflate them.** The *SDK* floor is
-15 — `Window.swift` overrides `contextMenuKeyDown:` / `showContextMenuForSelection:`,
-which `NSResponder.h` only declares at macOS 15, and an SDK that lacks a method cannot
-have it overridden at any target. That is why CLT 16+ is required to compile, and it
-bites `brew install --build-from-source` too, since `build.sh` is the shared compile
-step. The *deployment* floor is 14, and it has exactly one source: `MACOS_MIN` in
-`build.sh`, which feeds both the compiler's `-target` and the `LSMinimumSystemVersion`
-that `plutil` writes into the bundle — so the version the app refuses to launch on can
-never disagree with the version it was compiled for. `tests/run.sh` carries the same
-target by hand; keep the two in step. Raising either floor is user-facing — README's
-stated requirement (currently "macOS 14 Sonoma or later") and the `#available` guards
-in the sources move with it.
+`build.sh` shells out to `/usr/bin/xcrun swiftc`: **Xcode Command Line Tools
+16+**, and the macOS build sandbox relaxed (Determinate's default). *SDK* floor
+15: `Window.swift` overrides `contextMenuKeyDown:` /
+`showContextMenuForSelection:`, which `NSResponder.h` declares only there, and
+`brew install --build-from-source` needs it too. *Deployment* floor 14, from
+`MACOS_MIN` in `build.sh` alone — it feeds `-target` and the
+`LSMinimumSystemVersion` `plutil` writes; `tests/run.sh` seds it back out of
+`build.sh` rather than repeating it, and exits 1 if that assignment is renamed
+or reshaped. Raising either is user-facing: the README's "macOS 14 Sonoma or
+later" and the `#available` guards move with it. `default.nix` passes
+`POUNCE_TARGET_ARCH` from `stdenvNoCC.hostPlatform.darwinArch`; `build.sh`'s
+`uname -m` fallback is wrong under Rosetta or an `x86_64-darwin` nix.
 
-The *arch* half of that triple is a build input, not a guess: `default.nix` passes
-`POUNCE_TARGET_ARCH` from `stdenvNoCC.hostPlatform.darwinArch`. `build.sh` falls back to
-`uname -m` for non-Nix packagers, which is the builder's kernel and so is wrong under
-Rosetta or an `x86_64-darwin` nix on Apple Silicon.
-
-**A build under test cannot reach its own window while the installed daemon is
-running.** `pounce -p …` hands the whole invocation to the daemon over
-`~/.local/share/pounce/pounce.sock`, so the palette that appears is the DAEMON's
-build and the binary you just compiled draws nothing — a fix can be feel-tested
-twice against the old code without any sign that it never ran. `$HOME` is no help
-(`SocketConfig.path` comes from `homeDirectoryForCurrentUser`, which reads
-`getpwuid` and ignores the environment). Set `POUNCE_NO_DAEMON=1` to keep the
-request in-process:
+**A build under test cannot reach its own window while the installed daemon
+runs**: `pounce -p …` goes over `~/.local/share/pounce/pounce.sock`, and
+`$HOME` does not redirect it (`SocketConfig.path` reads
+`homeDirectoryForCurrentUser`). Keep it in-process:
 
 ```bash
 printf '' | POUNCE_NO_DAEMON=1 ./result/bin/pounce --actions "Go|ctrl:Other" -p "test"
 ```
 
-To test inside a full machine without pushing: `bench try` from the workshop
-(`~/code/workshop`) rebuilds the user's machine against this local checkout; the
-`rebuild-pounce` alias on the host does the same. A plain rebuild uses the
-pinned GitHub rev — after pushing here, ripple with `bench ship` (or `nix flake
-update haus` in the consumer — whatever that flake names the input).
+`bench try` from `~/code/workshop` (or the host's `rebuild-pounce` alias)
+builds this package, re-signs it and injects it through the `prebuilt` input;
+ripple a push downstream with `bench ship`.
 
-**What haus installs is the CI-built release, not this build.** haus's launcher
-room installs `pkgs.pounce-app` (`nix/app-prebuilt.nix`): the Developer-ID
-signed + notarized Pounce.app from the release tarball, pinned by version +
-sha256 in `nix/release.nix`. That pin is CI-owned — release.yml rewrites it on
-main after every tag (haus-release[bot]); never hand-bump it, and a source
-tweak here reaches haus machines only after the next release ripples. `pounce`
-above stays the from-source dev package (`nix build`, tests, CI). Feel-testing
-a source branch on a haus machine is still `bench try`: bench builds this
-package, re-signs the app with your codesigning identity, and injects it via
-the `prebuilt` input so the release pin is ignored for that one build.
+**What haus installs is the CI-built release, not this build**:
+`pkgs.pounce-app` (`nix/app-prebuilt.nix`), the Developer-ID signed and
+notarized app pinned by version + sha256 in `nix/release.nix`. `release.yml`
+rewrites that CI-owned pin on main after every tag — never hand-bump it, and a
+source change reaches haus machines only after the next release. `pounce` stays
+the from-source dev package.
+
+Releases are CalVer: `bench release pounce` stamps `version` in
+`pkgs/pounce/default.nix` and tags `v<date>`; `release.yml` checks they match,
+signs, notarizes, publishes the tarball and bumps the Homebrew tap. Never type
+a version or hand-bump the formula.
 
 ## Layout
 
 ```
-pkgs/pounce/            Swift sources (daemon/UI, one file per concern), Info.plist, emoji.json, ports
-                        Config*.swift = the settings table + its two renderers;
+pkgs/pounce/            Swift sources, Info.plist, emoji.json, ports
+                        Config*.swift = the settings table + its two renderers
                         Settings*.swift = the Settings window over them
-                        AppIcon.iconset/ = the app-icon slots build.sh feeds to iconutil.
-                        Here, not ../assets, because `src = ./.` is this dir alone
-                        Json.swift = the one writer behind every --json;
+                        AppIcon.iconset/ = app-icon slots for iconutil (here: `src = ./.` is this dir alone)
+                        Json.swift = the one writer behind every --json
                         Skill.swift = `pounce skill`, over the embedded ai/SKILL.md
-pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh (official plugins)
-pkgs/pounce-skill/      the agent skill as a derivation, for consumers — see below
+pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh
+pkgs/pounce-skill/      the agent skill as a derivation, for consumers
 ai/SKILL.md             its source, also embedded in the binary by build.sh
 script/check-skills.sh  the skill guards, run by BOTH CI and that derivation
 ```
 
 ## The agent surface (`ai/SKILL.md`)
 
-**Don't confuse it with this file.** `AGENTS.md` is for an agent working **on**
-pounce, from a checkout. [`ai/SKILL.md`](./ai/SKILL.md) is for an agent **using**
-it — on a stranger's Mac, with no checkout. It is bound by the family standard,
-[the workshop's
-`docs/agent-surface.md`](https://github.com/hausfold/workshop/blob/main/docs/agent-surface.md):
-≤150 lines, no flag dumps (that's `--help`), and the `description` frontmatter
-names **the phrases a user says**, not the features pounce has.
+[`ai/SKILL.md`](./ai/SKILL.md) is for an agent **using** pounce with no
+checkout, bound by the workshop's
+[`docs/agent-surface.md`](https://github.com/hausfold/workshop/blob/main/docs/agent-surface.md):
+≤150 lines, no flag dumps (that's `--help`), a `description` naming the phrases
+a user says. A verb, flag or exit code that changes changes it in the same PR.
+**It leads with pounce as a picker an agent hands a decision to, not as the
+launcher** — that is the capability worth loading a skill for.
 
-**The capability it leads with is not the launcher — it's `pounce` as a picker
-an agent can put in front of a human.** Pipe it lines, get `"<action>\t<the
-whole raw line>"` back on stdout, exit 1 with no output on dismissal. Every
-other palette on the Mac is something a person opens; this is the one an agent
-can hand a decision to, and it is the reason this skill is worth loading at all.
+**The output shape is published surface — keep it stable.** Pipe lines in, get
+`"<action>\t<the whole raw line>"` on stdout, exit 1 with no output on
+dismissal. Exit sites `ClientMode.run` / `ClientMode.runDirect`
+(`Entry.swift`); built in `State.swift`'s commit path, fired through
+`Window.swift`'s `resultSink`; `force-quit.sh` and `brew-services.sh` parse it
+already. `--dial` (`Dials.swift`) is the one variation: a middle field
+(`action\tname=value;…\traw`), only when the caller passed the flag.
 
-**That output shape is now published surface — keep it stable.** Both exit sites
-are in `Entry.swift`: `ClientMode.run` (the socket client, `print(result);
-exit(0)` / `exit(1)`) and `ClientMode.runDirect` (the no-daemon fallback). The
-`action\traw` string itself is built in `State.swift`'s commit path and fired
-through `Window.swift`'s `resultSink`. The repo's own command scripts already
-depend on it — `pkgs/pounce-commands/commands/force-quit.sh` and
-`brew-services.sh` both document "action&lt;TAB&gt;raw_line" — so the skill is the
-third consumer, not the first. The one sanctioned variation is `--dial`
-(`Dials.swift`): a step that declared dials gets its committed values back as
-an extra MIDDLE field (`action\tname=value;…\traw`) — strictly opt-in per
-invocation, so a caller that never passed the flag keeps the two-field shape
-forever.
-
-**The binary carries its own copy: `pounce skill`** (`Skill.swift`), and
-`pounce skill install` writes it into every agent client on the Mac. That verb
-is the whole reason a standalone user's agent ever learns pounce exists —
-Homebrew and the DMG ship no haus to install it for them — so it is not
-optional surface. `build.sh` renders `ai/SKILL.md` into
-`Skill.generated.swift` as a raw multiline literal; Nix passes the file in as
-`POUNCE_SKILL_MD` (the repo root is outside `src = ./.`) and everyone else gets
-the relative default, so **both packagings run the identical generator**. Two
-consequences worth knowing: editing the prose now rebuilds the Swift
-derivation, and `Skill.markdown` re-adds the trailing newline Swift's multiline
-literal drops — without it the installed file would differ by one byte from the
-packaged one and every re-run would report "exists and differs".
-
-`install` **refuses rather than clobbers**, per destination, and names haus when
-the destination is a Nix symlink — an `EPERM` explains nothing. Note it is
-per-destination and not "haus machines are skipped": haus installs into the
-clients its `ai.clients` names, so a haus Mac with a client haus doesn't manage
-(today, `~/.codex/skills`) gets a real file written there, correctly. It also
-never replaces a file it did not create — nothing marks a copy as ours, so a
-stale install and a deliberate edit are indistinguishable, and `.differs` tells
-the user to delete it rather than guessing on their behalf.
-
-`pkgs/pounce-skill` ships the same bytes as `pkgs.pounce-skill`
-(`$out/<skill>/SKILL.md`) for a *consumer* — haus, which shouldn't have to
-compile Swift to get a paragraph. The guards both it and CI run live in
-`script/check-skills.sh`, discovered per skill rather than listed, because
-everything they catch is invisible at runtime: a skill with broken frontmatter
-installs, lists, and never loads.
-
-**Every claim in it must be runnable.** A verb, flag or exit code that changes
-changes `ai/SKILL.md` in the same PR — and the 150-line cap is a real cap, so
-something comes out when something goes in.
+**`pounce skill` (`Skill.swift`) and `pounce skill install` are not optional
+surface** — Homebrew and the DMG ship no haus to install the skill. `build.sh`
+renders `ai/SKILL.md` into `Skill.generated.swift`; Nix passes it as
+`POUNCE_SKILL_MD`, everyone else gets the relative default. `Skill.markdown`
+re-adds the trailing newline the multiline literal drops, or every re-run
+reports "exists and differs". `install` follows agent-surface's A3 refusals: it
+names haus on a Nix symlink, writes `.differs` beside a file it will not
+clobber, and gives a client haus doesn't manage (today `~/.codex/skills`) a
+real file. `pkgs/pounce-skill` ships the same bytes as `pkgs.pounce-skill`
+(`$out/<skill>/SKILL.md`) for haus; guards in `script/check-skills.sh`.
 
 ## Patterns
 
-- **New command (plugin)**: a command is ONE self-describing script — its metadata
-  lives in a `# pounce: key = value` comment header (`name` / `description` / SF
-  Symbol `icon`; `submenu = true` for a two-step command that re-invokes `pounce`).
-  Official ones go in `pkgs/pounce-commands/commands/<id>.sh`; there is no registry
-  to edit. Three more keys say what the script DOES rather than how it looks —
-  `mutates`, `confirm`, `network` (`CommandRisk`, in `CommandRegistry.swift`) —
-  because a command is a file, usually someone else's, and the row in the palette
-  says only its name. They are the author's claim and pounce verifies none of
-  them; what they buy is `pounce list [--json]`, the read verb over the registry
-  (id, name, declarations, and the script's PATH, so the claim can be checked
-  against the file), and, for `confirm` alone, a sheet the palette puts in front
-  of the command before it runs it (`Confirm.swift`). `confirm` gates the
-  palette's invocation of the SCRIPT, so on a `submenu` command it asks before
-  the picker opens — rarely what you want, since the acting step is a second
-  `pounce` invocation the daemon cannot tell from any other. Two lines nothing
-  else says: `pounce run cmd:<id>` and a hotkey do NOT ask (the sheet belongs to
-  the palette, where a human is browsing rows; a key is someone who already named
-  the command), and the boolean grammar is `submenu`'s — `true` or `1` and
-  nothing else, so `confirm = yes` is silently false and `pounce list` is how you
-  see what actually parsed. One key the registry ACTS on rather than passes
-  through: `whenFile = <path>` names a file that vetoes the row while its first
-  line is `0` — the "is there anything to act on" question `items`'
-  `workspaces`/`bundleIds` cannot ask.
-  A FILE and not a command, because `CommandRegistry.refresh()` runs synchronously
-  on the ⌘Space keystroke; and only a literal `0` vetoes, so a missing, empty or
-  unreadable file lists the row rather than hiding it forever. It lives in BOTH
-  registry parsers — `CommandRegistry.swift` (what ⌘Space uses) and the bash
-  `pounce-palette` (what a machine without the daemon runs) — and `pounce doctor`
-  names every row it hides. **Every key lives in both:** the two parsers are one
-  grammar mirrored twice (three times counting haus's Nix copy, which reads its
-  own `cheat` key and ignores ours), pinned by `tests/fixtures/header-grammar.tsv`
-  — a golden REGISTRY LINE per fixture, which is why adding a key changes every
-  row of that table. A key the daemon honours and the shell launcher drops is a
-  command that behaves two ways depending on how the palette was opened, with
-  nothing to see either time. At runtime the palette also discovers user commands from
-  `~/.config/pounce/commands`, `$POUNCE_COMMAND_PATH`, and Nix `extraCommandDirs`
-  (later wins on filename clash, so users can shadow built-ins).
-- **Changing how the launcher ranks**: a handful of numbers, spread over five
-  files, and they are calibrated against each other — move one and the others
-  need re-deriving.
-  `Frecency.swift` holds usage as TWO decayed averages (`short`, 24h half-life —
-  what I'm doing today; `long`, 30d — who I am), each decayed **at write time**,
-  which is what stops one click un-decaying a whole history the way the old
-  single-timestamp `count` did. `shortWeight` (15) is what makes a burst able to
-  outrank a habit, and it is only meaningful against the plateaus those two
-  half-lives produce — `tests/frecency_tests.swift` pins both, so changing a
-  half-life fails there rather than silently rescaling the launcher.
-  `rankWeight` is how habit enters a TYPED query: a logarithm, because the
-  `s/(s+5)` it replaced saturated by a score of 20 and real stores span 0–350,
-  which left habit worth ~4% of the decision. `QueryMemory.swift` is the pairing
-  memory — query (and each prefix) → the row taken — and is the only thing that
-  can rank an item the fuzzy pass rejects outright (`rescueBoost`, two picks
-  minimum). `ContextMemory.swift` conditions all of it on WHERE you were — the
-  frontmost app, the workspace, a four-hour block of the day, weekday/weekend —
-  as a multiplicative `× (1 + β·lift)` where the lift is how much likelier an
-  item is under its strongest facet than in general. Deliberately small (β 0.08)
-  and promotion-only: context settles near-ties, it never buries a row for being
-  new somewhere, and typing a name still means that name. `StageSlots.swift`
-  ranks the tile strip on `long` ALONE and holds its positions, because ⌘1–⌘9
-  fire tiles and a number that moves is worse than no number.
-  `NextAction.swift` is the odd one out and stays that way ON PURPOSE: a bigram
-  (what you committed → what you committed next, inside five minutes) that never
-  enters the scoring pass at all. A confident one becomes the Stage's NEXT card,
-  taken with ⇥ — never ⏎, which belongs to the selection — so a wrong guess costs
-  a glance and can't displace the row you were reaching for.
-  All of it is pure statics over data already in memory: the scoring pass
-  runs on every keystroke over every item, so a new signal is a dictionary lookup
-  precomputed once per query in `rankedMatches` (or once per SUMMON in `load`,
-  where the context nudge and the prediction are built), never a second `Fuzzy`
-  pass. The stores each own one JSON file under `~/.local/share/pounce`, written
-  off the main thread on the commit path, and each splits its math into pure
-  statics so `tests/run.sh` can pin it without a clock or a disk.
-- **The Stage's info cards** (`Stage.swift`, `InfoCards`): **a card draws when it
-  has something to say.** The clock taught that rule by breaking it — `TODAY
-  14:32` drew on every summon, saying what the menu bar says all day, and a panel
-  element that is never new trains the eye to skip the whole strip. So the row is
-  news-first: NEXT (the prediction, rare and actionable), CLIPBOARD (invisible
-  otherwise), and TODAY only as the resting face when neither has anything. A new
-  card needs a predicate, not just a value.
-- **New quick-answer engine (inline calculator)**: the launcher answers
-  expression-shaped queries inline — math (`2*847`), units (`72 f in c`),
-  timezones (`14:00 utc in pst`) — via the engines registered in
-  `QuickAnswerHub` (`QuickAnswer.swift`, which documents the full contract).
-  An engine is one **Foundation-only** file (no AppKit/SwiftUI — the test binary
-  compiles it) whose `evaluate(query)` is synchronous, sub-millisecond, and
-  returns nil for queries it doesn't own: parse failure is the gate, there is no
-  trigger prefix. Engines needing external data read a background-refreshed
-  in-memory cache — never block a keystroke on I/O (`Currency.swift` is the
-  reference: ECB rates, 12h max-age re-checked every 6h, disk fallback, gated by
-  `quickAnswers.currency` in config.json. With the hourly update nudge
-  (`UpdateCheck.swift`, gated by `updates.check`) these are pounce's only two
-  outbound network calls — a third needs the same gate-plus-cache treatment and
-  a docs update).
-  Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer_tests.swift`.
-- **New picker glyph (emoji/symbol)**: the emoji grid is ONE mode over two
-  datasets — `emoji.json` (vendored emoji, filtered at load to what Apple Color
-  Emoji actually draws on this OS) and `symbols.json` (hand-curated plain-text
-  symbols: ⌘ ⌥ ⇧, arrows, math, typography, box drawing). Add to `symbols.json`,
-  never a new mode: the whole point is that you type "command" without first
-  deciding which set owns ⌘. A symbol must be an **ordinary character** with no
-  emoji-presentation variant — SF Symbols are private-use glyphs and paste as
-  tofu outside Apple apps, so they stay a *row icon* thing (`icon =`), never a
-  picker entry. Symbols deliberately skip the emoji-font filter (`renders` in
-  `Emoji.swift` would reject every one). `tests/symbols_tests.swift` guards
-  dupes / cross-file collisions / lowercased search text; the emoji-font-claims
-  check needs CoreText and is authoring-time only. The mode key stays `emoji`
-  (`ItemSettings.modes`) — renaming it would break users' `mode:emoji` hotkeys.
-- **Adding a setting**: three places, and the third is the one that gets forgotten.
-  The field + default on the struct in `Config.swift`, the `if let` that reads it in
-  `Settings.load()`, and an entry in **`ConfigSpec.sections`** — the table that feeds
-  BOTH `pounce config init` and the Settings window. A setting missing from the spec
-  still works; it's just absent from the annotated config and from the window, i.e.
-  undiscoverable, which is the problem both exist to fix. The spec entry can't be
-  half-written: `control:` on the field and `pane:` on the section have no defaults,
-  so a new setting with no widget and no home in the sidebar doesn't compile. Never
-  write the default *value* into the spec: entries read it off a live `Settings()`
-  (`json(s.clipboard.maxEntries)`), so a documented default can't drift from the real
-  one. Prose in the spec is user-facing; the comments on the structs are
-  maintainer-facing — neither should try to be the other. `config.json` is parsed with
-  `.json5Allowed` (comments + trailing commas — Foundation's own flag, not a
-  hand-rolled stripper), which is what lets the file people READ be the file pounce
-  reads.
-- **The Settings window** (`pounce settings` / `mode:settings` / the palette row):
-  panes of cards over that same spec — `SettingsView.swift` arranges,
-  `SettingsControls.swift` draws a `ConfigControl`, `SettingsStore.swift` reads and
-  writes. It holds **no copy of the settings**: values are read back by handing
-  `ConfigSpec.sections(defaults:)` a live `Settings.load()` (so the window shows the
-  post-clamp value pounce will actually use) and written one line at a time with
-  `ConfigWriter.apply`. **Never re-serialise config.json** — it is JSON5 with
-  generated prose in it, and a round trip through `JSONSerialization` deletes every
-  comment the user was invited to write. `ConfigWriter` refuses rather than guesses
-  (a section folded onto one line has no line to edit); its `Outcome.refused` is a
-  sentence for the user, not a log line. `SettingsChrome.swift` is a **verbatim copy**
-  of trill's `Trill/UI/SettingsChrome.swift` — keep it diffable against that and
-  perch's, and put pounce-only shapes in the other three files. A shared package was
-  weighed and rejected: those two build through Xcode, this builds through a bare
-  `swiftc` in Nix.
-- **A new `--json`, or a new read verb that needs one**: every record goes
-  through `Json.swift` — sorted keys (deterministic bytes), unescaped slashes
-  (pounce answers with paths more than anything else), and a `schema` number
-  stamped in by `Json.record`. Adding a key to a record is fine; renaming or
-  removing one is a breaking change, and the number moves for that. The flag is
-  ADDITIVE, never a migration: `drafts <key> list` keeps printing TSV because
-  haus's `spawn-agent.sh` reads it field by field, and `focus status` keeps
-  printing a bare `on`/`off` for the hush bar pill. Two shapes are settled and
-  worth copying — a read verb answers with its record on **stdout** even when
-  the answer is "no" (`drafts get --json` on a missing index prints
-  `"found": false` and still exits 1, because a caller parsing stdout should not
-  have to parse stderr to learn that), and a write verb answers with a receipt
-  naming what changed. `Json.value(_:)` is how an unknown stays `null` rather
-  than vanishing: `doctor --json` with no daemon must leave `accessibility`
-  present-and-null, since "no grant" and "no daemon" are the two things that
-  command exists to tell apart. Exit codes are the table in `pounce --help`
-  (0 ok · 1 nothing came back · 2 usage · 3 refused) — `focus` keeps its own,
-  finer one, because hush scripts read it and it predates the table.
-  **A read verb that gets its answer from the DAEMON must ask what that daemon
-  can do first.** `pounce list` wants the registry ⌘Space sees, which is built
-  from the launch agent's environment and not the caller's shell — but an unknown
-  payload falls through `handleClient` to the palette path, so a verb sent to a
-  daemon too old to know it is DRAWN, as a one-row picker on the user's screen.
-  The version cannot decide it (a checkout build and the release it came from
-  share one), so `STATUS` carries a `commands: true` capability flag and
-  `ListMode` gates on it, falling back to local discovery. A new socket verb
-  wants the same handshake.
-- **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`) carries
-  enable / alias / hotkey / hint / state for anything the palette can address, keyed by the item's
-  **frecency key** — `cmd:<id>`, `app:<path>`, `shortcut:<uuid>`, plus `mode:<name>`
-  for the built-in windows. One map, not three parallel keys, because one entry is one row of a
-  settings list. `ItemTarget` is the single parser for that grammar (it also backs
-  `pounce run <item-key>`, the escape hatch for external binders). Foundation-only so
-  `tests/run.sh` compiles it. Enable/alias apply in `DaemonState.load`; hotkeys are
-  registered once at daemon start (`DaemonMode.run`) and reported to `pounce doctor`
-  via `DaemonMode.bindingReport` — a binding that loses its combo, or names a command
-  that doesn't exist, is invisible otherwise.
-- **A new launcher item source** (apps, the Shortcuts library — `AppScanner.swift`,
-  `Shortcuts.swift`): build rows in `DaemonState.load`'s `launcher` branch, off a
-  background-refreshed in-memory snapshot, never a blocking call on the keystroke
-  (`ShortcutsStore.coldWaitBudget` is what a cold source is allowed to cost). Its
-  frecency key doubles as an `ItemTarget`, so one string is the row key, the
-  `items` override key, the hotkey target and the `pounce run` argument. **Act on
-  the selection in `Commit`, not in a new `clientString` verb** — the launcher is
-  presented by three paths (in-process hotkey, socket client, no-daemon fallback)
-  and only the first could interpret a new verb; `appLaunch` / `shortcutRun` are
-  daemon-side for exactly that reason. Note the pounce/Spotlight asymmetry
-  Shortcuts.swift documents: an app's **App Intents** are discoverable but not
-  invocable by anyone but the system, so there is nothing to add there.
-- **A launcher source that reads Apple's own data** (`SystemSettings.swift`): the
-  System Settings rows are parsed out of each pane extension's `.searchTerms`
-  plist — macOS's index behind its own settings search — never a table in this
-  repo. That's deliberate: anchors and pane names change between macOS releases,
-  and the hand-curated `settings-panes.tsv` this replaced went stale by design.
-  Two traps if you touch it: the `title` is Apple's sentence, not the UI label
-  ("Allow applications to access all user files" is Full Disk Access), so the
-  synonym list is half the searchable surface and is matched term by term, never
-  as one joined blob; and the ~700 sub-items are gated behind
-  `systemSettings.subItemMinQuery` plus a per-pane cap, because Accessibility
-  alone ships 342 of them.
-- **Leader sequences** (`"opt+space e"`, `Leader.swift`): whitespace separates steps,
-  `+` separates modifiers. Sequences sharing a leader share a `HotKeyNode`, so the
-  leader is registered once and owns a map of next steps. **Do not reach for a
-  CGEventTap here** — the second-step keys are grabbed as ordinary modifier-less
-  Carbon hotkeys only while the leader is armed (~2s), which is what keeps the whole
-  feature free of an Accessibility grant, unlike the ⌘Tab switcher. The transient
-  registrations live in their own `HotKeyManager` under a separate Carbon signature
-  so disarming can never unregister the palette key.
-- **Anything that reads the window population** (the ⌘Tab switcher, auto-quit):
-  take `DaemonMode.sharedWindowTracker()`, never a fresh `WindowTracker()`. It
-  keeps an AXObserver on *every* running app, so a second instance doubles that
-  for no new information; it's Accessibility-gated, which is why it's built on
-  demand and dropped when the grant goes away. New consumers subscribe to
-  `onCensus` — and note the census reports whether each app *answered* the AX
-  walk separately from its window count, because a busy app that timed out looks
-  exactly like an app with nothing open, and `AutoQuitPolicy` must not confuse
-  the two.
-- **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost
-  on rebuild. That is why haus (`modules/launcher`) runs `pkgs.pounce-app`, the
-  notarized release this repo's CI publishes: its designated requirement anchors
-  on hausfold's team, so the grant survives every rebuild with nothing per-user
-  to re-sign. The one adhoc build a haus machine ever runs is `bench try`'s
-  dev-app injection, which re-signs it from a keychain identity first — that
-  logic is the workshop's, not haus's and not this repo's. Here, just: `pounce
-  --request-accessibility` / `--check-accessibility`.
-- **Automation (TCC)**: every command script is a child of the app, so an
-  Apple event it sends is booked against Pounce, and the hardened runtime
-  refuses it with no prompt and no error unless `Pounce.entitlements` carries
-  `com.apple.security.automation.apple-events`. `lock.sh` and `force-quit.sh`
-  are the two default commands that need it (both talk to System Events), and
-  so does any user command with a `tell application` in it. A plain `osascript`
-  with no `tell` — the `display notification` fallbacks, `display dialog` — is
-  not an event to another process and never needed it. The prompt macOS shows
-  on the first send reads `NSAppleEventsUsageDescription` from `Info.plist`;
-  keep that sentence naming the commands, because it is the only explanation
-  the user gets. There is no `--check-automation`, on purpose: the family's
-  deck takes an Automation grant on the user's word rather than drawing a tick,
-  so pounce offers no tick either.
-- **Anything that moves**: there is ONE spring — `Motion.spring` (`Motion.swift`),
-  response 0.25 / damping 0.85 — and every *move* reads it: the selection glide
-  between rows (`SelectionGlide`, one highlight body tied across rows by
-  `matchedGeometryEffect` in a namespace the LIST owns), the dial roll, the action
-  bar's press blink. A typed re-rank is deliberately NOT one of them: the list
-  snaps into its new order the instant scoring returns — a reorder driven by
-  keystrokes retargets several times a second, and springing it both reads as
-  churn and taxes the keystroke being handled. A second
-  `.spring(response:…)` literal in the sources IS the bug. `Motion.spring` is nil
-  under System Settings › Accessibility › Reduce motion, so a new animation
-  inherits that by using it and loses it by hand-rolling one — `SkeletonRow`'s
-  loading pulse is the one deliberate non-spring (a "still working" signal has no
-  destination, and a spring has no forever), and it consults `Motion.reduceMotion`
-  by hand precisely because an indefinitely repeating pulse is what that setting
-  exists to stop. Three rules:
-  - **Latency.** Animate only frames SwiftUI was already drawing. Never delay
-    first render, and never read anything off disk to decide how to animate
-    (`Motion.reduceMotion` is cached behind an AppKit notification for that
-    reason — don't inline the `NSWorkspace` property into a row body).
-  - **Never let a transaction reach the resize.** The window's height is
-    arithmetic and instant (`pendingContentHeight` → `PounceUI.resizeToFit`, with
-    implicit animation off). Scope `.animation(_:value:)` to the subtree that
-    moves, never to an ancestor of the frame that sizes the window.
-  - **Animate a move the USER made.** A selection that jumps because the list
-    re-ranked under a keystroke is leaving a row that may be scrolled out of the
-    viewport, culled by the `LazyVStack`, or gone from the results — matched
-    geometry given a source like that swoops in from outside the panel. Both
-    lists gate on a `glideArmed` flag (disarmed in the query hook, re-armed when
-    the selection settles); a new animated list wants the same gate.
-- **Theming**: colors live in `Palette` (`Theme.swift`). The default **nebelung**
-  palette is *generated at build time* from the `nebelung` flake input's `palette`
-  output into `Palette+nebelung.generated.swift` (see `pkgs/pounce/default.nix`) —
-  don't hand-edit hex for it; change it in the nebelung repo and
-  `nix flake update nebelung`. Other palettes (e.g. `mocha`) are inlined literals.
-  Pick one at runtime with `"theme"` in `config.json`.
+- **New command (plugin)**: one script in
+  `pkgs/pounce-commands/commands/<id>.sh` (no registry), metadata in a
+  `# pounce: key = value` header — `name`, `description`, SF Symbol `icon`,
+  `submenu = true` for a two-step command that re-invokes `pounce` and reads
+  the line it prints. `mutates` / `confirm` / `network` (`CommandRisk`,
+  `CommandRegistry.swift`) are unverified claims shown by `pounce list
+  [--json]`; only `confirm` acts — a sheet (`Confirm.swift`) before the script
+  runs, so before a `submenu` picker opens, and `pounce run cmd:<id>` and
+  hotkeys never ask. Booleans are `true` or `1` only (`confirm = yes` is
+  false). `whenFile = <path>` hides the row while the file's first line is a
+  literal `0`; missing or empty lists it, and `pounce doctor` names hidden
+  rows. A file and not a command because `CommandRegistry.refresh()` runs
+  synchronously inside `presentLauncher` on every ⌘Space — nothing on that path
+  may block on a subprocess. **Every key lives in both parsers** —
+  `CommandRegistry.swift` and the bash `pounce-palette` — pinned by
+  `tests/fixtures/header-grammar.tsv` (haus's Nix copy reads only `cheat`).
+  Discovery also reads `~/.config/pounce/commands`, `$POUNCE_COMMAND_PATH` and
+  Nix `extraCommandDirs`; later wins on a clash.
+- **Ranking** is calibrated across `Frecency.swift` (decayed averages `short`,
+  24h half-life, and `long`, 30d; `shortWeight` 15; `rankWeight`, a logarithm),
+  `QueryMemory.swift` (`rescueBoost` 2.5, the bar set between one pick and two),
+  `ContextMemory.swift` (promotion-only, β 0.08), `StageSlots.swift` (tiles on
+  `long` alone, positions held because ⌘1–⌘9 fire them) and `NextAction.swift`
+  (a bigram over a five-minute `window`, outside scoring — the NEXT card, taken
+  with ⇥, never ⏎): change one number and re-derive the rest, against
+  `tests/frecency_tests.swift`. A new signal is a lookup precomputed in
+  `rankedMatches` or `load`, never a second `Fuzzy` pass. Stores live under
+  `~/.local/share/pounce`, written off the main thread.
+- **Stage info cards** (`Stage.swift`, `InfoCards`): NEXT, CLIPBOARD, TODAY as
+  the resting face. A new card needs a predicate, not just a value.
+- **Quick-answer engine**: the contract is `QuickAnswer.swift`; register in
+  `QuickAnswerHub.engines`, cases in `tests/quickanswer_tests.swift`.
+  Foundation-only, `evaluate(query)` synchronous and sub-millisecond, nil when
+  not owned, no trigger prefix. External data comes off a background cache,
+  never I/O on a keystroke — `Currency.swift` (`quickAnswers.currency`: ECB
+  rates at a 12h `maxAge`, re-checked every 6h, disk fallback) and
+  `UpdateCheck.swift` (`updates.check`, hourly) are the only outbound calls, and
+  a third needs the same gate-plus-cache.
+- **Picker glyph**: `emoji.json` (filtered at load to what Apple Color Emoji
+  draws) plus `symbols.json`. Add to `symbols.json`, never a new mode, and
+  ordinary characters only — SF Symbols paste as tofu and stay row icons
+  (`icon =`). Symbols skip `Emoji.swift`'s `renders` filter;
+  `tests/symbols_tests.swift` guards dupes. The mode key stays `emoji`
+  (`ItemSettings.modes`) or `mode:emoji` hotkeys break.
+- **Adding a setting**: field + default in `Config.swift`, the `if let` in
+  `Settings.load()`, an entry in **`ConfigSpec.sections`** (feeds `pounce config
+  init` and the Settings window; `control:` and `pane:` required). The third is
+  the step that gets forgotten, because a setting missing from the spec still
+  works — it is just absent from the annotated config and from the window. Never
+  write the default into the spec: entries read a live `Settings()`
+  (`json(s.clipboard.maxEntries)`). `config.json` is parsed `.json5Allowed`.
+- **The Settings window** (`pounce settings` / `mode:settings`):
+  `SettingsView.swift`, `SettingsControls.swift` (`ConfigControl`),
+  `SettingsStore.swift`. No copy of the settings —
+  `ConfigSpec.sections(defaults:)` over a live `Settings.load()`, written line
+  by line by `ConfigWriter.apply`. **Never re-serialise config.json**
+  (`JSONSerialization` deletes every comment); `ConfigWriter` refuses rather
+  than guesses, and `Outcome.refused` is a user sentence. `SettingsChrome.swift`
+  is a verbatim copy of trill's `Trill/UI/SettingsChrome.swift` — keep it
+  diffable against that and perch's, and put pounce-only shapes in the other
+  three files.
+- **A new `--json` or read verb**: through `Json.swift` — sorted keys,
+  unescaped slashes, `schema` from `Json.record`; renaming or removing a key
+  moves that number. Additive only: `drafts <key> list` keeps TSV (haus's
+  `spawn-agent.sh` reads it), `focus status` keeps bare `on`/`off`. A read verb
+  answers on stdout even for "no" (`drafts get --json` prints `"found": false`,
+  exits 1); a write verb prints a receipt; `Json.value(_:)` keeps unknowns
+  `null` (`doctor --json` with no daemon: `accessibility` present-and-null).
+  Exit codes are `pounce --help`'s table (0 ok · 1 nothing came back · 2 usage ·
+  3 refused); `focus` keeps its own. A daemon verb checks capability
+  first — an unknown payload falls through `handleClient` and draws as a
+  one-row picker — so `STATUS` carries `commands: true` and `ListMode` gates on
+  it.
+- **Per-item settings**: `config.json`'s `items` map (`ItemSettings.swift`),
+  keyed by frecency key — `cmd:<id>`, `app:<path>`, `shortcut:<uuid>`,
+  `mode:<name>`. `ItemTarget` is the one parser (also behind `pounce run
+  <item-key>`), Foundation-only. `enabled` and `alias` apply in
+  `DaemonState.load`, `workspaces` / `bundleIds` scope the row to a context and
+  never its `hotkey`, `hint` draws a trailing keycap for a binding pounce does
+  not register, `state` runs a read-only command whose first stdout line becomes
+  the row's badge (`Badges.swift`), and hotkeys register at `DaemonMode.run`,
+  reaching `pounce doctor` via `DaemonMode.bindingReport`.
+- **A new launcher item source** (`AppScanner.swift`, `Shortcuts.swift`): rows
+  in `DaemonState.load`'s `launcher` branch, off a background snapshot
+  (`ShortcutsStore.coldWaitBudget`). Act in `Commit`, never a new
+  `clientString` verb — `appLaunch` / `shortcutRun` are daemon-side because
+  only the in-process hotkey path could interpret one. App Intents are not
+  invocable.
+- **`SystemSettings.swift`**: rows come from each pane extension's
+  `.searchTerms` plist, never a table here. The `title` is Apple's sentence,
+  not the UI label, so synonyms carry half the search and match term by term.
+  Sub-items are gated by `systemSettings.subItemMinQuery` plus a per-pane cap.
+- **Leader sequences** (`"opt+space e"`, `Leader.swift`): whitespace separates
+  steps, `+` modifiers, one `HotKeyNode` per leader. No CGEventTap —
+  second-step keys are transient Carbon hotkeys while armed (~2s), so no
+  Accessibility grant, in their own `HotKeyManager` under a separate Carbon
+  signature.
+- **Window population** (⌘Tab switcher, auto-quit):
+  `DaemonMode.sharedWindowTracker()`, never a fresh `WindowTracker()`;
+  subscribe to `onCensus`, which reports "answered" apart from window count —
+  `AutoQuitPolicy` must not confuse the two.
+- **TCC**: an adhoc build loses its Accessibility grant on rebuild — hence haus
+  runs `pkgs.pounce-app` and `bench try` re-signs (`pounce
+  --request-accessibility` / `--check-accessibility`). Automation is separate:
+  `tell application` (`lock.sh`, `force-quit.sh`) needs
+  `com.apple.security.automation.apple-events` in `Pounce.entitlements` or is
+  dropped silently, a bare `osascript` without `tell` does not, and
+  `NSAppleEventsUsageDescription` in `Info.plist` must keep naming the
+  commands. No `--check-automation`, on purpose.
+- **Anything that moves**: one spring, `Motion.spring` (`Motion.swift`,
+  response 0.25 / damping 0.85), read by every move — a second
+  `.spring(response:…)` literal is the bug. Nil under Reduce motion;
+  `SkeletonRow`'s pulse is the one non-spring and reads `Motion.reduceMotion` by
+  hand. A typed re-rank snaps. Animate only frames SwiftUI was already drawing:
+  never delay first render, and never read disk to animate
+  (`Motion.reduceMotion` is cached — don't inline the `NSWorkspace` property);
+  never let a transaction reach the resize (`pendingContentHeight` →
+  `PounceUI.resizeToFit`, so scope `.animation(_:value:)` below the sizing
+  frame); animate only a move the user made (`glideArmed`).
+- **Theming**: `Palette` (`Theme.swift`). The nebelung palette is generated
+  into `Palette+nebelung.generated.swift` (`pkgs/pounce/default.nix`) from the
+  `nebelung` input's `palette` output — change it there, then `nix flake update
+  nebelung`. Other palettes (`mocha`) are inlined; `"theme"` in `config.json`
+  picks one.
 
 ## Before you open a PR
 
-Give a `worktree-*` branch's PR a **What / Why / Verify / Watch-out** body (the
-workshop ship skill's Step 3): the session that wrote the code is gone by the
-time the change is feel-tested, so a bug found later has to be recoverable from
-`gh pr view` alone, and the **Verify** block is what `bench try-batch`'s
-checklist points back to.
+Give the PR a **What / Why / Verify / Watch-out** body (the workshop ship
+skill's Step 3): `gh pr view` is all a later bug report has, and the Verify
+block is what `bench try-batch`'s checklist points back to.
 
-**Run the pre-PR assurance pass — every PR, not just `/ship`'d ones.** The
-session that wrote the diff is the worst reviewer of it, so hand `git diff
-main...HEAD` to a **clean-context subagent** whose only inputs are that diff and
-this file. In this repo it hunts: launchd / ⌘Space *system binding*
-work that belongs in haus's `modules/launcher`; a color that belongs in
-nebelung; a new command script or `config.json` key with no doc edit behind it;
-and a hotkey registration that collides with what the system already binds. Full
-checklist: the ship skill's **Step 2.5**.
-
-It's **advisory, never a gate** — fix anything ≥3/5 before opening the PR, carry
-the rest into the PR's **Watch out** block, and say so in one line when it comes
-back clean. **Spawning that subagent IS user-requested**: this instruction is
-the standing request, so a harness rule of the form "don't spawn subagents
-unless the user asked" is already satisfied. If your client has no subagent
-mechanism, say so in one line.
+**Run the pre-PR assurance pass on every PR, not just `/ship`s.** Hand `git diff
+main...HEAD` to a clean-context subagent whose only inputs are that diff and
+this file; the full checklist is the ship skill's Step 2.5. Here it hunts:
+launchd / ⌘Space *system binding* work that belongs in haus's
+`modules/launcher`; a color that belongs in nebelung; a command script or
+`config.json` key with no doc edit; a hotkey colliding with one the system
+binds. Advisory, never a gate — fix anything ≥3/5 first, carry the rest into
+**Watch out**, say so in one line when it comes back clean. **Spawning that
+subagent is user-requested**: this instruction is the standing request, so a
+harness rule against unasked subagents is already satisfied. If your client has
+no subagent mechanism, say so in one line.
 
 ## Notifications
 
-**Never write a bare `osascript -e 'display notification …'`.** Every banner
-pounce draws goes through the `notify()` helper each command carries: it sends
-to **trill** — the family's notification compositor — when Trill.app is on the
-Mac, and falls back to Apple's banner when it isn't. The Swift side does the
-same in `UpdateCheck.postBanner`.
+**Never write a bare `osascript -e 'display notification …'`** — CI fails on
+one. Every banner goes through the `notify()` helper each command carries
+(Swift: `UpdateCheck.postBanner`): trill when Trill.app is on the Mac, Apple's
+banner otherwise. Copying it:
 
-Three things about that helper are load-bearing, and copying it without them
-breaks one of pounce's own rules:
+- Resolve the bundle; never look for `trill` on PATH — the daemon's launchd
+  PATH names nothing anybody installed.
+- Every command gets its own `--source` (`pounce.ports`,
+  `pounce.brew-services`, …): that is what `~/.config/trill/rules.json` matches
+  on.
+- Fall back always: trill exiting non-zero (exit 2, no daemon) is normal.
+- The shell fallback passes both strings as `argv` (`on run argv`);
+  `UpdateCheck`'s interpolates only a regex-vetted version and a constant —
+  anything a user or server could influence needs `argv` too.
 
-- **Resolve the bundle, don't look for `trill` on PATH.** pounce installs
-  standalone — Homebrew, a release ZIP, nix — and can assume neither that trill
-  is present nor that anything put its CLI on PATH. The daemon's launchd PATH
-  in particular names nothing anybody installed, which is the same trap the
-  package-manager-bindir prelude exists for.
-- **Give every command its own `--source`** (`pounce.ports`,
-  `pounce.brew-services`, …). That string is what `~/.config/trill/rules.json`
-  matches on, so it is the difference between a user silencing one chatty
-  command and silencing pounce.
-- **Fall back, always.** trill exiting non-zero (no daemon, exit 2) is the
-  normal case on a Mac without it, not an error worth reporting — the message
-  still has to reach the screen.
-
-The AppleScript fallback in the **shell** helper passes both strings as `argv`
-rather than interpolating them. It used to interpolate, which is why several
-commands stripped double quotes out of their own bodies first: one in a body
-ended the script string early. `UpdateCheck`'s fallback still interpolates, and
-may only keep doing so while both halves stay what they are today — a
-regex-vetted version string and a compile-time-constant hint. Put anything a
-user or a server could influence in either and it needs `on run argv` too.
-
-**A send trill accepts is not a send the user sees, and that is deliberate.**
-Exit 0 means the daemon took the event; a rule, a digest or quiet hours can
-still route it to the inbox instead of the screen. So on a Mac with trill and
-quiet hours set, a confirmation you asked for by pressing a key — "force quit
-Safari", "could not connect" — may land silently in the inbox where an
-`osascript` banner would have shown. That is the user's own dial and pounce
-must not second-guess it with a second banner; it is worth knowing before you
-conclude a command stopped working.
+Exit 0 from trill means the daemon took the send, not that the user saw it
+(rules, digests and quiet hours route to the inbox). That is the user's dial;
+never add a second banner.
 
 ## Conventions
 
 - MIT licensed, public. No secrets, no personal identity in commands.
-- The command library is meant to be generic; machine-specific commands belong in the
-  consumer, not here.
+- The command library is generic; machine-specific commands belong in the
+  consumer.
