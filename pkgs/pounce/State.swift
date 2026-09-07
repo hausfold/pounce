@@ -649,8 +649,10 @@ final class DaemonState: ObservableObject {
                 // positions, because a tile you can hit without looking is
                 // worth more than a tile that is optimally ranked. The list
                 // beneath keeps the live ranking. See StageSlots.swift for the
-                // promotion rule; the reordering that makes the strip a SLICE
-                // of the one array happens after the sort below.
+                // promotion rule and the one-swap-per-summon correction that
+                // keeps "holds still" from meaning "stays wrong"; the reordering
+                // that makes the strip a SLICE of the one array happens after
+                // the sort below.
                 if settings.ranking.stickyTiles {
                     let candidates = built
                         // The update nudge is PINNED to the head of the list
@@ -663,7 +665,9 @@ final class DaemonState: ObservableObject {
                         // prevent. It is a notice, not a habit; it gets no tile.
                         .filter { $0.frecencyKey != Self.updateItemKey }
                         .filter { $0.minQueryLength == 0 }
-                        .map { (key: $0.frecencyKey, score: frecency.longScore(for: $0.frecencyKey)) }
+                        .map { (key: $0.frecencyKey,
+                                score: frecency.longScore(for: $0.frecencyKey),
+                                idle: frecency.idle(for: $0.frecencyKey)) }
                         .filter { $0.score > 0 }
                         .sorted { $0.score > $1.score }
                     // Fewer slots than asked for is the honest answer on a

@@ -192,6 +192,17 @@ final class Frecency {
         return Self.longScore(entry, now: Date().timeIntervalSince1970)
     }
 
+    // Seconds since this was last committed — the question the decayed score
+    // cannot answer, because a modest daily habit and a heavy burst a fortnight
+    // ago arrive at the same number. StageSlots is the only consumer: it needs
+    // to know whether a tile is a habit someone still has, not just how big the
+    // habit was. `.infinity` for a key with no history, so "never used" sorts
+    // and compares as staler than any real idle time rather than as brand new.
+    func idle(for key: String) -> Double {
+        guard let entry = data[key] else { return .infinity }
+        return max(0, Date().timeIntervalSince1970 - entry.lastUsed)
+    }
+
     func record(_ key: String) {
         let now = Date().timeIntervalSince1970
         data[key] = Self.recorded(data[key] ?? Entry(short: 0, long: 0, lastUsed: now), now: now)
