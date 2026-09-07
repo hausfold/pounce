@@ -14,6 +14,18 @@ squircle with a dark mark (dark backgrounds). Three
 and not themed at runtime: `peach` (#F5B58E), `surface0` (#343434) for the tile,
 `surface1` (#494949) for the input bar.
 
+`pounce-square.svg` / `pounce-square-inverted.svg` — **the two marks' source of
+record**: the same geometry in a 100-unit viewBox, the same three hexes; the
+brand kit's `docs/design.md` is the standard they answer to. The PNGs above
+render from them and the iconset from those, so a nebelung token that moves is
+swapped here first, then rendered down. resvg is what the committed PNGs were
+checked against; a different rasteriser will not land byte-for-byte on them.
+
+```sh
+nix run nixpkgs#resvg -- assets/pounce-square.svg assets/pounce-square.png
+nix run nixpkgs#resvg -- assets/pounce-square-inverted.svg assets/pounce-square-inverted.png
+```
+
 `pkgs/pounce/AppIcon.iconset/*.png` are mechanically scaled from
 `pounce-square.png`; `build.sh` runs `iconutil` over them into the bundle's
 `AppIcon.icns`. They live under `pkgs/pounce/` rather than here because the Nix
@@ -28,8 +40,8 @@ for pair in 16x16:16 16x16@2x:32 32x32:32 32x32@2x:64 128x128:128 \
 done
 ```
 
-Keep the 2048 master rather than upscaling a slot — `512x512@2x` already wants
-1024.
+Keep the 2048 PNG master rather than upscaling a slot — `512x512@2x` already
+wants 1024.
 
 The master is deliberately flat and full-bleed — no inset, no drop shadow, no
 gloss. macOS 26 adds all three itself when it draws any app icon, so baking
