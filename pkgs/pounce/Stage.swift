@@ -12,8 +12,10 @@ import AppKit
 // having two zones at all. The list is live: it ranks on the full frecency score
 // so this afternoon's burst floats to the top. The strip is muscle memory: it
 // ranks on habit alone and then holds its positions across summons, so ⌘3 is the
-// same thing this week that it was last week. `StageSlots.swift` owns that rule;
-// `DaemonState.hoistSlots` is what puts the result at the head of the array.
+// same thing this week that it was last week — held still, but not held wrong: a
+// decisive inversion between two tiles swaps that one pair, one per summon.
+// `StageSlots.swift` owns both rules; `DaemonState.hoistSlots` is what puts the
+// result at the head of the array.
 //
 // Three rules it is built to:
 //

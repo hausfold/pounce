@@ -141,7 +141,10 @@ real file. `pkgs/pounce-skill` ships the same bytes as `pkgs.pounce-skill`
   24h half-life, and `long`, 30d; `shortWeight` 15; `rankWeight`, a logarithm),
   `QueryMemory.swift` (`rescueBoost` 2.5, the bar set between one pick and two),
   `ContextMemory.swift` (promotion-only, β 0.08), `StageSlots.swift` (tiles on
-  `long` alone, positions held because ⌘1–⌘9 fire them) and `NextAction.swift`
+  `long` alone, positions held because ⌘1–⌘9 fire them — held still, not held
+  wrong: `reorderMargin` 2× swaps one adjacent pair per summon, and `staleLead`
+  3d drops `promoteMargin` to 1.0 against an incumbent idler than its
+  challenger, which is why candidates carry an `idle`) and `NextAction.swift`
   (a bigram over a five-minute `window`, outside scoring — the NEXT card, taken
   with ⇥, never ⏎): change one number and re-derive the rest, against
   `tests/frecency_tests.swift`. A new signal is a lookup precomputed in

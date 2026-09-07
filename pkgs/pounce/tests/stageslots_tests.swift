@@ -12,14 +12,25 @@ func runStageSlotsTests() -> Int {
         }
     }
     // Keys only, for the assertions that are about ORDER rather than credit.
+    // Everything is idle 0 unless a test says otherwise, so the staleness rule
+    // stays out of the way of the cases that are not about it.
     func resolve(_ previous: [String], _ candidates: [(String, Double)], _ slots: Int) -> [String] {
         full(previous.map { StageSlots.Slot(key: $0) }, candidates, slots).map { $0.key }
     }
     func full(_ previous: [StageSlots.Slot], _ candidates: [(String, Double)],
               _ slots: Int) -> [StageSlots.Slot] {
         StageSlots.resolve(previous: previous,
-                           candidates: candidates.map { (key: $0.0, score: $0.1) },
+                           candidates: candidates.map { (key: $0.0, score: $0.1, idle: 0) },
                            slots: slots)
+    }
+    // …and the same with an idle time per candidate, in days.
+    func aged(_ previous: [String], _ candidates: [(String, Double, Double)],
+              _ slots: Int) -> [String] {
+        StageSlots.resolve(previous: previous.map { StageSlots.Slot(key: $0) },
+                           candidates: candidates.map {
+                               (key: $0.0, score: $0.1, idle: $0.2 * 86400)
+                           },
+                           slots: slots).map { $0.key }
     }
 
     // A first run fills from the ranking, strongest first — there is nothing to
@@ -103,6 +114,72 @@ func runStageSlotsTests() -> Int {
     // slots, or ⌘2 and ⌘5 would fire the same thing.
     expect(resolve(["a", "a", "b"], [("a", 10), ("b", 9), ("c", 8)], 3) == ["a", "b", "c"],
            "a duplicated slot key is collapsed, not honoured twice")
+
+    // MARK: holds still, but does not stay wrong
+
+    // The regression this half exists for. An incumbent never re-enters the
+    // ordering, so before this a pair's relative positions were fixed at seed
+    // time however far the scores later diverged — the most-used item on a real
+    // Mac sat at ⌘7 behind something scoring 8× less, for weeks.
+    expect(resolve(["a", "b", "c"], [("c", 100), ("a", 10), ("b", 9)], 3) == ["a", "c", "b"],
+           "a decisive inversion swaps that one pair")
+
+    // One pair per summon, adjacent, bottom-up: a buried tile climbs at a pace
+    // the hand can follow rather than teleporting to the front.
+    expect(resolve(["a", "c", "b"], [("c", 100), ("a", 10), ("b", 9)], 3) == ["c", "a", "b"],
+           "…and keeps climbing one slot at a time")
+    // …and then stops. This is what makes it a correction and not a stirring.
+    expect(resolve(["c", "a", "b"], [("c", 100), ("a", 10), ("b", 9)], 3) == ["c", "a", "b"],
+           "…until nothing is decisively out of place, and then never again")
+
+    // Anything short of the margin is a near-tie, and near-ties are exactly what
+    // a strip must not shuffle. (`reorderMargin` is 2.0; 19 vs 10 is not enough.)
+    expect(resolve(["a", "b"], [("b", 19), ("a", 10)], 2) == ["a", "b"],
+           "outscoring the tile above you is not enough to swap with it")
+
+    // Membership outranks position: a summon that already changed WHAT is on the
+    // strip does not also change where things sit.
+    expect(resolve(["a", "b", "c"], [("x", 1000), ("c", 100), ("a", 10), ("b", 9)], 3) == ["a", "x", "c"],
+           "a promotion and a swap never land in the same summon")
+    expect(resolve(["a", "x", "c"], [("x", 1000), ("c", 100), ("a", 10)], 3) == ["x", "a", "c"],
+           "…the inversion waits for the next one")
+
+    // A slot waiting out a miss has no score, and a missing score is not a low
+    // score — the correction sits the summon out rather than guessing.
+    expect(resolve(["a", "away", "c"], [("c", 100), ("a", 10)], 3) == ["a", "away", "c"],
+           "a cold source freezes the correction, not just the promotion")
+
+    // MARK: the margin defends a habit, not a squatter
+
+    // `promoteMargin` is there to stop two comparable items trading a slot on
+    // noise. An incumbent the user put down ten days ago is not comparable to
+    // one they used today, and a 30-day half-life is far too slow to say so.
+    expect(aged(["a", "b", "c"], [("a", 100, 0), ("b", 50, 0), ("x", 12, 0), ("c", 10, 10)], 3)
+            == ["a", "b", "x"],
+           "a stale incumbent loses the margin to a fresher challenger")
+
+    // Asymmetric on purpose: it takes a FRESHER challenger to collect that. A
+    // long-idle challenger still has to clear the full 1.5× against a tile that
+    // is still in use, or every fortnight-old row would rattle the strip.
+    expect(aged(["a", "b", "c"], [("a", 100, 0), ("b", 50, 0), ("x", 12, 10), ("c", 10, 0)], 3)
+            == ["a", "b", "c"],
+           "a stale challenger still pays the full margin")
+
+    // `Frecency.idle` answers `.infinity` for a key it has never seen. The live
+    // caller filters those out (score > 0), but `resolve` is pure and callable
+    // on its own, and `∞ − ∞` is NaN — which fails every comparison and so would
+    // mean the exact OPPOSITE of the sentinel's intent. Both directions:
+    let never = Double.infinity
+    expect(StageSlots.resolve(previous: [StageSlots.Slot(key: "c")],
+                              candidates: [(key: "x", score: 12, idle: never),
+                                           (key: "c", score: 10, idle: never)],
+                              slots: 1).map { $0.key } == ["c"],
+           "two items with no history at all are not 'stale' relative to each other")
+    expect(StageSlots.resolve(previous: [StageSlots.Slot(key: "c")],
+                              candidates: [(key: "x", score: 12, idle: 0),
+                                           (key: "c", score: 10, idle: never)],
+                              slots: 1).map { $0.key } == ["x"],
+           "…but a never-used incumbent is stale against one used today")
 
     if failures == 0 { print("ok — StageSlots tests passed") }
     return failures

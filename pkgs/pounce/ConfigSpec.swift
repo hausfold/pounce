@@ -261,7 +261,7 @@ enum ConfigSpec {
                         control: .toggle, symbol: "brain"),
                     ConfigField(
                         name: "stickyTiles",
-                        doc: "Let the tiles hold their positions across summons, so the third tile is the same thing next week that it is today. Slots go to habit alone — a 30-day average, with today's burst deliberately left out — and change one tile at a time, only when something new clearly outgrows the weakest tile. Off, the strip is the ranked list's first few rows again and moves whenever the list does. On a pounce with no history yet there are no tiles at all: the strip grows as habits form.",
+                        doc: "Let the tiles hold their positions across summons, so the third tile is the same thing next week that it is today. Slots go to habit alone — a 30-day average, with today's burst deliberately left out — and change one tile at a time, only when something new clearly outgrows the weakest tile. Two tiles already on the strip swap the same way, one pair per summon and only when one is worth more than twice the other, so a strip settled months ago can still catch up with who you are now instead of staying wrong. Off, the strip is the ranked list's first few rows again and moves whenever the list does. On a pounce with no history yet there are no tiles at all: the strip grows as habits form.",
                         json: json(s.ranking.stickyTiles),
                         control: .toggle, symbol: "pin"),
                     ConfigField(

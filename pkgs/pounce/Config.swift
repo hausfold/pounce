@@ -433,8 +433,10 @@ struct RankingSettings {
     // Let the Stage's tiles hold their positions across summons, so ⌘3 is the
     // same thing this week that it was last week. The slots are chosen by habit
     // alone (a 30-day half-life, today's burst excluded) and change one tile at
-    // a time, only when a challenger clearly outgrows the weakest incumbent —
-    // see StageSlots.swift. Off, the strip is simply the ranked list's first
+    // a time, only when a challenger clearly outgrows the weakest incumbent.
+    // Positions are held still, not held wrong: two tiles already on the strip
+    // swap on the same terms, one pair per summon and only on a decisive
+    // inversion — see StageSlots.swift. Off, the strip is simply the ranked list's first
     // few rows again, which moves whenever the list does.
     //
     // A consequence worth knowing: with this on, a pounce that has never been
