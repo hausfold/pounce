@@ -67,6 +67,19 @@ if [ ! -f "$SKILL_MD" ]; then
   echo "  are building from somewhere the repo root isn't two levels up." >&2
   exit 1
 fi
+
+# NOTICE reaches the bundle by the same route and for a harder reason: emoji.json
+# is gemoji's, MIT, and MIT says the notice travels with every copy. The .app IS
+# a copy — it is what a release ships and what `brew install` puts on a Mac — so
+# a NOTICE sitting only in the repo would satisfy nobody who ever downloaded it.
+NOTICE_FILE="${POUNCE_NOTICE:-../../NOTICE}"
+if [ ! -f "$NOTICE_FILE" ]; then
+  echo "build.sh: no NOTICE at $NOTICE_FILE." >&2
+  echo "  It is committed at the repo root and carries gemoji's MIT notice for" >&2
+  echo "  the emoji.json this build is about to bundle. Point POUNCE_NOTICE at" >&2
+  echo "  it if you are building from somewhere the repo root isn't two up." >&2
+  exit 1
+fi
 # The literal below is a raw multiline string, so nothing inside it is escaped —
 # except its own closing delimiter, which would end the string early and produce
 # a compile error a long way from its cause. Say so here instead.
@@ -142,6 +155,7 @@ cp Info.plist Pounce.app/Contents/
 # one emoji-mode grid: emoji.json is the vendored emoji superset, symbols.json
 # the curated plain-text symbols (⌘ ⌥ ⇧, arrows, math, box drawing).
 cp emoji.json symbols.json Pounce.app/Contents/Resources/
+cp "$NOTICE_FILE" Pounce.app/Contents/Resources/NOTICE
 
 # The self-registered login agent (SMAppService — see LoginItem.swift). It MUST
 # live at Contents/Library/LaunchAgents/<name>.plist inside the bundle; that
