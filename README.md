@@ -68,6 +68,7 @@ Homebrew hands you.
   It ships inside the binary too: `pounce skill` prints it, `pounce skill install` places it
 - [`AGENTS.md`](./AGENTS.md) — hacking on pounce: the build, the layout, the invariants
 - [`THANKS.md`](./THANKS.md) — what pounce is built on, and the people who ran it before it was public
+- [`NOTICE`](./NOTICE) — the third-party notices that ship inside the app
 - `pounce --help` · `pounce doctor` — the authoritative flag list, and what to run when a key does nothing
 
 <p align="center"><a href="https://hausfold.co">⌂ hausfold</a></p>

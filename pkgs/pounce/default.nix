@@ -82,6 +82,7 @@ stdenvNoCC.mkDerivation {
     POUNCE_VERSION="$version" \
       POUNCE_TARGET_ARCH="${stdenvNoCC.hostPlatform.darwinArch}" \
       POUNCE_SKILL_MD="${../../ai/SKILL.md}" \
+      POUNCE_NOTICE="${../../NOTICE}" \
       bash ./build.sh
   '';
 
