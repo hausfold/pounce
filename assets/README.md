@@ -14,16 +14,26 @@ squircle with a dark mark (dark backgrounds). Three
 and not themed at runtime: `peach` (#F5B58E), `surface0` (#343434) for the tile,
 `surface1` (#494949) for the input bar.
 
-`pounce-square.svg` / `pounce-square-inverted.svg` — **the two marks' source of
-record**: the same geometry in a 100-unit viewBox, the same three hexes; the
-brand kit's `docs/design.md` is the standard they answer to. The PNGs above
-render from them and the iconset from those, so a nebelung token that moves is
+`pounce-square-latte.svg` / `pounce-square-latte.png` — **the light tile's
+source of record** and its render (2048²): the same geometry in nebelung's
+latte set. That ramp runs the other way, so the tile is `base` (#F1F1F1), its
+lightest neutral, and the input bar `surface1` (#C0C0C0) steps darker than the
+tile instead of lighter; the ears and the caret are latte `peach` (#F66D2D).
+The brand kit's `docs/design.md` is the standard here too: a light artifact is
+latte, and there is no light *inverted* tile, because an inverted one already
+carries its own colour.
+
+`pounce-square.svg` / `pounce-square-inverted.svg` / `pounce-square-latte.svg` —
+**the three marks' source of record**: the same geometry in a 100-unit
+viewBox; the brand kit's `docs/design.md` is the standard they answer to. The
+PNGs above render from them and the iconset from those, so a nebelung token that moves is
 swapped here first, then rendered down. resvg is what the committed PNGs were
 checked against; a different rasteriser will not land byte-for-byte on them.
 
 ```sh
 nix run nixpkgs#resvg -- assets/pounce-square.svg assets/pounce-square.png
 nix run nixpkgs#resvg -- assets/pounce-square-inverted.svg assets/pounce-square-inverted.png
+nix run nixpkgs#resvg -- assets/pounce-square-latte.svg assets/pounce-square-latte.png
 ```
 
 `pkgs/pounce/AppIcon.iconset/*.png` are mechanically scaled from
