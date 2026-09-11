@@ -37,8 +37,8 @@ enum SocketConfig {
 // Every size in pounce's UI is a point value written for scale 1.0 and read back
 // through `pt(_:)`. `"scale"` in config.json multiplies them, so the whole window
 // — text, rows, icons, and the panels behind the palette — grows as one piece
-// rather than one hand-tuned number at a time. This is the seam the haus
-// haus's `ui.scale` reaches when a desktop asks for a Mac you can read.
+// rather than one hand-tuned number at a time. This is the seam haus's
+// `ui.scale` reaches when a desktop asks for a Mac you can read.
 //
 // Deliberately NOT a `.scaleEffect` on the hosting view: that rasterises and then
 // transforms, and soft text is the one thing a legibility setting must not ship.
@@ -354,15 +354,16 @@ struct ClipboardSettings {
 }
 
 // Quick-answer engine toggles. Currency is the only engine that touches the
-// network (daily ECB reference rates from api.frankfurter.app — pounce's sole
-// outbound call, see Currency.swift); set false to keep pounce fully offline.
-// The other engines are pure and always on.
+// network (daily ECB reference rates from api.frankfurter.app, see
+// Currency.swift); set false and the update check below is the only call
+// pounce still makes. The other engines are pure and always on.
 struct QuickAnswerSettings {
     var currency: Bool = true
 }
 
-// The daily release check (UpdateCheck.swift). `check: false` makes pounce
-// fully silent on the network once quickAnswers.currency is off too.
+// The hourly release check (UpdateCheck.swift), whose banner repeats at most
+// daily. `check: false` makes pounce fully silent on the network once
+// quickAnswers.currency is off too.
 struct UpdateSettings {
     var check: Bool = true
 }
@@ -634,9 +635,10 @@ struct Settings {
     var mouseChords = MouseChordsSettings()
     var autoQuit = AutoQuitSettings()
     var quickAnswers = QuickAnswerSettings()
-    // Daily latest-release check that nudges (palette row + one notification)
-    // but never applies — see UpdateCheck.swift. Default on; independently
-    // self-disabled on Nix-managed installs, whose updates ride the flake.
+    // Hourly latest-release check that nudges (palette row + a notification no
+    // oftener than daily) but never applies — see UpdateCheck.swift. Default
+    // on; independently self-disabled on Nix-managed installs, whose updates
+    // ride the flake.
     var updates = UpdateSettings()
     var fileSearch = FileSearchSettings()
     var shortcuts = ShortcutsSettings()
