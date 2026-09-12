@@ -9,6 +9,6 @@
 # Hand-edit only to bootstrap a brand-new release line. `version` carries no
 # leading "v"; `sha256` is the release tarball's SHA-256 in hex.
 {
-  version = "2026.09.12";
-  sha256 = "f6870bb49d2459259dc43ddf1b5f76243be1682496ba89c4d6a212e75829ee23";
+  version = "2026.09.12-1";
+  sha256 = "62bca1f73caa067879d65b96ada12dd3f1ce2a82157523dd0c63439fc1af6ae6";
 }
