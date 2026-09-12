@@ -6,6 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A second push to a PR branch makes the first run's answer worthless, and the
+# abandoned run still holds a runner — on the macOS ones, a queue slot the next
+# PR then waits behind. Only PR runs cancel: a push to main is a distinct commit
+# whose tick someone may need to read back.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     name: nix build (aarch64-darwin)
@@ -21,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       # Determinate's installer relaxes the macOS build sandbox by default,
       # which the impure xcrun build requires.
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@v23
         with:
           determinate: true
       - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
@@ -56,9 +64,13 @@ jobs:
       # The launcher's shell commands (pkgs/pounce-commands) — lint at warning
       # level (real bugs: undefined vars, bad quoting) on a fast Linux runner,
       # no Mac needed. Verified clean at this severity.
+      # shellcheck ships on the ubuntu-latest image. The `apt-get update` that
+      # used to stand in front of it bought nothing and, on the day the Azure
+      # mirrors go quiet, hangs rather than fails (haus/check.yml has the long
+      # version). Printing the version keeps a future image change loud.
       - name: shellcheck
         run: |
-          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck --version
           shellcheck --severity=warning pkgs/pounce-commands/pounce-palette pkgs/pounce-commands/commands/*.sh pkgs/pounce-commands/optional/*.sh pkgs/pounce/ports script/check-skills.sh
       # A rule with nothing enforcing it is a rule the thirteenth command
       # breaks silently. Every banner pounce draws goes through the `notify()`
