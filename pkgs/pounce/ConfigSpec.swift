@@ -142,7 +142,7 @@ enum ConfigSpec {
                 fields: [
                     ConfigField(
                         name: "currency",
-                        doc: "Convert currencies, which needs daily reference rates over the network — pounce's only outbound call. Set false (with \"updates\".\"check\" too) for a fully offline pounce. The other engines are pure arithmetic and are always on.",
+                        doc: "Convert currencies, which needs daily reference rates over the network — one of pounce's two outbound calls. Set false (with \"updates\".\"check\" too) for a fully offline pounce. The other engines are pure arithmetic and are always on.",
                         json: json(s.quickAnswers.currency),
                         control: .toggle, symbol: "dollarsign.circle"),
                 ]),
@@ -150,11 +150,11 @@ enum ConfigSpec {
             ConfigSection(
                 name: "updates",
                 pane: "general",
-                doc: "The daily release check.",
+                doc: "The hourly release check.",
                 fields: [
                     ConfigField(
                         name: "check",
-                        doc: "Look once a day for a newer pounce and nudge — a palette row and one notification. It never installs anything. Already off by itself on Nix-managed installs, whose updates ride the flake.",
+                        doc: "Look hourly for a newer pounce and nudge — a palette row, and a notification no oftener than once a day. It never installs anything. Already off by itself on Nix-managed installs, whose updates ride the flake.",
                         json: json(s.updates.check),
                         control: .toggle, symbol: "arrow.triangle.2.circlepath"),
                 ]),
