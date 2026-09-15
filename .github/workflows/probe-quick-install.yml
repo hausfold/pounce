@@ -1,0 +1,105 @@
+name: probe-quick-install
+
+# TEMPORARY probe, not a gate — delete it with the branch.
+#
+# It answers the question docs/ci.md leaves open: `nixbuild/nix-quick-install-action`
+# is the installer `cache-nix-action` sits behind, it is about a second on Linux
+# against Determinate's eight or nine, and nobody has ever measured it on a Mac —
+# where Determinate's is ~65s, 22.3s of which is configuring Time Machine
+# exclusions on a runner with no Time Machine.
+#
+# Two things are under test and they are not the same question:
+#   1. CAN quick-install run the impure `xcrun` build at all? build.yml's comment
+#      says Determinate is there because it "relaxes the macOS build sandbox by
+#      default" — so quick-install would need the same relaxation or be unusable.
+#   2. If it can, what does it COST, step for step, against the 65s.
+#
+# Deliberately NO `concurrency:` block: several dispatches of this are one
+# sample, and a shared group would cancel all but the last.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sandbox_probe:
+        description: "also run the sandbox=relaxed and sandbox=true variants (both expected to FAIL)"
+        type: boolean
+        default: false
+
+jobs:
+  determinate:
+    name: A · Determinate (the baseline build.yml ships)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v23
+        with:
+          determinate: true
+      - name: what nix, and what it thinks about the sandbox
+        run: |
+          nix --version
+          echo "--- settings that decide whether an impure build can run ---"
+          nix config show | grep -E '^(sandbox|sandbox-fallback|build-users-group|lazy-trees|eval-cores|max-jobs|cores|substituters) ' || true
+          echo "--- nix.conf on disk ---"
+          for f in /etc/nix/nix.conf /etc/nix/nix.custom.conf "$HOME/.config/nix/nix.conf"; do
+            echo "== $f"; cat "$f" 2>/dev/null || echo "(absent)"
+          done
+      - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
+
+  quick-install:
+    name: B · nix-quick-install, no extra config
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nixbuild/nix-quick-install-action@v35
+      - name: what nix, and what it thinks about the sandbox
+        run: |
+          nix --version
+          echo "--- settings that decide whether an impure build can run ---"
+          nix config show | grep -E '^(sandbox|sandbox-fallback|build-users-group|lazy-trees|eval-cores|max-jobs|cores|substituters) ' || true
+          echo "--- nix.conf on disk ---"
+          for f in /etc/nix/nix.conf /etc/nix/nix.custom.conf "$HOME/.config/nix/nix.conf"; do
+            echo "== $f"; cat "$f" 2>/dev/null || echo "(absent)"
+          done
+      - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
+
+  quick-install-relaxed:
+    name: C · nix-quick-install, sandbox = relaxed
+    # The setting build.yml's comment names. `relaxed` exempts fixed-output and
+    # `__noChroot` derivations from the sandbox and nothing else, and pounce's
+    # derivation is neither — so if this build needs a relaxation this variant
+    # proves it, and if it does not, this variant shows `relaxed` would have
+    # BROKEN the build it is credited with enabling.
+    if: inputs.sandbox_probe
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nixbuild/nix-quick-install-action@v35
+        with:
+          nix_conf: sandbox = relaxed
+      - name: what nix, and what it thinks about the sandbox
+        run: |
+          nix --version
+          nix config show | grep -E '^(sandbox|build-users-group) ' || true
+          cat "$HOME/.config/nix/nix.conf"
+      - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
+
+  quick-install-sandboxed:
+    name: D · nix-quick-install, sandbox = true
+    # The control for C: full sandboxing, which a build shelling out to
+    # /usr/bin/xcrun must fail under. D failing while B passes is what makes the
+    # sandbox the axis rather than a coincidence.
+    if: inputs.sandbox_probe
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nixbuild/nix-quick-install-action@v35
+        with:
+          nix_conf: sandbox = true
+      - name: what nix, and what it thinks about the sandbox
+        run: |
+          nix --version
+          nix config show | grep -E '^(sandbox|build-users-group) ' || true
+          cat "$HOME/.config/nix/nix.conf"
+      - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
