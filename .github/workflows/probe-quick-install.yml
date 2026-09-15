@@ -14,16 +14,17 @@ name: probe-quick-install
 #      default" — so quick-install would need the same relaxation or be unusable.
 #   2. If it can, what does it COST, step for step, against the 65s.
 #
-# Deliberately NO `concurrency:` block: several dispatches of this are one
-# sample, and a shared group would cancel all but the last.
+# Triggered by pushing to this branch and not by `workflow_dispatch`, which
+# GitHub only honours for a workflow file that is on the DEFAULT branch — and
+# this one must never reach main. One empty commit is one sample; put
+# `[sandbox]` in the message to add the two sandbox variants.
+#
+# Deliberately NO `concurrency:` block: several pushes of this are one sample,
+# and a shared group would cancel all but the last.
 
 on:
-  workflow_dispatch:
-    inputs:
-      sandbox_probe:
-        description: "also run the sandbox=relaxed and sandbox=true variants (both expected to FAIL)"
-        type: boolean
-        default: false
+  push:
+    branches: [worktree-quick-install-sandbox]
 
 jobs:
   determinate:
@@ -69,7 +70,7 @@ jobs:
     # derivation is neither — so if this build needs a relaxation this variant
     # proves it, and if it does not, this variant shows `relaxed` would have
     # BROKEN the build it is credited with enabling.
-    if: inputs.sandbox_probe
+    if: contains(github.event.head_commit.message, '[sandbox]')
     runs-on: macos-15
     continue-on-error: true
     steps:
@@ -89,7 +90,7 @@ jobs:
     # The control for C: full sandboxing, which a build shelling out to
     # /usr/bin/xcrun must fail under. D failing while B passes is what makes the
     # sandbox the axis rather than a coincidence.
-    if: inputs.sandbox_probe
+    if: contains(github.event.head_commit.message, '[sandbox]')
     runs-on: macos-15
     continue-on-error: true
     steps:
