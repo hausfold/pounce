@@ -33,11 +33,26 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      # Determinate's installer relaxes the macOS build sandbox by default,
-      # which the impure xcrun build requires.
-      - uses: DeterminateSystems/nix-installer-action@v23
-        with:
-          determinate: true
+      # This used to say Determinate was here because its installer relaxes the
+      # macOS build sandbox, which the impure xcrun build requires. It does not,
+      # and the build does not: nix's `sandbox` defaults to true on Linux and
+      # FALSE on every other platform, and neither installer writes a `sandbox`
+      # line at all — there was never anything to relax. `relaxed` is in fact
+      # the setting that BREAKS this build, because it exempts fixed-output and
+      # `__noChroot` derivations and pkgs/pounce's derivation is neither: run
+      # that way on a probe branch it died on `/usr/bin/xcrun: Operation not
+      # permitted`, exit 126, exactly as `sandbox = true` did.
+      #
+      # Which leaves the installer free to be the cheap one. Paired against
+      # DeterminateSystems/nix-installer-action over eight runs on macos-15,
+      # this step is 5.1s against 68.2s — 3-13s against 61-75s, no overlap — for
+      # the same derivation hash out the other end (the job total went 234s to
+      # 183s over that sample).
+      # Determinate spends 22s of the difference configuring Time Machine
+      # exclusions on a runner that has no Time Machine, and no input turns that
+      # off. The tag pins the nix version with it: v35 installs 2.34.7.
+      # Measurement: workshop script/probes/README.md, *quick-install on a Mac*.
+      - uses: nixbuild/nix-quick-install-action@v35
       - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
 
   test:

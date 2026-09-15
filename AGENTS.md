@@ -36,8 +36,12 @@ CI (`build.yml`, `macos-15`) runs those, `shellcheck --severity=warning` over
 the command scripts, and fails on any bare `display notification`.
 
 `build.sh` shells out to `/usr/bin/xcrun swiftc`: **Xcode Command Line Tools
-16+**, and the macOS build sandbox relaxed (Determinate's default). *SDK* floor
-15: `Window.swift` overrides `contextMenuKeyDown:` /
+16+**, and Nix's build sandbox off — which on macOS is nix's own default
+(`sandbox` is `true` on Linux and `false` everywhere else), not something an
+installer grants. `sandbox = relaxed` exempts fixed-output and `__noChroot`
+derivations only, and this one is neither, so setting it *breaks* the build
+rather than enabling it: `/usr/bin/xcrun: Operation not permitted`, exit 126.
+*SDK* floor 15: `Window.swift` overrides `contextMenuKeyDown:` /
 `showContextMenuForSelection:`, which `NSResponder.h` declares only there, and
 `brew install --build-from-source` needs it too. *Deployment* floor 14, from
 `MACOS_MIN` in `build.sh` alone — it feeds `-target` and the
