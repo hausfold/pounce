@@ -228,8 +228,15 @@ real file. `pkgs/pounce-skill` ships the same bytes as `pkgs.pounce-skill`
   subscribe to `onCensus`, which reports "answered" apart from window count —
   `AutoQuitPolicy` must not confuse the two.
 - **TCC**: an adhoc build loses its Accessibility grant on rebuild — hence haus
-  runs `pkgs.pounce-app` and `bench try` re-signs (`pounce
-  --request-accessibility` / `--check-accessibility`). Automation is separate:
+  runs `pkgs.pounce-app` and `bench try` re-signs. Both grant flags answer for
+  the DAEMON over the socket (`AccessibilityGrant.swift`), never in the CLI:
+  `AXIsProcessTrusted()` and `AXIsProcessTrustedWithOptions()` resolve against
+  the process *responsible* for the caller, so from a granted terminal they
+  reported `true` for a daemon holding nothing and the prompt named the terminal
+  — or never appeared. `--check-accessibility` reads STATUS's `accessibility`;
+  `--request-accessibility` sends `AXPROMPT` behind the `accessibilityPrompt`
+  capability gate, and with no daemon both print `unknown` and exit 1 rather
+  than anything that could read as granted. Automation is separate:
   `tell application` (`lock.sh`, `force-quit.sh`) needs
   `com.apple.security.automation.apple-events` in `Pounce.entitlements` or is
   dropped silently, a bare `osascript` without `tell` does not, and

@@ -185,8 +185,10 @@ enum Main {
                                 its own agent. Double-clicking Pounce.app
                                 registers this automatically.
       --copy-file <path>        copy a file to the clipboard and exit
-      --request-accessibility   prompt for the Accessibility (TCC) grant
-      --check-accessibility     print true/false for the grant
+      --request-accessibility   ask the running daemon to raise the Accessibility
+                                (TCC) prompt, so the grant lands on Pounce.app
+      --check-accessibility     print the running daemon's Accessibility grant:
+                                true/false, or `unknown` (exit 1) with no daemon
       --request-bluetooth       prompt for the Bluetooth (TCC) grant
       --check-bluetooth         print true/false for the grant
       --version                 print the version
@@ -258,14 +260,11 @@ enum Main {
             // `focus`. See Transform.swift.
             TransformMode.run(filter: args[i + 1])
         } else if args.contains("--check-accessibility") {
-            // Silent trust check for scripted verification. AXIsProcessTrusted
-            // reflects THIS binary's code identity, so run it from the signed copy
-            // to confirm the daemon's identity holds the grant.
-            print(AXIsProcessTrusted() ? "true" : "false")
+            // Both of these answer for the DAEMON, over the socket. Asking here
+            // would answer for the terminal — see AccessibilityGrant.swift.
+            AccessibilityGrant.check()
         } else if args.contains("--request-accessibility") {
-            // One-shot bootstrap: fire the system "add to Accessibility" prompt.
-            let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
-            print(AXIsProcessTrustedWithOptions(opts) ? "true" : "false")
+            AccessibilityGrant.request()
         } else if args.contains("--check-bluetooth") {
             print(BluetoothGrant.check() ? "true" : "false")
         } else if args.contains("--request-bluetooth") {
@@ -1504,10 +1503,28 @@ enum DaemonMode {
                 // the daemon says so itself and a client that sees nothing here
                 // discovers commands locally instead.
                 "commands": true,
+                // Ditto for AXPROMPT: a daemon that predates it would draw the
+                // payload as a picker, so `--request-accessibility` gates on
+                // this before asking, and says the daemon is stale instead.
+                "accessibilityPrompt": true,
             ]
             let json = (try? JSONSerialization.data(withJSONObject: status)) ?? Data("{}".utf8)
             var reply = json; reply.append(0x0A)
             reply.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, reply.count) }
+            close(clientFD)
+            return
+        }
+
+        // `pounce --request-accessibility` arrives as "AXPROMPT" and fires the
+        // system prompt HERE, in the process that needs the grant. Raised in the
+        // CLI it named whatever process was responsible for the shell, and from
+        // a terminal that already had Accessibility it raised nothing at all —
+        // see AccessibilityGrant.swift. Nothing to wait on: tccd owns the dialog
+        // and watchAccessibility's 2s poll arms the chords on the flip.
+        if payload.hasPrefix("AXPROMPT") {
+            let trusted = AccessibilityGrant.promptInDaemon()
+            let replyData = Data(((trusted ? "true" : "false") + "\n").utf8)
+            replyData.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, replyData.count) }
             close(clientFD)
             return
         }
