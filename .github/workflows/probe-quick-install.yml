@@ -104,3 +104,22 @@ jobs:
           nix config show | grep -E '^(sandbox|build-users-group) ' || true
           cat "$HOME/.config/nix/nix.conf"
       - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
+
+  quick-install-maxjobs:
+    name: E · nix-quick-install, max-jobs = auto
+    # The one setting where bare quick-install is NOT at parity with the
+    # baseline: upstream nix defaults `max-jobs` to 1 and Determinate's nix.conf
+    # sets it to `auto`, so under B the two small derivations (pounce-commands,
+    # pounce-skill) queue behind the 2-minute swiftc instead of running beside
+    # it. Worth a few seconds, and free to set — but measured, not assumed.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nixbuild/nix-quick-install-action@v35
+        with:
+          nix_conf: max-jobs = auto
+      - name: what nix, and what it thinks about the sandbox
+        run: |
+          nix --version
+          nix config show | grep -E '^(sandbox|build-users-group|max-jobs|cores) ' || true
+      - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
