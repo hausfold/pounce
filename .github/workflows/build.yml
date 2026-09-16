@@ -53,6 +53,27 @@ jobs:
       # off. The tag pins the nix version with it: v35 installs 2.34.7.
       # Measurement: workshop script/probes/README.md, *quick-install on a Mac*.
       - uses: nixbuild/nix-quick-install-action@v35
+      # With the installer down to seconds this step is 87-94% of the job on the
+      # four real runs since the swap, and three quarters of IT is one `swiftc`.
+      # Phase-split over 23 quick-install runs (workshop script/probes/README.md,
+      # *pounce's nix build, phase by phase*): 75.3% is pkgs/pounce's own
+      # buildPhase, 17.9% fetches the flake inputs — nixpkgs' source tree,
+      # substituted from cache.nixos.org — 4.6% is the twenty small derivations
+      # around the compile, 1.5% evaluates, and 0.8% substitutes the 114.5 MiB
+      # the build plan asks for. The 8 Determinate arms in that section agree on
+      # the shape (74.7% / 18.0% / 1.5%) on a smaller 104.1 MiB closure, because
+      # that installer leaves more of it in the store.
+      #
+      # The total swings 119-202s on sources that never changed, so read the
+      # share and not the second: `swiftc` held 69.4-78.8% of the step in every
+      # one of the 31 runs across both installers.
+      #
+      # Two things follow. There is nothing to split — one derivation holds
+      # three quarters of it, and the 30s in front of the build plan is
+      # per-job work a second job would pay over again. And a /nix store cache
+      # reaches the 18% rather than the 75%; that section has the arithmetic,
+      # and the macOS restore figure the refusal now hangs on, which nobody has
+      # measured.
       - run: nix build .#pounce .#pounce-commands .#pounce-skill --print-build-logs
 
   test:
