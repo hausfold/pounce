@@ -34,8 +34,7 @@ Want a marketplace of pre-built extensions? Use Raycast. Want a launcher you can
 read end to end and change with a text editor? Pounce.
 
 ```sh
-brew tap hausfold/tap
-brew install pounce
+brew install hausfold/tap/pounce
 brew services start pounce       # the palette daemon
 pounce --request-accessibility   # approve the prompt, once
 ```
