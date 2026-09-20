@@ -118,8 +118,17 @@ mkdir -p Pounce.app/Contents/MacOS Pounce.app/Contents/Resources
 # and AppKit gates a few behaviours on that rather than on the deployment
 # target — so a release built on a newer runner is not bit-for-bit behaviourally
 # identical to an older one even with the floor unmoved.
+#
+# -disable-sandbox: the macOS 27 SDK makes SwiftUI's @State (and its siblings) a
+# macro, and swiftc runs macro plugins under a sandbox-exec profile of its own.
+# In a build that is already sandboxed — nix's Darwin builder is, even with
+# `sandbox = false`; Homebrew's formula build is too — that nested sandbox_apply
+# is refused, the plugin server answers with nothing, and every @State site then
+# fails as "cannot assign to property: 'self' is immutable". The enclosing
+# sandbox is the isolation; the compiler's inner one adds nothing here.
 /usr/bin/xcrun swiftc -parse-as-library -o Pounce.app/Contents/MacOS/pounce \
   -target "$TARGET_ARCH-apple-macos$MACOS_MIN" \
+  -disable-sandbox \
   *.swift \
   -framework SwiftUI \
   -framework AppKit \
