@@ -71,6 +71,30 @@ struct Commit {
 struct PendingConfirm {
     let item: PounceItem
     let action: String
+    /// Who is asking. The palette's own Return is the case this sheet was built
+    /// for; a `pounce://` link is the case that cannot be answered any other
+    /// way, because a link has no exit code and whatever opened it has already
+    /// moved on (URLScheme.swift). The two differ in three places and only
+    /// three: what the sheet says, what "yes" does, and what Esc leaves behind.
+    var origin: Origin = .palette
+
+    enum Origin {
+        case palette
+        case link(Link)
+    }
+
+    /// A link's half of the question. `run` is the dispatch, held so the
+    /// answer needs nothing re-derived from a link that is long gone — it goes
+    /// through `DaemonMode.runTargetHook` like a hotkey, so a `cmd:` id
+    /// resolves to a script at FIRE time, which is this repo's contract
+    /// everywhere (a script can appear after the daemon starts) and not
+    /// something this sheet changes. `sender` is the app that opened the URL,
+    /// when macOS says — never whoever WROTE it (see URLHandler).
+    struct Link {
+        let sender: String?
+        let arguments: [String]
+        let run: () -> Void
+    }
     // Set the moment the answer is yes. The sheet deliberately stays on screen
     // for the window's fade (see DaemonState.confirmPending) and its key
     // monitor stays with it, so without this a second Return inside that beat
@@ -998,6 +1022,16 @@ final class DaemonState: ObservableObject {
     func confirmPending() {
         guard let pending = pendingConfirm, !pending.answered else { return }
         pendingConfirm?.answered = true
+        // A link's yes runs the link's own closure and takes the window down.
+        // Deliberately NOT the commit path: there is no client waiting on a
+        // line, no query that led here to learn from, and no frecency to
+        // record — nobody chose this row, they agreed to it. Recording it would
+        // teach the launcher to rank a command the user has never once typed.
+        if case .link(let link) = pending.origin {
+            link.run()
+            cancel()
+            return
+        }
         commit(pending.item, action: pending.action, confirmed: true)
     }
 
@@ -1010,6 +1044,15 @@ final class DaemonState: ObservableObject {
         // window is on its way out, so an Esc landing in that beat would put
         // the launcher back mid-fade rather than undoing anything.
         guard let pending = pendingConfirm, !pending.answered else { return }
+        // "Back to the list" is the palette's meaning of no, and it is right
+        // there: the row you did want is on screen behind the sheet. A link
+        // brought no list with it, so the same Esc would reveal an empty
+        // launcher nobody summoned — for a link, no means gone.
+        if case .link = pending.origin {
+            pendingConfirm = nil
+            cancel()
+            return
+        }
         pendingConfirm = nil
     }
 

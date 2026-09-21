@@ -160,6 +160,23 @@ enum ConfigSpec {
                 ]),
 
             ConfigSection(
+                name: "urlScheme",
+                pane: "general",
+                doc: "The pounce:// door — a link that runs a palette item.",
+                fields: [
+                    ConfigField(
+                        name: "enabled",
+                        doc: "Let a link run an item: pounce://run?item=cmd:<id>&arg=<value>, the same keys `pounce run` takes. It is how a note, a spreadsheet row or a web page reaches a command with no plugin of its own. Set false and every pounce:// link is refused with a banner.",
+                        json: json(s.urlScheme.enabled),
+                        control: .toggle, symbol: "link"),
+                    ConfigField(
+                        name: "confirm",
+                        doc: "Ask on screen before a link RUNS something — a command, a Shortcut, an application. A link that only opens a pounce window or a System Settings pane never asks. Set false to trust a link exactly as much as a hotkey, leaving only the command's own `confirm =` header to stop one.",
+                        json: json(s.urlScheme.confirm),
+                        control: .toggle, symbol: "hand.raised"),
+                ]),
+
+            ConfigSection(
                 name: "fileSearch",
                 pane: "launcher",
                 doc: "Find Files — the local Spotlight-index search.",

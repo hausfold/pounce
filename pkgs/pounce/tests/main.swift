@@ -45,6 +45,7 @@ failures += runDialsTests()
 failures += runFullscreenGateTests()
 failures += runSkillTests()
 failures += runJsonTests()
+failures += runURLSchemeTests()
 
 if failures == 0 {
     exit(0)

@@ -69,7 +69,8 @@ fi
 /usr/bin/xcrun swiftc -o "$bin" \
   -target "${POUNCE_TARGET_ARCH:-$(uname -m)}-apple-macos$macos_min" \
   Frecency.swift QueryMemory.swift ContextMemory.swift NextAction.swift StageSlots.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
-  Currency.swift ItemSettings.swift FunctionKeyGesture.swift FunctionKeyRemap.swift CommandRegistry.swift UpdateCheck.swift \
+  Currency.swift ItemSettings.swift FunctionKeyGesture.swift FunctionKeyRemap.swift CommandRegistry.swift UpdateCheck.swift Banner.swift \
+  URLScheme.swift \
   Badges.swift Json.swift Skill.swift \
   FontFamily.swift \
   ConfigTemplate.swift ConfigWriter.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \
@@ -90,5 +91,5 @@ fi
   tests/appscanner_tests.swift tests/shortcuts_tests.swift \
   tests/systemsettings_tests.swift tests/bugreport_tests.swift tests/dials_tests.swift \
   tests/fullscreengate_tests.swift \
-  tests/skill_tests.swift tests/json_tests.swift
+  tests/skill_tests.swift tests/json_tests.swift tests/urlscheme_tests.swift
 "$bin"

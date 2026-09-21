@@ -368,6 +368,29 @@ struct UpdateSettings {
     var check: Bool = true
 }
 
+// The `pounce://` door (URLScheme.swift). A link — a row in a note, a
+// spreadsheet cell, a web page — opens `pounce://run?item=<key>[&arg=…]` and
+// the daemon runs that item, the same one `pounce run` takes.
+//
+// Two keys because the door has two different questions. `enabled` is whether
+// there is a door at all: the scheme is claimed by Info.plist and cannot be
+// unclaimed at runtime, so this is the only thing that can refuse a link, and
+// it refuses every link including the harmless ones. `confirm` is whether a
+// link that would RUN something (a command, a Shortcut, an application) has to
+// be answered on screen first; a link that only OPENS a pounce window or a
+// System Settings pane is never confirmed either way.
+//
+// `confirm` defaults on, and this is the one place pounce trusts the keyboard
+// more than it trusts a caller. `pounce run` never asks, because whatever bound
+// the key is the user; a URL can be written by an email, a shared note or a
+// page, and the Apple Event names the app that OPENED the link, never whoever
+// wrote it. Turn it off and a link is exactly as trusted as a hotkey — the
+// command's own `confirm =` header still gets its sheet, and nothing else does.
+struct URLSchemeSettings {
+    var enabled: Bool = true
+    var confirm: Bool = true
+}
+
 // Find Files tuning. A safe, read-only feature (local Spotlight index only, no
 // network), so it's on by default. `homeOnly` scopes the search to the user's
 // home directory — the sane default for "find my file"; set false to search the
@@ -640,6 +663,9 @@ struct Settings {
     // on; independently self-disabled on Nix-managed installs, whose updates
     // ride the flake.
     var updates = UpdateSettings()
+    // The `pounce://` door: whether links work at all, and whether one that
+    // would run something has to be answered first. See URLScheme.swift.
+    var urlScheme = URLSchemeSettings()
     var fileSearch = FileSearchSettings()
     var shortcuts = ShortcutsSettings()
     var systemSettings = SystemSettingsSettings()
@@ -760,6 +786,10 @@ struct Settings {
         }
         if let up = obj["updates"] as? [String: Any] {
             if let c = up["check"] as? Bool { s.updates.check = c }
+        }
+        if let us = obj["urlScheme"] as? [String: Any] {
+            if let e = us["enabled"] as? Bool { s.urlScheme.enabled = e }
+            if let c = us["confirm"] as? Bool { s.urlScheme.confirm = c }
         }
         if let fs = obj["fileSearch"] as? [String: Any] {
             if let e = fs["enabled"] as? Bool { s.fileSearch.enabled = e }
