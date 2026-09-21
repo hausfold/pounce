@@ -92,6 +92,9 @@ pkgs/pounce/            Swift sources, Info.plist, emoji.json, ports
                         AppIcon.iconset/ = app-icon slots for iconutil (here: `src = ./.` is this dir alone)
                         Json.swift = the one writer behind every --json
                         Skill.swift = `pounce skill`, over the embedded ai/SKILL.md
+                        URLScheme.swift = the pounce:// grammar + confirm policy (pure);
+                          URLHandler.swift = the kAEGetURL half that draws and dispatches
+                        Banner.swift = the one notification the daemon draws
 pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh
 pkgs/pounce-skill/      the agent skill as a derivation, for consumers
 ai/SKILL.md             its source, also embedded in the binary by build.sh
@@ -147,6 +150,29 @@ real file. `pkgs/pounce-skill` ships the same bytes as `pkgs.pounce-skill`
   `tests/fixtures/header-grammar.tsv` (haus's Nix copy reads only `cheat`).
   Discovery also reads `~/.config/pounce/commands`, `$POUNCE_COMMAND_PATH` and
   Nix `extraCommandDirs`; later wins on a clash.
+- **The `pounce://` door**: `URLScheme.swift` is the grammar
+  (`pounce://run?item=<key>[&arg=…]`) and the confirm policy, pure and pinned by
+  `tests/urlscheme_tests.swift`; `URLHandler.swift` is the `kAEGetURL` half. It
+  dispatches through `DaemonMode.runTargetHook` like every other trigger — the
+  hook carries the `cmd:`-only positional args, so command resolution is not
+  copied — and the scheme itself is claimed in `Info.plist`'s
+  `CFBundleURLTypes`, which is a bundle fact no setting can unclaim; the runtime
+  switch is `urlScheme.enabled`. **A link is a less-trusted caller than the
+  keyboard and the defaults say so**: one that would RUN something takes the
+  confirm sheet — `cmd:`, `app:`, `shortcut:`, and `mode:camera`, the one mode
+  that starts a device rather than drawing a list — while one that only OPENS a
+  window or a settings pane does not, a link arriving while anything of
+  pounce's is already on screen is refused rather than replacing it (every
+  other trigger IS the user and replaces it on purpose), and
+  `urlScheme.confirm: false` is the user's way back to `pounce run`'s contract.
+  `URLScheme.maxArguments` is not a round number: it is exactly the rows the
+  sheet draws, so there is no link whose payload is agreed to unseen. Nothing answers the caller — a link has no
+  exit code, so every refusal is a `Banner.post` and an `NSLog` or it is
+  nothing. Delivery to the RUNNING daemon (rather than a second copy that would
+  exit on the single-instance guard) is what `LSRegisterURL` plus an accessory
+  `NSApplication` buys, measured on a /nix/store bundle — the store path is not
+  the obstacle it looks like, but `/private/tmp` is: Launch Services returns
+  `noErr` there and registers nothing.
 - **Ranking** is calibrated across `Frecency.swift` (decayed averages `short`,
   24h half-life, and `long`, 30d; `shortWeight` 15; `rankWeight`, a logarithm),
   `QueryMemory.swift` (`rescueBoost` 2.5, the bar set between one pick and two),
@@ -286,7 +312,8 @@ no subagent mechanism, say so in one line.
 
 **Never write a bare `osascript -e 'display notification …'`** — CI fails on
 one. Every banner goes through the `notify()` helper each command carries
-(Swift: `UpdateCheck.postBanner`): trill when Trill.app is on the Mac, Apple's
+(Swift: `Banner.post`, the daemon's only one — `UpdateCheck` and the
+`pounce://` door both call it): trill when Trill.app is on the Mac, Apple's
 banner otherwise. Copying it:
 
 - Resolve the bundle; never look for `trill` on PATH — the daemon's launchd
@@ -295,9 +322,10 @@ banner otherwise. Copying it:
   `pounce.brew-services`, …): that is what `~/.config/trill/rules.json` matches
   on.
 - Fall back always: trill exiting non-zero (exit 2, no daemon) is normal.
-- The shell fallback passes both strings as `argv` (`on run argv`);
-  `UpdateCheck`'s interpolates only a regex-vetted version and a constant —
-  anything a user or server could influence needs `argv` too.
+- The shell fallback passes both strings as `argv` (`on run argv`), Banner's
+  included — a refusal body carries the item key out of somebody else's link,
+  and anything a user, a server or a link could influence must never be
+  interpolated into AppleScript.
 
 Exit 0 from trill means the daemon took the send, not that the user saw it
 (rules, digests and quiet hours route to the inbox). That is the user's dial;

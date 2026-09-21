@@ -431,6 +431,10 @@ enum ItemTarget: Equatable {
         return nil
     }
 
+    /// Whether this names a command script — the one kind that takes arguments
+    /// (CommandSpawner), and so the one kind a `pounce://` link may pass any to.
+    var isCommand: Bool { if case .command = self { return true }; return false }
+
     // Why `target` can't be dispatched, or nil if its SHAPE is fine. Deliberately
     // does not check that a command id exists: scripts can appear after the
     // daemon starts, so that's resolved at fire time (and warned about separately

@@ -77,6 +77,39 @@ enum Main {
                                   mode:launcher       the palette itself
                                   mode:settings       pounce's own settings
 
+    running one item from a link:
+      pounce://run?item=<item-key>[&arg=<value>…]
+                                the same item keys `run` takes, reachable from
+                                anything that can open a URL and nothing else —
+                                a row in a note or a base, a spreadsheet cell, a
+                                Shortcut, a web page. No plugin, no shell.
+
+                                `arg` is repeatable (up to four) and
+                                POSITIONAL: the script reads them as $1, $2 … .
+                                Only a cmd: item takes any; a link that passes
+                                one to anything else is refused rather than
+                                quietly stripped. Percent-encode a value
+                                holding & # % or a space.
+
+                                A link that would RUN something is confirmed on
+                                screen first — cmd:, app:, shortcut:, and
+                                mode:camera, which starts a capture session
+                                rather than drawing a list. The sheet names the
+                                app that opened the link and every argument it
+                                carries. A link that only OPENS something
+                                (the other mode:s, setting:) is not confirmed,
+                                and a link that arrives while pounce already
+                                has something on screen is refused rather than
+                                taking it.
+
+                                config.json: "urlScheme": {"enabled": …,
+                                "confirm": …}. `enabled: false` refuses every
+                                link; `confirm: false` trusts a link as much as
+                                a hotkey, leaving the command's own
+                                `confirm =` header as the only sheet. A link
+                                that can't be honoured says so in a banner —
+                                there is no exit code to hand back.
+
     what it can run:
       list [--json]             every command script installed on this Mac: its
                                 item key, its name, what its header DECLARES it
@@ -724,7 +757,30 @@ enum DaemonMode {
     // The one implementation of the target grammar ("cmd:emoji", "mode:clipboard"),
     // set by run() so `pounce run <target>` over the socket dispatches exactly
     // as a hotkey does. nil until the daemon is up.
-    static var runTargetHook: ((String) -> Void)?
+    //
+    // `args` are POSITIONAL arguments for a `cmd:` target and empty for every
+    // other caller: a hotkey, a leader, a scoped chord and the socket's RUN
+    // verb all pass none. Only the `pounce://` door passes any, and only after
+    // refusing them for a target that is not a command (URLScheme.swift) —
+    // which is why this one closure still knows the whole grammar rather than
+    // the door growing a second copy of command resolution.
+    static var runTargetHook: ((String, [String]) -> Void)?
+    // The live command registry, published for the `pounce://` door: a link
+    // naming a command that isn't installed has to be refused ON SCREEN, since
+    // its caller is a note or a page and cannot be handed an exit code, and the
+    // sheet that asks about one needs the row the launcher would have drawn.
+    // MAIN THREAD ONLY — refresh() has no lock (see CommandRegistry), and an
+    // Apple Event is delivered on the main thread like every other caller here.
+    static var commandRegistry: CommandRegistry?
+    // Put a confirm sheet up with nothing behind it (URLHandler.swift). False
+    // means a question is already standing and this one was dropped rather than
+    // swapped in underneath the user's answer.
+    static var presentConfirmHook: ((PendingConfirm) -> Bool)?
+    // Is anything of pounce's on screen right now? Read by the `pounce://` door
+    // alone, which refuses rather than takes the screen off whatever the user
+    // is already looking at — including a picker some other script is blocked
+    // on. Every other trigger IS the user and replaces it on purpose.
+    static var paletteBusyHook: (() -> Bool)?
     // Last Accessibility trust state we logged, so the watcher only emits on a
     // change. Seeded by the startup log line below.
     static var lastTrusted: Bool?
@@ -800,8 +856,10 @@ enum DaemonMode {
         // The tracker is only for the walk's "which pages are non-empty" read;
         // hotkeys alone shouldn't pay for AX observers on every app.
         let tracker = pages.enabled ? sharedWindowTracker() : nil
+        // A scoped chord names a target and nothing else, so it takes the
+        // no-arguments arm of the hook.
         if let keys = AppScopedKeys(settings: hotkeys, pages: pages,
-                                    tracker: tracker, runTarget: run) {
+                                    tracker: tracker, runTarget: { run($0, []) }) {
             appScoped = keys
             let what = [hotkeys.enabled ? "\(hotkeys.scopes.count) scope(s)" : nil,
                         pages.enabled ? "page walk on \(pages.modifiers.joined(separator: "+"))+\(pages.key)" : nil]
@@ -986,6 +1044,12 @@ enum DaemonMode {
         // registry needs no locking.
         let registry = CommandRegistry()
         DispatchQueue.main.async { registry.refresh() }
+        // Published for the `pounce://` door, which has to be able to name a
+        // command before it runs it (URLHandler.swift). Same object, same
+        // thread — a second registry would answer with a different set of
+        // command dirs the moment anything about the daemon's environment was
+        // interesting enough to matter.
+        commandRegistry = registry
 
         let settings = Settings.load()
 
@@ -1111,7 +1175,15 @@ enum DaemonMode {
         // settings UI writes one string and it works as both a row key and a
         // hotkey target. Unknown targets are logged, not silently dropped —
         // a typo'd command id would otherwise present as a dead key.
-        let runTarget: (String) -> Void = { target in
+        let runTarget: (String, [String]) -> Void = { target, args in
+            // Arguments belong to a command and to nothing else; the one caller
+            // that can pass them has already refused them for every other kind
+            // (URLScheme.parse). Named rather than dropped, because a silent
+            // drop here would be a link whose author is sure it passed
+            // something.
+            if !args.isEmpty, ItemTarget.parse(target)?.isCommand != true {
+                NSLog("pounce daemon: '\(target)' takes no arguments; ignoring \(args.count)")
+            }
             switch ItemTarget.parse(target) {
             case .mode("launcher"):
                 presentLauncher()
@@ -1137,7 +1209,7 @@ enum DaemonMode {
             case .command(let id):
                 registry.refresh()
                 if let path = registry.scriptPath(for: id) {
-                    CommandSpawner.run(scriptPath: path)
+                    CommandSpawner.run(scriptPath: path, arguments: args)
                 } else {
                     NSLog("pounce daemon: target '\(target)' names no known command; check the script exists in a command dir")
                 }
@@ -1165,6 +1237,34 @@ enum DaemonMode {
         // target grammar, whether the trigger is Carbon or an external binder
         // (AeroSpace, skhd) that already owns the keystroke.
         runTargetHook = runTarget
+
+        // A confirm sheet with nothing behind it: what a `pounce://` link gets
+        // before it runs anything (URLHandler.swift). Same shape as
+        // presentMode — release any waiting client, re-read settings, load,
+        // present — except that what is loaded is the question alone, so Esc
+        // takes the window down rather than revealing a list nobody summoned
+        // (DaemonState.cancelConfirm).
+        paletteBusyHook = { state.isVisible }
+
+        presentConfirmHook = { pending in
+            // A standing question is never swapped out from under its answer.
+            if state.isVisible, state.pendingConfirm != nil { return false }
+            ui.resultSink?("")
+            ui.resultSink = nil
+            let settings = Settings.load()
+            settings.apply()
+            state.reset()
+            state.metrics = settings.metrics
+            state.pendingConfirm = pending
+            ui.present()
+            return true
+        }
+
+        // The `pounce://` door, open from here on. Deliberately after the hooks
+        // above: the handler is live the moment it is installed, and a link
+        // that arrived between the two would have found a daemon with no
+        // dispatcher and been refused for a reason that was never true.
+        URLHandler.install()
 
         hotkeyEnabled = settings.hotkey.enabled
         hotkeyCombo = "\(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key)"
@@ -1229,7 +1329,7 @@ enum DaemonMode {
             bindingReport.append("conflict — \(conflict)")
         }
         let leaderRunner = LeaderRunner(
-            onRun: { runTarget($0) },
+            onRun: { runTarget($0, []) },
             onHint: { node in
                 // Which-key overlay, through the existing cheatsheet window.
                 // Only reached if the user hesitates past LeaderRunner.hintDelay.
@@ -1263,7 +1363,7 @@ enum DaemonMode {
                 : "\(step.display) → leader (\(reachable.count) sequence\(reachable.count == 1 ? "" : "s"))"
 
             let fire: () -> Void = node.isLeaf
-                ? { runTarget(node.target!) }
+                ? { runTarget(node.target!, []) }
                 : { leaderRunner.arm(node) }
 
             // A bare Fn/Globe tap is a modifier-only gesture: Carbon cannot
@@ -1566,7 +1666,7 @@ enum DaemonMode {
             if let problem = ItemTarget.problem(with: target) {
                 reply = "err\t\(problem)"
             } else if let run = DaemonMode.runTargetHook {
-                DispatchQueue.main.async { run(target) }
+                DispatchQueue.main.async { run(target, []) }
                 reply = "ok"
             } else {
                 reply = "err\tdaemon has no target dispatcher (not fully started?)"

@@ -246,6 +246,16 @@ enum Autostart {
 //                              hiccup) run the daemon in-process so the app
 //                              still works THIS session; login persistence
 //                              catches up when the user approves.
+//
+// ⚠️ A `pounce://` link that arrives while NO daemon is running lands here, and
+// the middle arm above loses it: this process has no run loop before
+// summonLauncher(), so the queued `kAEGetURL` is never delivered and the user
+// gets the palette instead of the item they clicked. The other two arms are
+// fine — the in-process fallback runs the daemon, handler and all, and a daemon
+// that is already up receives the event itself rather than LS launching us
+// (URLHandler.swift). Closing it means a run-loop spin before the summon, which
+// is latency on the first-run path this whole file exists to protect, so it is
+// written down rather than paid for blind.
 enum AppLaunchMode {
     // The greeting: what a double-click shows when the daemon is (or has just
     // come) up — the launcher palette, same as ⌘Space.

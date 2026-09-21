@@ -57,11 +57,10 @@ on the value committed last time.
 |---|---|
 | make the Mac quiet | `pounce focus on` / `off` / `toggle` |
 | is it quiet? | `pounce focus status` → `on` or `off` |
-| open clipboard history | `pounce run mode:clipboard` |
-| open the emoji / screenshot / file-search window | `pounce run mode:emoji` · `mode:screenshots` · `mode:filesearch` |
-| open the launcher itself | `pounce run mode:launcher` |
+| open a built-in window | `pounce run mode:clipboard` · `mode:emoji` · `mode:screenshots` · `mode:filesearch` · `mode:launcher` |
 | run one configured item | `pounce run cmd:emoji` · `app:/Applications/Foo.app` · `shortcut:<uuid>` |
 | open a System Settings pane, or one setting in it | `pounce run setting:com.apple.Displays-Settings.extension[?<anchor>]` |
+| put an item behind a LINK — a note, a base row, a page | `pounce://run?item=cmd:<id>&arg=<value>` (`arg` repeatable → `$1 $2 …`, cmd: only). A link that RUNS something is confirmed on screen; one that opens a window isn't. No exit code comes back — a refusal is a banner |
 | transform the user's current selection | `pounce --transform 'tr "[:lower:]" "[:upper:]"'` |
 | put a file on the clipboard | `pounce --copy-file <path>` |
 | what commands can this Mac run — and what does each do to it? | `pounce list` (`--json` for records with each script's path) |

@@ -432,7 +432,13 @@ final class CommandRegistry {
 // used to `exec` it. Submenu commands re-invoke `pounce` (the client), so the
 // child's PATH gets this binary's directory prepended so that resolves.
 enum CommandSpawner {
-    static func run(scriptPath: String) {
+    /// `arguments` are positional and reach the script as `$1 $2 …`. Only the
+    /// `pounce://` door passes any (URLScheme.swift): the palette, a hotkey and
+    /// `pounce run` all invoke a command with none, which is what a command
+    /// written before this existed still sees. Nothing goes through a shell —
+    /// this is an argv, so a value carrying spaces, quotes or a newline arrives
+    /// as one argument and is never re-parsed.
+    static func run(scriptPath: String, arguments: [String] = []) {
         let process = Process()
         var environment = ProcessInfo.processInfo.environment
         let binDir = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().path
@@ -442,9 +448,10 @@ enum CommandSpawner {
         // Mirror pounce-palette: exec directly when executable, else run via bash.
         if FileManager.default.isExecutableFile(atPath: scriptPath) {
             process.executableURL = URL(fileURLWithPath: scriptPath)
+            process.arguments = arguments
         } else {
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = [scriptPath]
+            process.arguments = [scriptPath] + arguments
         }
         process.terminationHandler = { _ in }   // reap asynchronously; never block the daemon
         do {

@@ -23,6 +23,26 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!-- The `pounce://` door (URLScheme.swift, URLHandler.swift). Registering
+         the scheme is a BUNDLE fact — it is claimed the moment Launch Services
+         sees this plist, before any setting is read — so the runtime switch
+         that can actually close the door is config.json's `urlScheme.enabled`,
+         which the daemon checks on every link.
+         `Viewer` rather than `Editor`: pounce does not own these URLs, it acts
+         on them. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.hausfold.pounce.run</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>pounce</string>
+            </array>
+        </dict>
+    </array>
     <key>NSCameraUsageDescription</key>
     <string>Pounce shows a live camera preview for the camera peek command.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>

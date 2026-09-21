@@ -42,12 +42,46 @@ struct ConfirmView: View {
     // The declarations, as sentences. `confirm` itself is not one of them — it
     // is why this sheet exists — so a command that declares nothing else still
     // says something rather than showing an empty box.
+    //
+    // A link's rows come FIRST and are of a different kind: not what the author
+    // claims the command does, but what this particular invocation is — who
+    // opened the URL, and the arguments it is handing the script. Those
+    // arguments are the untrusted half of a `pounce://` link (URLScheme.swift),
+    // so they are the half that has to be on screen; a sheet that asked "run
+    // Spawn Agent?" without showing what it was being spawned ON would be the
+    // content-free "are you sure?" this feature exists not to be.
     private var notes: [(icon: String, text: String)] {
         var out: [(String, String)] = []
+        if case .link(let link) = pending.origin {
+            out.append(("link", link.sender.map { "Asked by \($0), through a pounce:// link" }
+                                    ?? "Asked by a pounce:// link"))
+            // Every argument gets a row: URLScheme.maxArguments is exactly
+            // what fits here, so there is no "and 4 more" case in which the
+            // user would be agreeing to a payload that is not on screen.
+            // Quoted, because an argument is text somebody else wrote and one
+            // reading "Asked by Finder, through a pounce:// link" must not be
+            // able to pass for the row above it.
+            for argument in link.arguments {
+                out.append(("text.quote",
+                            argument.isEmpty ? "with an empty argument" : "with “\(argument)”"))
+            }
+        }
         if item.risk.mutates { out.append(("pencil", "Changes state on this Mac")) }
         if item.risk.network { out.append(("network", "Talks to the internet")) }
         if out.isEmpty { out.append(("hand.raised", "Asked pounce to check with you first")) }
         return out
+    }
+
+    // The honest caption, and the point of the whole sheet. Which sentence
+    // depends on who asked: for a row the user pressed Return on, the thing
+    // they cannot see is that the notes above are the author's own claim; for a
+    // link, it is that pounce has no idea who wrote the link — the Apple Event
+    // names the app that OPENED it, and an app opens whatever it was handed.
+    private var caption: String {
+        if case .link = pending.origin {
+            return "a link asked for this — pounce can't see who wrote it"
+        }
+        return "declared by the command's own header — pounce doesn't verify it"
     }
 
     var body: some View {
@@ -77,7 +111,11 @@ struct ConfirmView: View {
                         .lineLimit(1)
                         .frame(height: ConfirmLayout.subtitleHeight, alignment: .leading)
                 }
-                ForEach(notes, id: \.text) { note in
+                // Indexed, not keyed on the text: a link's argument rows are
+                // caller-supplied, so two identical arguments (or two empty
+                // ones) would be two identical ids — a dropped row, and a
+                // `panelHeight` that no longer describes what is drawn.
+                ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
                     HStack(spacing: pt(8)) {
                         Image(systemName: note.icon)
                             .font(.system(size: pt(11), weight: .semibold))
@@ -87,15 +125,21 @@ struct ConfirmView: View {
                             .font(.system(size: pt(13), weight: .medium))
                             .foregroundColor(Theme.text)
                             .lineLimit(1)
+                            // Both ends of a long argument, not just its head:
+                            // a path's last component is usually the half that
+                            // says what this is about, and a prefix that stops
+                            // at "/Users/me/Library/Application Sup…" is a row
+                            // the user cannot answer.
+                            .truncationMode(.middle)
                         Spacer()
                     }
                     .frame(height: ConfirmLayout.noteHeight)
                 }
-                // The honest caption, and the point of the whole feature: this
-                // is the command author's own claim about their script, not
-                // something pounce checked. `pounce list --json` carries the
-                // same claims plus the path to read.
-                Text("declared by the command's own header — pounce doesn't verify it")
+                // See `caption`: the command author's own claim about their
+                // script, or — for a link — that pounce cannot see who wrote
+                // the link. Neither is something pounce checked. `pounce list
+                // --json` carries the same claims plus the path to read.
+                Text(caption)
                     .font(.system(size: pt(11)))
                     .foregroundColor(Theme.subtext0)
                     .lineLimit(1)
