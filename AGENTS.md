@@ -41,6 +41,12 @@ the command scripts, and fails on any bare `display notification`.
 installer grants. `sandbox = relaxed` exempts fixed-output and `__noChroot`
 derivations only, and this one is neither, so setting it *breaks* the build
 rather than enabling it: `/usr/bin/xcrun: Operation not permitted`, exit 126.
+**Nix's chroot is the only sandbox that is off, though**: the Darwin builder
+still runs under one of macOS's own, as does Homebrew's formula build, which is
+why `swiftc` is invoked `-disable-sandbox` — its macro plugins want a nested
+`sandbox_apply` that a sandboxed build refuses, and under the macOS 27 SDK
+`@State` is a macro, so every `@State` site fails as "cannot assign to property:
+'self' is immutable". `build.sh`'s header has it; don't prune the flag.
 *SDK* floor 15: `Window.swift` overrides `contextMenuKeyDown:` /
 `showContextMenuForSelection:`, which `NSResponder.h` declares only there, and
 `brew install --build-from-source` needs it too. *Deployment* floor 14, from
