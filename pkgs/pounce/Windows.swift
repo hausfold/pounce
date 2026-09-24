@@ -206,6 +206,9 @@ final class WindowTracker {
 
     private func touchFocusedWindow(pid: pid_t) {
         let axApp = AXUIElementCreateApplication(pid)
+        // Both event taps call this (via stampFrontmost), and the default 6s
+        // timeout on a hung app would get the tap disabled.
+        AXUIElementSetMessagingTimeout(axApp, 0.1)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &value) == .success,
               let v = value, CFGetTypeID(v) == AXUIElementGetTypeID() else { return }
