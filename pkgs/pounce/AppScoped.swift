@@ -70,8 +70,8 @@ final class AppScopedKeys {
     private var walking = false
     private var walkPages: [String] = []
     private var walkIndex = 0
-    // The page the walk began on — the MRU file's head, when that page is one
-    // of the candidates. Marked in the HUD, and the release skips focusing it
+    // The page the walk began on — the focused window's page (the MRU file's
+    // head when that can't be read), when it is one of the candidates. Marked in the HUD, and the release skips focusing it
     // (landing where you already are is a subprocess for nothing).
     private var walkOrigin: String?
 
@@ -273,7 +273,18 @@ final class AppScopedKeys {
             // read this file identically — tilde expanded, any line ending,
             // capped (the cap matters here: this is the tap path).
             let recent = WorkspaceMRU.lines(file: pages.mruFile)
-            let current = recent.first
+            // Where we are standing comes from the focused window, the same
+            // read the ⌘⇥ switcher makes on its first tap, and the MRU head is
+            // only the fallback. The file's head is whatever the WM hook heard
+            // LAST, and anything that pushes a non-page after the page you are
+            // on (a focus bounce through another workspace, a second AeroSpace
+            // server firing the same hook off its own stale model) makes it
+            // lie: the walk then thinks it began off-page, starts at index 0 —
+            // the page you are already on — and a single tap lands nowhere.
+            // Both reads are caches plus one AX call on the frontmost app.
+            tracker?.stampFrontmost()
+            let windows = tracker?.orderedWindows() ?? []
+            let current = windows.first.flatMap { map[$0.id] } ?? recent.first
             // Dedup keeping the FIRST (most recent) occurrence — a hook that
             // appends rather than rewrites must not make the ring visit a page
             // twice per cycle.
@@ -282,13 +293,14 @@ final class AppScopedKeys {
             // Pages the file hasn't seen yet (fresh lane, wiped state) still
             // deserve to be reachable; they queue behind the known ones.
             ordered += live.subtracting(Set(ordered)).sorted()
+            // The page under us heads the ring whatever the file says, so the
+            // first tap always leaves it.
+            if let current, let at = ordered.firstIndex(of: current), at > 0 {
+                ordered.insert(ordered.remove(at: at), at: 0)
+            }
 
             walkPages = ordered
             walkOrigin = current.flatMap { ordered.contains($0) ? $0 : nil }
-            // The most recent page is usually the one we're standing on (the
-            // hook pushed it when we landed here); start one past it. When the
-            // walk begins somewhere else — a float on a numbered workspace —
-            // the most recent page IS the right first stop.
             let onIt = ordered.first == current
             // Forward starts one past the page we're standing on (the hook
             // pushed it when we landed, so it heads the list); backwards wraps
@@ -302,7 +314,7 @@ final class AppScopedKeys {
             // reason the ⌘⇥ switcher freezes its snapshot: rows arriving
             // mid-walk would re-describe pages under the selection. Both reads
             // are against WindowTracker's cache — no subprocess on this path.
-            state.groups = Self.groups(ordered, windows: tracker?.orderedWindows() ?? [], map: map)
+            state.groups = Self.groups(ordered, windows: windows, map: map)
             state.origin = walkOrigin
             state.selection = walkIndex
 
@@ -395,9 +407,9 @@ final class AppScopedKeys {
         hideHUD()
         clearRows()
         guard let landed else { return }
-        // Deliberately NOT skipped when it equals `origin`: that name comes from
-        // the MRU file, not from the live focus, so a stale or unreadable file
-        // would turn the one focus of the whole gesture into a no-op. Focusing
+        // Deliberately NOT skipped when it equals `origin`: that name may come
+        // from the MRU file rather than the live focus, so a stale file would
+        // turn the one focus of the whole gesture into a no-op. Focusing
         // the workspace you are already on costs a fire-and-forget subprocess
         // and does nothing visible.
         Aerospace.focusWorkspace(landed)   // async under the hood; safe from the tap
