@@ -43,6 +43,34 @@ enum URLHandler {
             forEventClass: AEEventClass(kInternetEventClass),
             andEventID: AEEventID(kAEGetURL))
         NSLog("pounce daemon: \(URLScheme.scheme):// links are live")
+
+        // A link that launched this very process — AppLaunchMode's in-process
+        // fallback, where the app Launch Services started for it IS the daemon
+        // — was caught before there was a daemon to answer it. Answer it now,
+        // from the runloop, like any other link.
+        for link in LaunchLinks.take() {
+            DispatchQueue.main.async { open(link.raw, sender: link.sender) }
+        }
+    }
+
+    /// Hand links this process caught to the daemon that owns the socket.
+    /// True when the daemon took every one; false means it is gone, or older
+    /// than the `URL` verb, and the caller has to say so.
+    ///
+    /// STATUS first, as `pounce list` does: a daemon that predates the verb
+    /// would DRAW an unknown payload as a one-row picker, and a link turning
+    /// into a stray palette is exactly the failure this path exists to end.
+    static func forward(_ links: [LaunchLinks.Link]) -> Bool {
+        guard let status = Daemon.request("STATUS\n"),
+              let caps = try? JSONSerialization.jsonObject(with: Data(status.utf8)) as? [String: Any],
+              caps["url"] as? Bool == true
+        else { return false }
+        for link in links {
+            let payload = URLScheme.Forward.payload(raw: link.raw, sender: link.sender)
+            guard Daemon.request(payload) == "ok" else { return false }
+            NSLog("pounce: handed a \(URLScheme.scheme):// link to the daemon: \(link.raw)")
+        }
+        return true
     }
 
     private static let receiver = Receiver()
@@ -204,12 +232,107 @@ enum URLHandler {
     ///
     /// nil is ordinary, not an error — `open pounce://…` from a shell is sent
     /// by a process that has already exited by the time we look.
-    private static func senderName(of event: NSAppleEventDescriptor) -> String? {
+    static func senderName(of event: NSAppleEventDescriptor) -> String? {
         guard let descriptor = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))
         else { return nil }
         let pid = descriptor.int32Value
         guard pid > 0, let app = NSRunningApplication(processIdentifier: pid) else { return nil }
         guard let name = app.localizedName, !name.isEmpty else { return nil }
         return name
+    }
+}
+
+// MARK: - A link that launched the app
+
+// Launch Services delivers a link to the running daemon when there is one
+// (above). When there isn't, it launches Pounce.app for it, and the link waits
+// in THAT process's Apple Event queue — which AppLaunchMode's arms never used
+// to read: they summon or wait with no runloop turning, exit, and the link
+// dies with them. So those arms listen first.
+//
+// Listening means bringing NSApplication up and letting it finish launching:
+// the launch's own Apple Event (`kAEGetURL` for a link, `oapp` for a
+// double-click) is dispatched from the first turn of AppKit's event loop, and
+// `didFinishLaunching` is posted straight after it, carrying
+// `NSApplicationLaunchIsDefaultLaunchKey`. So the wait ends on that
+// notification rather than a timer: a double-click learns it carried nothing
+// as soon as AppKit does. Measured on a scratch bundle (macOS 27): ~45ms from
+// process start, most of it `NSApplication.shared`, and the link is in hand
+// before the notification in every run. It is paid only by the two arms that
+// have no daemon yet — seconds of waiting on launchd follow anyway — and never
+// by a double-click on a running Pounce.
+//
+// `.prohibited`, not `.accessory`: this copy draws nothing, and a Finder
+// double-click asks the launched app to activate. An accessory app would take
+// activation for an instant and hand it back on exit — in a race with the
+// palette the daemon is putting up. DaemonMode.run switches to `.accessory` if
+// this process turns out to be the daemon.
+enum LaunchLinks {
+    struct Link {
+        let raw: String
+        let sender: String?
+    }
+
+    /// Longest the launch event is waited for. Never reached in practice
+    /// (above); it only bounds a launch AppKit never finishes.
+    static let ceiling: TimeInterval = 1
+
+    private static var held: [Link] = []
+    private static let catcher = Catcher()
+
+    private final class Catcher: NSObject {
+        var launched = false
+
+        @objc func handle(_ event: NSAppleEventDescriptor,
+                          withReplyEvent _: NSAppleEventDescriptor) {
+            let raw = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?
+                .stringValue ?? ""
+            guard !raw.isEmpty else { return }
+            NSLog("pounce: caught a \(URLScheme.scheme):// link before the daemon was up: \(raw)")
+            LaunchLinks.held.append(Link(raw: raw, sender: URLHandler.senderName(of: event)))
+        }
+
+        @objc func finished(_: Notification) { launched = true }
+    }
+
+    /// Finish launching and keep every link the launch carried. Leaves the
+    /// catcher installed, so a link opened while this process waits on launchd
+    /// is queued for `pump` rather than lost; URLHandler.install replaces it
+    /// if this process becomes the daemon.
+    static func listen() {
+        NSAppleEventManager.shared().setEventHandler(
+            catcher,
+            andSelector: #selector(Catcher.handle(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL))
+        NotificationCenter.default.addObserver(
+            catcher, selector: #selector(Catcher.finished(_:)),
+            name: NSApplication.didFinishLaunchingNotification, object: nil)
+
+        let app = NSApplication.shared
+        app.setActivationPolicy(.prohibited)
+        app.finishLaunching()
+        let deadline = Date(timeIntervalSinceNow: ceiling)
+        // Short slices: a dispatched Apple Event is not an NSEvent, so
+        // nextEvent keeps waiting after the notification has already landed.
+        while !catcher.launched, Date() < deadline {
+            pump(until: min(deadline, Date(timeIntervalSinceNow: 0.01)))
+        }
+        NotificationCenter.default.removeObserver(catcher)
+    }
+
+    /// Dispatch whatever is queued, waiting no longer than `limit`.
+    static func pump(until limit: Date = .distantPast) {
+        let app = NSApplication.shared
+        while let event = app.nextEvent(matching: .any, until: limit,
+                                        inMode: .default, dequeue: true) {
+            app.sendEvent(event)
+        }
+    }
+
+    /// The links caught so far, handed over once.
+    static func take() -> [Link] {
+        defer { held = [] }
+        return held
     }
 }

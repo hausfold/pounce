@@ -255,15 +255,12 @@ enum Autostart {
 //                              still works THIS session; login persistence
 //                              catches up when the user approves.
 //
-// ⚠️ A `pounce://` link that arrives while NO daemon is running lands here, and
-// the register and packager arms both lose it: this process has no run loop
-// before summonLauncher(), so the queued `kAEGetURL` is never delivered and the
-// user gets the palette instead of the item they clicked. The other two arms
-// are fine — the in-process fallback runs the daemon, handler and all, and a
-// daemon that is already up receives the event itself rather than LS launching
-// us (URLHandler.swift). Closing it means a run-loop spin before the summon,
-// which is latency on the first-run path this whole file exists to protect, so
-// it is written down rather than paid for blind.
+// A `pounce://` link that arrives while NO daemon is running lands here too.
+// A daemon that is already up receives the event itself rather than LS
+// launching us (URLHandler.swift), so the summon arm never sees one; the other
+// arms listen for it first (LaunchLinks, URLHandler.swift) and then act on it
+// instead of greeting: handed to the daemon over the socket once one answers,
+// or answered in-process when this copy becomes the daemon.
 enum AppLaunchMode {
     // The greeting: what a double-click shows when the daemon is (or has just
     // come) up — the launcher palette, same as ⌘Space.
@@ -271,6 +268,24 @@ enum AppLaunchMode {
         var inv = Invocation()
         inv.launcher = true
         ClientMode.run(inv)
+        exit(0)
+    }
+
+    // What a launch does once a daemon answers: the link it carried, or the
+    // palette when it carried none. A link that the daemon cannot take (gone
+    // again, or older than the URL verb) is said on screen — it would
+    // otherwise vanish, and the one that follows it will reach the daemon
+    // directly now that it is up.
+    private static func greet() -> Never {
+        LaunchLinks.pump()   // anything opened while we waited on launchd
+        let links = LaunchLinks.take()
+        if links.isEmpty { summonLauncher() }
+        if !URLHandler.forward(links) {
+            NSLog("pounce: the daemon didn't take \(links.count) \(URLScheme.scheme):// link(s)")
+            Banner.postAndWait(title: "Pounce ignored a link",
+                               body: "Pounce was still starting — open the link again",
+                               source: URLHandler.bannerSource, symbol: "link.badge.plus")
+        }
         exit(0)
     }
 
@@ -282,15 +297,13 @@ enum AppLaunchMode {
             exit(0)
         }
 
-        switch AppLaunchPlan.decide(daemonAlive: SocketConfig.daemonAlive(),
-                                    packager: PackagerAgent.loaded()) {
-        case .summon:
-            summonLauncher()
-        case .deferTo(let label):
-            deferToPackager(label)
-        case .register:
-            break
-        }
+        let plan = AppLaunchPlan.decide(daemonAlive: SocketConfig.daemonAlive(),
+                                        packager: PackagerAgent.loaded())
+        if plan == .summon { summonLauncher() }
+
+        // No daemon to receive a link, so this launch may be carrying one.
+        LaunchLinks.listen()
+        if case .deferTo(let label) = plan { deferToPackager(label) }
 
         var registered = false
         do {
@@ -309,14 +322,15 @@ enum AppLaunchMode {
                 usleep(150_000)   // 20 × 150ms = 3s ceiling, exits early once alive
             }
             if SocketConfig.daemonAlive() {
-                summonLauncher()
+                greet()
             }
             NSLog("pounce: login item registered but the daemon isn't up yet — running it in-process")
         }
 
         // In-process fallback. The single-instance guard in DaemonMode.run()
         // makes this safe even if launchd's copy arrives late: whichever loses
-        // the socket race exits 0 and stays exited.
+        // the socket race exits 0 and stays exited. A link this launch caught
+        // is answered by URLHandler.install once the daemon's hooks are live.
         DaemonMode.run()
     }
 
@@ -344,9 +358,15 @@ enum AppLaunchMode {
             usleep(150_000)   // 66 × 150ms ≈ 10s ceiling, exits early once alive
         }
         if SocketConfig.daemonAlive() {
-            summonLauncher()
+            greet()
         }
         NSLog("pounce: \(label) is loaded but the daemon isn't up yet — leaving it to that agent")
+        LaunchLinks.pump()
+        if !LaunchLinks.take().isEmpty {
+            Banner.postAndWait(title: "Pounce ignored a link",
+                               body: "Pounce is still starting — open the link again in a moment",
+                               source: URLHandler.bannerSource, symbol: "link.badge.plus")
+        }
         exit(0)
     }
 }

@@ -140,6 +140,28 @@ func runURLSchemeTests() -> Int {
                                          declaresConfirm: true),
           "a command declaring confirm keeps its sheet even with the dial off")
 
+    // The hand-over from a launch that caught a link to the daemon that
+    // answers it (URLScheme.Forward). The link and its sender are somebody
+    // else's text on a protocol made of tabs and newlines, so both must come
+    // back exactly, and nothing about them may end the line early.
+    func roundTrip(_ raw: String, _ sender: String?) -> (raw: String, sender: String?)? {
+        URLScheme.Forward.parse(URLScheme.Forward.payload(raw: raw, sender: sender))
+    }
+    let plain = roundTrip("pounce://run?item=cmd:todos", "Obsidian")
+    check(plain?.raw == "pounce://run?item=cmd:todos" && plain?.sender == "Obsidian",
+          "a forwarded link keeps its URL and the app that opened it")
+    check(roundTrip("pounce://run?item=cmd:todos", nil).map { $0.sender == nil } == true,
+          "an unknown sender stays unknown rather than becoming an empty name")
+    let hostile = roundTrip("pounce://run?item=cmd:x&arg=a\tb\nc\\n", "Evil\tApp\nRUN\tcmd:rm")
+    check(hostile?.raw == "pounce://run?item=cmd:x&arg=a\tb\nc\\n",
+          "tabs, newlines and backslashes in a forwarded link survive the socket")
+    check(hostile?.sender == "Evil\tApp\nRUN\tcmd:rm",
+          "a sender's name cannot smuggle a second line onto the socket")
+    check(!URLScheme.Forward.payload(raw: "a\nb", sender: "c\nd").dropLast().contains("\n"),
+          "a forward payload is exactly one line")
+    check(URLScheme.Forward.parse("URL\t\t\n") == nil, "a URL line with no link is not a link")
+    check(URLScheme.Forward.parse("RUN\tcmd:todos\n") == nil, "another verb is not a forwarded link")
+
     if failures == 0 { print("ok — all pounce:// link tests passed") }
     return failures
 }

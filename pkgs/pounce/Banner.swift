@@ -35,6 +35,16 @@ enum Banner {
         }
     }
 
+    /// The same banner, drawn on the calling thread, for a process about to
+    /// exit: `post` would hand it to a queue that dies with the process before
+    /// trill has been asked. Only for a caller with no runloop to protect —
+    /// AppLaunchMode's last word on a link it could not deliver — never the
+    /// daemon.
+    static func postAndWait(title: String, body: String, source: String, symbol: String) {
+        if trillDrew(title: title, body: body, source: source, symbol: symbol) { return }
+        fallback(title: title, body: body)
+    }
+
     /// True when trill took the event. False means "draw it some other way" —
     /// no Trill.app, no daemon (exit 2), or a send that never came back.
     ///
