@@ -282,9 +282,7 @@ enum AppLaunchMode {
         if links.isEmpty { summonLauncher() }
         if !URLHandler.forward(links) {
             NSLog("pounce: the daemon didn't take \(links.count) \(URLScheme.scheme):// link(s)")
-            Banner.postAndWait(title: "Pounce ignored a link",
-                               body: "Pounce was still starting — open the link again",
-                               source: URLHandler.bannerSource, symbol: "link.badge.plus")
+            LaunchLinks.sayLost()
         }
         exit(0)
     }
@@ -331,6 +329,8 @@ enum AppLaunchMode {
         // makes this safe even if launchd's copy arrives late: whichever loses
         // the socket race exits 0 and stays exited. A link this launch caught
         // is answered by URLHandler.install once the daemon's hooks are live.
+        // LaunchLinks.listen already ran finishLaunching; app.run() calling it
+        // again is expected, and nothing here observes the second notification.
         DaemonMode.run()
     }
 
@@ -362,11 +362,7 @@ enum AppLaunchMode {
         }
         NSLog("pounce: \(label) is loaded but the daemon isn't up yet — leaving it to that agent")
         LaunchLinks.pump()
-        if !LaunchLinks.take().isEmpty {
-            Banner.postAndWait(title: "Pounce ignored a link",
-                               body: "Pounce is still starting — open the link again in a moment",
-                               source: URLHandler.bannerSource, symbol: "link.badge.plus")
-        }
+        if !LaunchLinks.take().isEmpty { LaunchLinks.sayLost() }
         exit(0)
     }
 }

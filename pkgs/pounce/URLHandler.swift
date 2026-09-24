@@ -278,6 +278,9 @@ enum LaunchLinks {
     static let ceiling: TimeInterval = 1
 
     private static var held: [Link] = []
+    /// Set by `listen`. A `--daemon` launch never listened and has nothing to
+    /// pump, so its race-loser exit costs no NSApplication.
+    private static var listening = false
     private static let catcher = Catcher()
 
     private final class Catcher: NSObject {
@@ -300,6 +303,7 @@ enum LaunchLinks {
     /// is queued for `pump` rather than lost; URLHandler.install replaces it
     /// if this process becomes the daemon.
     static func listen() {
+        listening = true
         NSAppleEventManager.shared().setEventHandler(
             catcher,
             andSelector: #selector(Catcher.handle(_:withReplyEvent:)),
@@ -321,13 +325,26 @@ enum LaunchLinks {
         NotificationCenter.default.removeObserver(catcher)
     }
 
-    /// Dispatch whatever is queued, waiting no longer than `limit`.
-    static func pump(until limit: Date = .distantPast) {
+    /// Dispatch whatever is queued. The default is a short window, not
+    /// `.distantPast`: an Apple Event is not an NSEvent, so a non-blocking
+    /// `nextEvent` returns nil after the first one fires and leaves any others
+    /// in the queue to die with the process.
+    static func pump(until limit: Date = Date(timeIntervalSinceNow: 0.03)) {
+        guard listening else { return }
         let app = NSApplication.shared
         while let event = app.nextEvent(matching: .any, until: limit,
                                         inMode: .default, dequeue: true) {
             app.sendEvent(event)
         }
+    }
+
+    /// What a link nobody could take says on screen, from a process about to
+    /// exit. By then a daemon is up or on its way, and the same link reaches
+    /// it directly the second time.
+    static func sayLost() {
+        Banner.postAndWait(title: "Pounce ignored a link",
+                           body: "Pounce was still starting. Open the link again.",
+                           source: URLHandler.bannerSource, symbol: "link.badge.plus")
     }
 
     /// The links caught so far, handed over once.

@@ -1017,9 +1017,11 @@ enum DaemonMode {
             NSLog("pounce daemon: another daemon already owns \(SocketConfig.path) — exiting")
             // Lost the race as AppLaunchMode's fallback: a link that launch
             // caught belongs to the winner, not to this exit.
+            LaunchLinks.pump()
             let links = LaunchLinks.take()
             if !links.isEmpty, !URLHandler.forward(links) {
                 NSLog("pounce daemon: couldn't hand \(links.count) \(URLScheme.scheme):// link(s) to it")
+                LaunchLinks.sayLost()
             }
             exit(0)
         }
