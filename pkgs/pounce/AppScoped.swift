@@ -281,10 +281,15 @@ final class AppScopedKeys {
             // server firing the same hook off its own stale model) makes it
             // lie: the walk then thinks it began off-page, starts at index 0 —
             // the page you are already on — and a single tap lands nowhere.
-            // Both reads are caches plus one AX call on the frontmost app.
+            // Both reads are caches plus one AX call on the frontmost app
+            // (0.1s timeout). The top window only counts when it belongs to the
+            // frontmost app: with no focused window to stamp, it is just the
+            // last one touched, maybe on another page.
             tracker?.stampFrontmost()
             let windows = tracker?.orderedWindows() ?? []
-            let current = windows.first.flatMap { map[$0.id] } ?? recent.first
+            let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            let focused = windows.first.flatMap { $0.pid == frontPid ? map[$0.id] : nil }
+            let current = focused ?? recent.first
             // Dedup keeping the FIRST (most recent) occurrence — a hook that
             // appends rather than rewrites must not make the ring visit a page
             // twice per cycle.
