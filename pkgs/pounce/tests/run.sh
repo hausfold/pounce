@@ -76,7 +76,7 @@ fi
   ConfigTemplate.swift ConfigWriter.swift Drafts.swift AutoQuitPolicy.swift AppScanner.swift Items.swift \
   Dials.swift \
   FullscreenGate.swift \
-  BugReport.swift \
+  BugReport.swift PackagerAgent.swift \
   Shortcuts.swift SystemSettings.swift \
   "$scratch/generated_stubs.swift" \
   tests/main.swift tests/frecency_tests.swift tests/querymemory_tests.swift \
@@ -91,5 +91,6 @@ fi
   tests/appscanner_tests.swift tests/shortcuts_tests.swift \
   tests/systemsettings_tests.swift tests/bugreport_tests.swift tests/dials_tests.swift \
   tests/fullscreengate_tests.swift \
-  tests/skill_tests.swift tests/json_tests.swift tests/urlscheme_tests.swift
+  tests/skill_tests.swift tests/json_tests.swift tests/urlscheme_tests.swift \
+  tests/packager_tests.swift
 "$bin"

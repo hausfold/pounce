@@ -15,6 +15,7 @@ No `haus.*` option is defined here.
 | the app (UI, ranking, launcher), a command script, signing and notarizing (`release.yml`) | `~/code/workshop/pounce` ← **you are here** |
 | the bug-report door: `pounce report [--print]` (`ReportMode` in `Entry.swift`, `BugReport.swift`), the palette row `report-issue-pounce.sh`, the Settings window's app menu | here; the form's `DIAG_HINT` in the workshop's `script/issue-templates.sh` names all three, and nothing checks they agree |
 | how pounce is *launched*: launchd, the launch agent, its exported `POUNCE_*` command dirs, who owns ⌘Space | `~/code/workshop/haus` → `modules/launcher` |
+| the packager labels `AppLaunchMode` defers to instead of self-registering (`PackagerAgent.labels`) | here; they copy haus's `modules/launcher` `Label` and the tap formula's `homebrew.mxcl.pounce`, and nothing checks they agree — a rename there silently brings back the self-registered login item |
 | pounce's colors | `~/code/workshop/nebelung` |
 | this machine's `config.json` | haus's `modules/launcher`, or the consumer host |
 | the Homebrew formula | `homebrew-tap`, CI-owned |
