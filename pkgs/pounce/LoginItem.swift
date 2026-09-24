@@ -13,8 +13,13 @@ import ServiceManagement
 // those are packager concerns and stay out of this repo. What lives HERE is the
 // app registering ITSELF via SMAppService, the same in-process exception the
 // global hotkey already has: a capability only the app can provide, needed
-// exactly when there is no packager. haus and brew never hit this path —
-// they exec the binary with --daemon, which skips AppLaunchMode entirely.
+// exactly when there is no packager. haus's and brew's agents exec the binary
+// with --daemon, which skips AppLaunchMode — but a Launch Services start on a
+// packaged machine still lands here (a login-time app restore, a `pounce://`
+// link while haus's agent sits in its guiWait). So AppLaunchMode asks launchd
+// first (PackagerAgent.swift) and, when a packager's agent is loaded, kickstarts
+// THAT instead of registering: a self-registered job would win the socket from
+// the next login on and run without the packager's environment.
 //
 // The agent is the plist build.sh bakes into
 // Contents/Library/LaunchAgents/com.hausfold.pounce.daemon.plist (the only
@@ -239,6 +244,9 @@ enum Autostart {
 //
 //   daemon already running   → summon the launcher palette. Double-clicking a
 //                              running app should show it, not error.
+//   packager agent loaded    → (haus, brew services) kickstart that agent and
+//                              summon once it answers; never register, never
+//                              host the daemon without the packager's env.
 //   fresh drag-install       → register autostart (macOS notifies), wait for
 //                              launchd to boot the daemon, then summon the
 //                              palette as the first-run "it works" moment.
@@ -248,14 +256,14 @@ enum Autostart {
 //                              catches up when the user approves.
 //
 // ⚠️ A `pounce://` link that arrives while NO daemon is running lands here, and
-// the middle arm above loses it: this process has no run loop before
-// summonLauncher(), so the queued `kAEGetURL` is never delivered and the user
-// gets the palette instead of the item they clicked. The other two arms are
-// fine — the in-process fallback runs the daemon, handler and all, and a daemon
-// that is already up receives the event itself rather than LS launching us
-// (URLHandler.swift). Closing it means a run-loop spin before the summon, which
-// is latency on the first-run path this whole file exists to protect, so it is
-// written down rather than paid for blind.
+// the register and packager arms both lose it: this process has no run loop
+// before summonLauncher(), so the queued `kAEGetURL` is never delivered and the
+// user gets the palette instead of the item they clicked. The other two arms
+// are fine — the in-process fallback runs the daemon, handler and all, and a
+// daemon that is already up receives the event itself rather than LS launching
+// us (URLHandler.swift). Closing it means a run-loop spin before the summon,
+// which is latency on the first-run path this whole file exists to protect, so
+// it is written down rather than paid for blind.
 enum AppLaunchMode {
     // The greeting: what a double-click shows when the daemon is (or has just
     // come) up — the launcher palette, same as ⌘Space.
@@ -274,8 +282,14 @@ enum AppLaunchMode {
             exit(0)
         }
 
-        if SocketConfig.daemonAlive() {
+        switch AppLaunchPlan.decide(daemonAlive: SocketConfig.daemonAlive(),
+                                    packager: PackagerAgent.loaded()) {
+        case .summon:
             summonLauncher()
+        case .deferTo(let label):
+            deferToPackager(label)
+        case .register:
+            break
         }
 
         var registered = false
@@ -290,7 +304,8 @@ enum AppLaunchMode {
         // launchd's RunAtLoad boot isn't instant; give it a moment before
         // concluding we must host the daemon ourselves.
         if registered {
-            for _ in 0..<20 where !SocketConfig.daemonAlive() {
+            for _ in 0..<20 {
+                if SocketConfig.daemonAlive() { break }
                 usleep(150_000)   // 20 × 150ms = 3s ceiling, exits early once alive
             }
             if SocketConfig.daemonAlive() {
@@ -303,5 +318,35 @@ enum AppLaunchMode {
         // makes this safe even if launchd's copy arrives late: whichever loses
         // the socket race exits 0 and stays exited.
         DaemonMode.run()
+    }
+
+    // The packager's agent owns the daemon. Nudge it, give it longer than the
+    // register arm's 3s (haus's wrapper may still be waiting on the GUI), and
+    // if it never answers, exit rather than host an env-less daemon in-process:
+    // that copy would hold the socket for the whole session.
+    //
+    // A machine this path already hit before the fix still carries the
+    // self-registered job, which would keep winning the socket at every login.
+    // Retire it here: this process is Launch Services', not that job, so
+    // unregistering cannot kill us.
+    private static func deferToPackager(_ label: String) -> Never {
+        if Autostart.isEnabled() {
+            do {
+                try Autostart.unregister()
+                NSLog("pounce: \(label) manages the daemon — retired the self-registered login item")
+            } catch {
+                NSLog("pounce: couldn't retire the self-registered login item (\(error.localizedDescription))")
+            }
+        }
+        PackagerAgent.kickstart(label)
+        for _ in 0..<66 {
+            if SocketConfig.daemonAlive() { break }
+            usleep(150_000)   // 66 × 150ms ≈ 10s ceiling, exits early once alive
+        }
+        if SocketConfig.daemonAlive() {
+            summonLauncher()
+        }
+        NSLog("pounce: \(label) is loaded but the daemon isn't up yet — leaving it to that agent")
+        exit(0)
     }
 }

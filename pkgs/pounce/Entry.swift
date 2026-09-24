@@ -328,7 +328,9 @@ enum Main {
             // shell, pipes included, and every packager's agent passes
             // --daemon). Without this branch a double-click of the downloaded
             // app fell into ClientMode: an empty stdin picker, the worst
-            // possible first run. See LoginItem.swift for the flow.
+            // possible first run. A packaged machine can land here too (a
+            // login-time restore, a pounce:// link), which is why the flow
+            // defers to a loaded packager agent. See LoginItem.swift.
             AppLaunchMode.run()
         } else {
             ClientMode.run()
