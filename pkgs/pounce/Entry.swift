@@ -1015,6 +1015,14 @@ enum DaemonMode {
         // non-zero exits, so a clean "already running" never spins launchd.
         if SocketConfig.daemonAlive() {
             NSLog("pounce daemon: another daemon already owns \(SocketConfig.path) — exiting")
+            // Lost the race as AppLaunchMode's fallback: a link that launch
+            // caught belongs to the winner, not to this exit.
+            LaunchLinks.pump()
+            let links = LaunchLinks.take()
+            if !links.isEmpty, !URLHandler.forward(links) {
+                NSLog("pounce daemon: couldn't hand \(links.count) \(URLScheme.scheme):// link(s) to it")
+                LaunchLinks.sayLost()
+            }
             exit(0)
         }
 
@@ -1609,6 +1617,9 @@ enum DaemonMode {
                 // payload as a picker, so `--request-accessibility` gates on
                 // this before asking, and says the daemon is stale instead.
                 "accessibilityPrompt": true,
+                // And for URL: AppLaunchMode hands over a link it caught
+                // before this daemon was up, and an older daemon would draw it.
+                "url": true,
             ]
             let json = (try? JSONSerialization.data(withJSONObject: status)) ?? Data("{}".utf8)
             var reply = json; reply.append(0x0A)
@@ -1672,6 +1683,26 @@ enum DaemonMode {
                 reply = "ok"
             } else {
                 reply = "err\tdaemon has no target dispatcher (not fully started?)"
+            }
+            let replyData = Data((reply + "\n").utf8)
+            replyData.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, replyData.count) }
+            close(clientFD)
+            return
+        }
+
+        // A `pounce://` link that launched Pounce.app before this daemon was
+        // up, handed over by that copy (AppLaunchMode, LoginItem.swift). From
+        // here it is any other link: URLHandler.open, on the main thread where
+        // an Apple Event would have landed, refusing on screen if it must.
+        // Acknowledged before it is decided, like RUN — the answer to a link is
+        // the user's to see, not the forwarder's.
+        if payload.hasPrefix(URLScheme.Forward.verb + "\t") {
+            let reply: String
+            if let link = URLScheme.Forward.parse(payload) {
+                DispatchQueue.main.async { URLHandler.open(link.raw, sender: link.sender) }
+                reply = "ok"
+            } else {
+                reply = "err\tURL carried no link"
             }
             let replyData = Data((reply + "\n").utf8)
             replyData.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, replyData.count) }

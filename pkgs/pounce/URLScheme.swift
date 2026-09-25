@@ -199,4 +199,38 @@ enum URLScheme {
             return alwaysConfirm || declaresConfirm
         }
     }
+
+    // MARK: - Handing a link to the daemon
+
+    /// The socket line a link travels on when it reached the wrong process:
+    /// Launch Services started Pounce.app for it with no daemon up, and by the
+    /// time one answered, the link was sitting in a copy that is about to exit
+    /// (AppLaunchMode, LoginItem.swift). `URL\t<link>\t<sender>`, both fields
+    /// escaped the way `CONFIG`'s seed query is (Drafts.encode), because a link
+    /// is somebody else's text and this protocol is built out of tabs and
+    /// newlines. The sender travels too: it is the only thing the confirm
+    /// sheet can say about where a link came from, and forwarding must not turn
+    /// "Obsidian" into "Pounce".
+    enum Forward {
+        static let verb = "URL"
+
+        static func payload(raw: String, sender: String?) -> String {
+            "\(verb)\t\(Drafts.encode(raw))\t\(Drafts.encode(sender ?? ""))\n"
+        }
+
+        /// The link and its sender, or nil for a payload that is not this verb.
+        /// An empty sender is nil, as it would have been had the daemon taken
+        /// the Apple Event itself.
+        static func parse(_ payload: String) -> (raw: String, sender: String?)? {
+            guard payload.hasPrefix(verb + "\t") else { return nil }
+            let line = payload.dropFirst(verb.count + 1)
+                .trimmingCharacters(in: .newlines)
+            let fields = line.split(separator: "\t", maxSplits: 1,
+                                    omittingEmptySubsequences: false).map(String.init)
+            let raw = Drafts.decode(fields[0])
+            guard !raw.isEmpty else { return nil }
+            let sender = fields.count > 1 ? Drafts.decode(fields[1]) : ""
+            return (raw, sender.isEmpty ? nil : sender)
+        }
+    }
 }

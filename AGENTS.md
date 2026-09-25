@@ -173,7 +173,12 @@ real file. `pkgs/pounce-skill` ships the same bytes as `pkgs.pounce-skill`
   exit on the single-instance guard) is what `LSRegisterURL` plus an accessory
   `NSApplication` buys, measured on a /nix/store bundle — the store path is not
   the obstacle it looks like, but `/private/tmp` is: Launch Services returns
-  `noErr` there and registers nothing.
+  `noErr` there and registers nothing. With NO daemon up, Launch Services
+  launches the app for the link instead, and `AppLaunchMode`'s two no-daemon
+  arms catch it first (`LaunchLinks`, URLHandler.swift — `finishLaunching`, then
+  the loop until `didFinishLaunching`, ~45ms): handed to the daemon as `URL`
+  behind STATUS's `url` capability once one answers, replayed by
+  `URLHandler.install` when this copy becomes the daemon, a banner when neither.
 - **Ranking** is calibrated across `Frecency.swift` (decayed averages `short`,
   24h half-life, and `long`, 30d; `shortWeight` 15; `rankWeight`, a logarithm),
   `QueryMemory.swift` (`rescueBoost` 2.5, the bar set between one pick and two),
