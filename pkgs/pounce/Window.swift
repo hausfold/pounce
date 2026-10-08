@@ -592,8 +592,9 @@ final class PounceUI {
     // Show the skeleton after a short grace period (so fast sub-commands swap
     // with no flash), and fall back to fading out if step 2 never arrives. We do
     // NOT resize here — the skeleton fills the window at its current (step 1)
-    // height, so there's no arbitrary intermediary height; the single animated
-    // resize happens only when step 2's real content lands.
+    // height, so there's no arbitrary intermediary height; the one resize — an
+    // instant snap, like every resizeToFit — happens only when step 2's real
+    // content lands.
     private func startLoading() {
         cancelLinger()
         let show = DispatchWorkItem { [weak self] in self?.state.isLoading = true }
