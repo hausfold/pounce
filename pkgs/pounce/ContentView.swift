@@ -84,8 +84,7 @@ struct ContentView: View {
             // available" reads as "Update Pou…" and the per-install hint
             // ("Return to run brew upgrade") is not drawn at all, which is
             // precisely the invisibility the pin exists to fix. See
-            // UpdateCheck.swift. With no Stage this is `at: 0`, exactly as
-            // before.
+            // UpdateCheck.swift. With no Stage this is `at: 0`.
             rows.insert(notice, at: min(stageTileTarget, rows.count))
         }
         // Expression-shaped query? Pin its quick answer (inline calculator,
@@ -321,14 +320,6 @@ struct ContentView: View {
         state.metrics.headerHeight + CGFloat(displayedQueryLines - 1) * queryLineHeight
     }
 
-    // The launcher panel's EXACT height, mirroring launcherBody's layout 1:1 so
-    // the window can size to it without measuring the hosting view (see
-    // PounceUI.resizeToFit — measuring is stale in the same runloop turn on
-    // Tahoe, which is what made filtering flash). Header, then — when the list
-    // shows — a divider + the scroll area (listHeight + its 12pt vertical
-    // padding), then — when a row is selected — a divider + the action bar. The
-    // divider and action-bar frames below are pinned to these same constants;
-    // keep the two in lockstep.
     // A free-text step (`--actions`) has no rows and so no selected item, which is
     // exactly why it needs the bar: ⌘↵/⌥↵/⇧↵ on typed text are otherwise invisible
     // — nothing on screen says the step can do more than one thing.
@@ -338,6 +329,14 @@ struct ContentView: View {
         visible.isEmpty && (!state.freeTextActions.isEmpty || !state.dials.isEmpty)
     }
 
+    // The launcher panel's EXACT height, mirroring launcherBody's layout 1:1 so
+    // the window can size to it without measuring the hosting view (see
+    // PounceUI.resizeToFit — measuring is stale in the same runloop turn on
+    // Tahoe, which is what made filtering flash). Header, then — when the list
+    // shows — a divider + the scroll area (listHeight + listVPadding above
+    // and below), then — when a row is selected — a divider + the action bar. The
+    // divider and action-bar frames below are pinned to these same constants;
+    // keep the two in lockstep.
     var contentHeight: CGFloat {
         var h = headerHeight
         if !visible.isEmpty {
@@ -401,7 +400,7 @@ struct ContentView: View {
         }
     }
 
-    // The results as a list — the shape every step had before `--grid`.
+    // The results as a list, the shape of every step that didn't ask for `--grid`.
     var listScroll: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -523,7 +522,7 @@ struct ContentView: View {
                             // (State.configure), and only the launcher stages.
                             gridColumns: state.grid ? GridLayout.columns : 1,
                             stageTiles: tileCount,
-                            // ⌘1…⌘7 commits that tile. Straight to `commit`
+                            // ⌘1…⌘9 commits that tile. Straight to `commit`
                             // rather than through `selectedIndex`, which is
                             // @State and would not have moved yet — see
                             // CustomTextField.onTileShortcut.
