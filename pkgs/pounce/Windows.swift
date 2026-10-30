@@ -233,7 +233,6 @@ final class WindowTracker {
 
     private func installWorkspaceObservers() {
         let nc = NSWorkspace.shared.notificationCenter
-        // Tokens kept so deinit can unregister — see the note there.
         workspaceObservers.append(nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                        object: nil, queue: .main) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
@@ -505,8 +504,6 @@ enum Aerospace {
             output in
             guard status == 0 else { zoom(windowID); return }
             if FullscreenGate.decide(target: UInt32(windowID), listing: output) != .hold {
-                // .zoom (OFF take or a sibling shares the workspace) and nil
-                // (target absent — closed mid-gesture, or unmanaged) both fire.
                 zoom(windowID)
             }
         }
