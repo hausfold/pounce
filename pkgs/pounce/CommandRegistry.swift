@@ -3,11 +3,11 @@ import Foundation
 // MARK: - Command discovery (daemon-side)
 
 // Owns command discovery so the in-process launcher never shells out. The bash
-// launcher (pounce-palette) rebuilt this on *every* ⌘Space — a mktemp, a dozen
-// symlinks, and an awk fork per command — to produce a byte-identical registry
-// each time. Here the daemon scans the same directories once and re-reads a
-// script only when its mtime changes (a stat, not a subprocess), then spawns the
-// selected script itself with no client round-trip.
+// launcher (pounce-palette) rebuilds this on every invocation — a mktemp, a
+// dozen symlinks, and an awk fork per command — to produce a byte-identical
+// registry each time. Here the daemon scans the same directories once and
+// re-reads a script only when its mtime changes (a stat, not a subprocess), then
+// spawns the selected script itself with no client round-trip.
 //
 // Discovery order mirrors pounce-palette exactly (later shadows earlier by id):
 //   POUNCE_BUILTIN_DIR
@@ -17,13 +17,13 @@ import Foundation
 //
 // The daemon reads these from its OWN environment, so the launch agent that
 // starts the daemon must export the same values the pounce-palette wrapper does
-// (see haus/modules/pounce). Missing dirs are simply skipped.
+// (haus's modules/launcher). Missing dirs are simply skipped.
 // MARK: - What a command declares about itself
 
 // Three booleans a command's own `# pounce:` header can carry — `mutates`,
 // `confirm`, `network` — so the palette can say what a script does BEFORE it
 // runs one. A command is a file, usually someone else's; the row you see says
-// only its name, and until now the only way to learn what it did was to read it
+// only its name, and otherwise the only way to learn what it does is to read it
 // or to run it.
 //
 // It is a DECLARATION, not a sandbox: nothing here stops a command doing
@@ -208,7 +208,6 @@ final class CommandRegistry {
         entries = built
         scriptByID = resolved
         scopes = scoped
-        // Drop cache entries for scripts that no longer resolve.
         let live = Set(resolved.values)
         headerCache = headerCache.filter { live.contains($0.key) }
     }
@@ -414,8 +413,8 @@ final class CommandRegistry {
     // U+2000 block. awk's `[ \t]` cannot follow it there, and ⌥Space types a
     // non-breaking space on macOS, so trimming it here would have made
     // `submenu = true<NBSP>` a submenu in the daemon and a leaf in the shell
-    // launcher — the same split this file's trailing-space fix just closed, in
-    // a character you cannot see. Converged-and-narrow beats forgiving-and-split.
+    // launcher — a daemon/launcher split in a character you cannot see.
+    // Converged-and-narrow beats forgiving-and-split.
     private func field(_ rest: Substring, _ key: String) -> String? {
         let s = rest.drop { $0 == " " || $0 == "\t" }
         guard s.hasPrefix(key) else { return nil }
@@ -429,7 +428,7 @@ final class CommandRegistry {
 // MARK: - Spawning the selected command
 
 // Runs a selected command script detached from the daemon, the way pounce-palette
-// used to `exec` it. Submenu commands re-invoke `pounce` (the client), so the
+// `exec`s it. Submenu commands re-invoke `pounce` (the client), so the
 // child's PATH gets this binary's directory prepended so that resolves.
 enum CommandSpawner {
     /// `arguments` are positional and reach the script as `$1 $2 …`. Only the

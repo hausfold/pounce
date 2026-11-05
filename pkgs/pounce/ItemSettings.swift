@@ -90,7 +90,6 @@ struct HotKeySequence: Equatable {
     var glyphs: String { steps.map(\.glyphs).joined(separator: " ") }
 
     static func parse(_ any: Any?) -> HotKeySequence? {
-        // Array form: each element is one step.
         if let array = any as? [Any] {
             let steps = array.compactMap { HotKeySpec.parse($0) }
             guard steps.count == array.count, !steps.isEmpty else { return nil }
@@ -288,8 +287,10 @@ enum WorkspaceMRU {
 //   "app:/Applications/Foo.app"     an application, by path
 //   "shortcut:<uuid>"               a Shortcuts-library entry, by its library
 //                                   identifier (`shortcuts list --show-identifiers`)
+//   "setting:<pane>[?<anchor>]"     a System Settings pane, or one setting in it
 //   "mode:<name>"                   a built-in window: launcher, clipboard,
-//                                   emoji, screenshots, camera, filesearch
+//                                   emoji, screenshots, camera, filesearch,
+//                                   settings
 //
 //   "items": {
 //     "cmd:emoji":                    { "alias": "emo", "hotkey": "opt+e" },
@@ -333,7 +334,6 @@ struct ItemSettings {
     // Read on the launcher's hot path (once per item per open), so they stay
     // dictionary lookups against the already-parsed map — no re-reading of disk.
 
-    // False only when an entry explicitly says so; an unlisted item is enabled.
     // Config alone — the answer doesn't move between summons. Kept beside
     // `isVisible` as the narrow question ("is this item switched off?"), which
     // is what a caller wants when a summon isn't what it's asking about; the
@@ -366,9 +366,6 @@ struct ItemSettings {
             .sorted { $0.target < $1.target }
     }
 
-    // The trailing-keycap hint for one row, or nil. Read once per summon in
-    // DaemonState.load and handed to the views as a dictionary, so a row never
-    // walks the map itself.
     func hint(for itemKey: String) -> String? { entries[itemKey]?.hint }
 
     // Every item carrying a live state command, as (item key, command) pairs.
