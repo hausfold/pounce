@@ -318,20 +318,7 @@ struct AnswerRow: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(SelectionGlide(isSelected: isSelected, namespace: glide))
         .contentShape(Rectangle())
-        // Keyed on the SELECTION, not on this row's own `isSelected`: the
-        // highlight's departure from one row and its arrival at another are two
-        // halves of one move, and they have to animate in the same transaction
-        // or matchedGeometryEffect has nothing to interpolate between. It also
-        // brings the icon's accent tint along, so the row lights up with the
-        // highlight rather than a frame ahead of it.
-        //
-        // `glides` is what keeps that honest when the list itself moved: a
-        // keystroke resets the selection to row 0 from wherever it was, and the
-        // row it is leaving may be scrolled out of the viewport or gone from the
-        // results altogether — a matched-geometry pair whose source frame is
-        // off-screen (or stale, in a LazyVStack that culled it) swoops in from
-        // outside the panel. The move is real either way; only the animation is
-        // withheld. See ContentView.glideArmed.
+        // Keyed on the SELECTION and gated by `glides`, for ItemRow's reasons.
         .animation(glides ? Motion.spring : nil, value: selection)
     }
 }

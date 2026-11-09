@@ -84,7 +84,6 @@ struct SettingsPaneEntry: Equatable {
     // One grammar, parsed in exactly one place — see ItemTarget.
     var itemKey: String { "setting:" + target }
 
-    // The part after "setting:".
     var target: String {
         guard let anchor else { return paneID }
         return "\(paneID)?\(anchor)" + (discriminator.map { "#\($0)" } ?? "")
@@ -98,8 +97,6 @@ final class SettingsPaneStore {
 
     static let extensionsDir = "/System/Library/ExtensionKit/Extensions"
 
-    // Every row opens through this, whether it was clicked in the palette or
-    // fired by a hotkey bound to a `setting:` target.
     static let urlScheme = "x-apple.systempreferences:"
 
     // The URL an item target names. `#…` is pounce's own uniquifier for the
@@ -174,10 +171,9 @@ final class SettingsPaneStore {
                 if title.compare(pane, options: .caseInsensitive) == .orderedSame { continue }
                 titles.append((title, keywords(entry["index"] as? String, title: title)))
             }
-            // One anchor, several settings — Appearance's `Main` backs eight —
-            // so the anchor alone can't identify a row, and the item key has to.
-            // A single-setting anchor keeps the short, obvious key, which is the
-            // common case by far.
+            // A discriminator only where one anchor backs several settings (see
+            // SettingsPaneEntry); a single-setting anchor keeps the short key,
+            // which is the common case by far.
             let needsDiscriminator = titles.count > 1
             var taken = Set<String>()
             for (title, terms) in titles {
